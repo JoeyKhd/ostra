@@ -399,7 +399,7 @@ export const tasksRouter = router({
           },
           orderBy: { createdAt: "asc" },
         },
-        sessions: { orderBy: { startedAt: "desc" }, take: 1, include: { provider: { select: { name: true } } } },
+        sessions: { orderBy: [{ startedAt: "desc" }, { id: "desc" }], take: 1, include: { provider: { select: { name: true } } } },
         needsYouItems: { where: { state: "open" }, orderBy: { createdAt: "asc" } },
       },
     });

@@ -199,6 +199,28 @@ describe("F-032, F-096, F-068: sessions, box and spend", () => {
       await db.model.update({ where: { id: world.modelId }, data: { inputPricePerMTok: null, outputPricePerMTok: null } });
     }
   });
+
+  it("F-084/c1: of two sessions started at the same moment, the spend follows the one a reopen takes as the newest, the higher ID", async () => {
+    const db = harness.test.db;
+    const task = await ticketTask("ENG-14", "running");
+    await db.task.update({ where: { id: task.taskId }, data: { spentMicroUsd: 1_100_000 } });
+    const tieKey = await seedProviderRow(db, organizationId, "Tie key");
+    const priced = await seedModelRow(db, { organizationId, providerId: tieKey, endpointModelId: "world-model", inputPricePerMTok: 1, outputPricePerMTok: 5 });
+    // The seeded session (a UUIDv7 of now) runs on the priced row. One written after it, with a lower ID
+    // and the same start, runs on the profile's unpriced row: rows in the order they were written would end on it.
+    const startedAt = new Date();
+    await db.session.updateMany({ where: { taskId: task.taskId }, data: { startedAt, providerId: tieKey, modelId: priced, inputTokens: 100, outputTokens: 50 } });
+    await db.session.create({
+      data: { id: "00000000-0000-7000-8000-000000000e14", organizationId, projectId, taskId: task.taskId, origin: "new", state: "ended", outcome: "with_changes", startedAt, endedAt: startedAt, modelId: world.modelId, inputTokens: 200, outputTokens: 100 },
+    });
+    await db.model.update({ where: { id: world.modelId }, data: { inputPricePerMTok: null, outputPricePerMTok: null } });
+    const view = await (await member()).tasks.get({ taskId: task.taskId });
+    expect(view.spend).toEqual({ unit: "usd", spent: 1_100_000, cap: 25_000_000, reached: false });
+    // The panel's session and its key are the same newest one.
+    expect(view.session?.id).toBe(task.sessionId);
+    expect(view.session?.providerName).toBe("Tie key");
+    expect(view.sessions.at(-1)?.id).toBe(task.sessionId);
+  });
 });
 
 describe("F-033, F-068: capabilities", () => {

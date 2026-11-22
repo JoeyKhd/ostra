@@ -101,7 +101,8 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
       ? Promise.resolve(null)
       : db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, include: { board: { select: { name: true } }, connection: { select: { kind: true } } } }),
     db.ticketWrite.findMany({ where: { taskId: task.id, organizationId }, orderBy: { createdAt: "asc" } }),
-    db.session.findMany({ where: { taskId: task.id, organizationId }, orderBy: { startedAt: "asc" } }),
+    // Oldest first, a tie by ID: the last is the newest session as a reopen and the review loop pick it.
+    db.session.findMany({ where: { taskId: task.id, organizationId }, orderBy: [{ startedAt: "asc" }, { id: "asc" }] }),
     db.box.findMany({ where: { taskId: task.id, organizationId }, orderBy: { createdAt: "desc" }, take: 1 }),
     db.event.findMany({ where: { taskId: task.id, organizationId, kind: "session.restored" }, select: { sessionId: true, payload: true } }),
     db.event.findFirst({ where: { taskId: task.id, organizationId, kind: "ticket.files_ready" }, orderBy: { seq: "desc" }, select: { payload: true } }),
