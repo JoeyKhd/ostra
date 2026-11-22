@@ -83,6 +83,17 @@ describe("workspaceCommand", () => {
     expect(workspaceCommand(`cd ${hostDir()} && dir "${hostDir()}"`, twoRepos)).toBe(`cd . && dir "."`);
   });
 
+  it("F-151/c3: a home folder in a command line ends where its user's name does, never in the next word", () => {
+    expect(workspaceCommand("ls /home/sam && rm -rf x", oneRepo)).toBe("ls ~ && rm -rf x");
+    expect(workspaceCommand("ls /Users/sam /tmp", oneRepo)).toBe("ls ~ /tmp");
+    expect(workspaceCommand("cat /root/.bashrc;ls /root", oneRepo)).toBe("cat ~/.bashrc;ls ~");
+    expect(workspaceCommand("PATH=/home/sam:/usr/bin make", oneRepo)).toBe("PATH=~:/usr/bin make");
+    expect(workspaceCommand("PATH=/home/sam/bin:/usr/bin make", oneRepo)).toBe("PATH=~/bin:/usr/bin make");
+    // A Windows name may hold a space: quoted, it's one home folder; unquoted, the path stays whole.
+    expect(workspaceCommand(`"${win("C:", "Users", "Sam Rivera", "AppData", "Local", "pnpm", "pnpm.exe")}" install`, oneRepo)).toBe(`"${win("~", "AppData", "Local", "pnpm", "pnpm.exe")}" install`);
+    expect(workspaceCommand(`dir ${win("C:", "Users", "Sam Rivera", "AppData")}`, oneRepo)).toBe(`dir ${win("C:", "Users", "Sam Rivera", "AppData")}`);
+  });
+
   it("F-151/c3: a long word in a command line, quoted or not, is read in one pass", () => {
     // The line is the agent's, up to a frame long: a base64 blob is one word. A pattern that tried
     // the task's folder at every start inside a word took 43 s on this one, and far longer on 1 MiB.

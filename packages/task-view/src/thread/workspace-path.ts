@@ -18,8 +18,9 @@ export type WorkspaceContext = {
   readonly checkoutDirs: readonly string[];
 };
 
-/** The characters a path in a command line ends at, or starts after, when it isn't quoted. */
-const BOUNDARY = String.raw`\s"'\x60;|&<>()=,`;
+/** The quotes and the shell's operators: with a space, what a path in a command line ends at, or starts after, when it isn't quoted. */
+const MARKS = String.raw`"'\x60;|&<>()=,`;
+const BOUNDARY = String.raw`\s${MARKS}`;
 const PATH_CHAR = `[^${BOUNDARY}]`;
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
@@ -29,6 +30,17 @@ const hostAnchor = (taskId: TaskId): string => String.raw`tasks[\\/]${escapeRegE
 
 /** A home folder at a path's start, with the separator after it or the end. */
 const HOME = String.raw`(?:/home/[^/\\]+|/Users/[^/\\]+|[A-Za-z]:[\\/]Users[\\/][^/\\]+|/root)(?=[\\/]|$)`;
+
+/**
+ * A home folder in a command line: its user's name ends at a separator, a `:`
+ * (`PATH=/home/sam:/usr/bin`) or its word's end (`ls /home/sam && …`), never in the next word. A
+ * Windows name may hold a space (`C:\Users\Sam Rivera`): in a quoted value it runs to its separator;
+ * unquoted, a space after it ends no home folder, and the path stays whole.
+ */
+const USER = String.raw`[^/\\:${BOUNDARY}]+`;
+const POSIX_HOME = String.raw`(?:/home/${USER}|/Users/${USER}|/root)(?=[\\/:${BOUNDARY}]|$)`;
+const LINE_HOME = String.raw`(?:${POSIX_HOME}|[A-Za-z]:[\\/]Users[\\/]${USER}(?=[\\/:${MARKS}]|$))`;
+const QUOTED_HOME = new RegExp(String.raw`^(?:${POSIX_HOME}|[A-Za-z]:[\\/]Users[\\/][^/\\:]+(?=[\\/]|$))`);
 
 /** Takes the one repo's checkout folder off a path inside the workspace (`calculator-web/src` → `src`). */
 const insideRepo = (rest: string, checkoutDirs: readonly string[]): string => {
@@ -72,9 +84,17 @@ export const workspacePath = (raw: string, context: WorkspaceContext): string =>
  */
 export const workspaceCommand = (line: string, context: WorkspaceContext): string => {
   const anchor = new RegExp(hostAnchor(context.taskId));
-  const hostRest = (path: string): string => {
+  /** What follows the task's folder in a path, relative; `null` when the folder isn't in it. */
+  const hostRest = (path: string): string | null => {
     const found = anchor.exec(path);
-    return found === null ? path : relativeRest(path.slice(found.index + found[0].length), context, false);
+    return found === null ? null : relativeRest(path.slice(found.index + found[0].length), context, false);
+  };
+  /** A quoted value, under the task's folder or starting with a home folder (`"C:\Users\Sam Rivera\…"`). */
+  const quotedRest = (value: string): string => {
+    const inTask = hostRest(value);
+    if (inTask !== null) return inTask;
+    const home = QUOTED_HOME.exec(value);
+    return home === null ? value : `~${value.slice(home[0].length)}`;
   };
   // The line is the agent's, as long as it likes (a base64 blob in one word), so each pattern here
   // reads it in one pass: a quoted value or a word is taken whole, then searched for the `host`
@@ -83,10 +103,10 @@ export const workspaceCommand = (line: string, context: WorkspaceContext): strin
   const quoted = /(["'])([^"']*)\1/g;
   const word = new RegExp(`${PATH_CHAR}+`, "g");
   const box = new RegExp(String.raw`(^|[${BOUNDARY}:])/workspace((?:/${PATH_CHAR}*)?)(?=$|[${BOUNDARY}])`, "g");
-  const home = new RegExp(String.raw`(^|[${BOUNDARY}:])(${HOME})`, "g");
+  const home = new RegExp(String.raw`(^|[${BOUNDARY}:])${LINE_HOME}`, "g");
   return line
-    .replace(quoted, (_match, quote: string, path: string) => `${quote}${hostRest(path)}${quote}`)
-    .replace(word, (path) => hostRest(path))
+    .replace(quoted, (_match, quote: string, value: string) => `${quote}${quotedRest(value)}${quote}`)
+    .replace(word, (path) => hostRest(path) ?? path)
     .replace(box, (_match, before: string, rest: string) => `${before}${relativeRest(rest.replace(/^\//, ""), context, false)}`)
     .replace(home, (_match, before: string) => `${before}~`);
 };
