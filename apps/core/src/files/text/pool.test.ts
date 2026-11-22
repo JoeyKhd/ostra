@@ -52,6 +52,19 @@ afterEach(async () => {
 /** A pool's heap small enough that a long document passes it, while every fixture of the demo fits. */
 const SMALL_HEAP_MIB = 64;
 
+/**
+ * Reads `bytes` until a read is ready: the pool's worker is then up, and free. A read that waits
+ * past the wait limit while the worker starts is `busy`, and the start goes on for the next one.
+ */
+const warmUp = async (pool: TextPool, bytes: Uint8Array): Promise<void> => {
+  for (let tries = 0; tries < 100; tries += 1) {
+    if ((await pool.read({ bytes, kind: "docx", name: "warm.docx" })).state === "ready") {
+      return;
+    }
+  }
+  throw new Error("the pool's worker never started");
+};
+
 describe("the pool (F-150/c2)", () => {
   it("F-150/c1, F-150/c2: each kind is read in a worker, not on core's thread, its text headed by ostra's line", async () => {
     const { pool } = testPool();
@@ -108,11 +121,18 @@ describe("the pool (F-150/c2)", () => {
 
   it("F-150/c2: a file that waits past the wait limit for a worker is busy", async () => {
     const { pool } = testPool({ fileTimeoutMs: 5_000, waitMs: 300 });
+    // The worker up and free first. Its start counts against a file's wait, and on a loaded
+    // machine it alone outlasts 300 ms: the slow file would then be the one that's busy, and the
+    // worker, up a moment later, free for the next file.
+    const bytes = await specDocx();
+    await warmUp(pool, bytes);
+    // A free worker takes a file at once: the slow one holds it far longer than the next one waits.
     const slow = pool.read({ bytes: slowPdf(20_000), kind: "pdf", name: "slow.pdf" });
-    expect(await pool.read({ bytes: await specDocx(), kind: "docx", name: "waits.docx" })).toEqual({ state: "failed", reason: "busy" });
+    expect(await pool.read({ bytes, kind: "docx", name: "waits.docx" })).toEqual({ state: "failed", reason: "busy" });
     await pool.close();
     expect(await slow).toEqual({ state: "failed", reason: "busy" });
-    expect(await pool.read({ bytes: await specDocx(), kind: "docx", name: "closed.docx" })).toEqual({ state: "failed", reason: "busy" });
+    expect(await pool.read({ bytes, kind: "docx", name: "closed.docx" })).toEqual({ state: "failed", reason: "busy" });
+    expect(pool.stats()).toMatchObject({ started: 1, timeouts: 0 });
   });
 
   it("F-150/c2: the zip bomb and the DOCTYPE are refused in the worker too, and no network call is made", async () => {
