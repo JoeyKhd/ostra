@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -556,6 +557,85 @@ const exists = async (file: string): Promise<boolean> => {
     return false;
   }
 };
+
+/** Every file under `dir`, with its text. */
+const filesUnder = async (dir: string): Promise<readonly { readonly file: string; readonly text: string }[]> => {
+  const entries = await readdir(dir, { withFileTypes: true, recursive: true });
+  return Promise.all(
+    entries.filter((entry) => entry.isFile()).map(async (entry) => {
+      const file = path.join(entry.parentPath, entry.name);
+      return { file, text: await readFile(file, "latin1") };
+    }),
+  );
+};
+
+// F-014/c5 (ADR 0030): a member's personal runner uses the organization's model provider through
+// the key proxy, never a subscription the member signed in to on that machine. Their machine holds
+// OpenCode's own login (`opencode auth login` keeps it in its data folder), Claude Code's, and the
+// vendors' tokens in the runner's environment; the pinned OpenCode, launched the way the runner
+// launches it, sees none of them, keeps none, and every model call of its turn carries the task's
+// key.
+describe("F-014 on the pinned OpenCode", () => {
+  it("F-014/c5: a subscription login on the member's machine is never used, stored or passed on: OpenCode's own login, Claude Code's and the vendors' tokens reach neither the launch nor the agent's folders, and every model call carries the task's key", async () => {
+    const login = `subscription-login-${randomUUID()}`;
+    const home = await mkdtemp(path.join(tmpdir(), "ostra-member-home-"));
+    roots.push(home);
+    const dataHome = path.join(home, ".local", "share");
+    const logins = [
+      [path.join(dataHome, "opencode", "auth.json"), JSON.stringify({ anthropic: { type: "oauth", refresh: login, access: login, expires: Date.now() + 3_600_000 }, openai: { type: "api", key: login } })],
+      [path.join(home, ".claude", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: login, refreshToken: login } })],
+    ] as const;
+    for (const [file, text] of logins) {
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, text, "utf8");
+    }
+    const machine = {
+      HOME: home,
+      USERPROFILE: home,
+      XDG_DATA_HOME: dataHome,
+      XDG_CONFIG_HOME: path.join(home, ".config"),
+      ANTHROPIC_API_KEY: login,
+      CLAUDE_CODE_OAUTH_TOKEN: login,
+      OPENAI_API_KEY: login,
+      OPENCODE_API_KEY: login,
+    };
+    const saved = Object.keys(machine).map((name) => [name, process.env[name]] as const);
+    Object.assign(process.env, machine);
+    const stub = servers.length;
+    let opened: Awaited<ReturnType<typeof openProfiled>> | undefined;
+    let taskRoot = "";
+    try {
+      opened = await openProfiled({});
+      taskRoot = path.dirname(opened.input.agentDir);
+      // Passed on: nothing of it is in the launch, and OpenCode's homes are the task's own agent folder.
+      expect(JSON.stringify({ args: opened.launch.args, env: opened.launch.env, files: opened.launch.files })).not.toContain(login);
+      for (const name of ["HOME", "USERPROFILE", "XDG_DATA_HOME", "XDG_CONFIG_HOME"]) {
+        expect(path.relative(opened.input.agentDir, opened.launch.env[name] ?? home).startsWith(".."), name).toBe(false);
+      }
+      expect(await opened.prompt(`${stubMarker("hello")} say hello`)).toBe("end_turn");
+    } finally {
+      await opened?.stop();
+      for (const [name, value] of saved) {
+        if (value === undefined) {
+          Reflect.deleteProperty(process.env, name);
+        } else {
+          process.env[name] = value;
+        }
+      }
+    }
+    // Used: every model call went to the key proxy's stand-in, with the task's own key.
+    const calls = servers[stub]?.calls ?? [];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.filter((call) => !call.authOk)).toEqual([]);
+    // Stored: no file of the task's folders holds it, and the member's own files are as they were.
+    const taskFiles = await filesUnder(taskRoot);
+    expect(taskFiles.length).toBeGreaterThan(0);
+    expect(taskFiles.filter(({ text }) => text.includes(login)).map(({ file }) => file)).toEqual([]);
+    for (const [file, text] of logins) {
+      expect(await readFile(file, "utf8")).toBe(text);
+    }
+  }, 120_000);
+});
 
 const rule = (id: string, tool: ApprovalRule["tool"], match: ApprovalRule["match"]): ApprovalRule => ({ ruleId: approvalRuleIdSchema.parse(id), name: `rule ${id}`, tool, match });
 
