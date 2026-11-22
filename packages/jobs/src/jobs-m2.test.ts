@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createDb, utcConnectionString } from "@ostra/db";
 import { createTestDatabase } from "@ostra/db/testing";
 import type { TestDatabase } from "@ostra/db/testing";
-import { organizationIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { boardIdSchema, organizationIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -52,7 +52,7 @@ afterAll(async () => {
 const organizationId = organizationIdSchema.parse("org-jobs-m2");
 
 describe("the forwarding queue's heartbeat and the boot check", () => {
-  it("sets the heartbeat at a worker's start, and a forwarded occurrence carries it", async () => {
+  it("F-044/c2: sets the heartbeat at a worker's start, the boot check reads it back, and a forwarded occurrence carries it", async () => {
     const jobs = await start("worker");
     expect(await jobs.bootCheck()).toEqual({ ok: true });
     const rows = z
@@ -71,7 +71,7 @@ describe("the forwarding queue's heartbeat and the boot check", () => {
     await test.db.$executeRawUnsafe(`DELETE FROM pgboss.job WHERE name = '${FORWARDING_QUEUE}'`);
   });
 
-  it("refuses a forwarding queue without its heartbeat", async () => {
+  it("F-044/c2: the boot check refuses a forwarding queue without its heartbeat", async () => {
     const jobs = await start("worker");
     await test.db.$executeRawUnsafe(`UPDATE pgboss.queue SET heartbeat_seconds = NULL WHERE name = '${FORWARDING_QUEUE}'`);
     const checked = await jobs.bootCheck();
@@ -88,6 +88,75 @@ describe("the forwarding queue's heartbeat and the boot check", () => {
     const jobs = createJobs({ databaseUrl: url.toString(), role: "worker" });
     await expect(jobs.start()).rejects.toThrow(/not UTC/);
   });
+});
+
+// F-044: a reconcile's five minutes hold only if a tick a dead replica held is freed in seconds.
+// pg-boss's cron pass forwards each due occurrence through FORWARDING_QUEUE; a replica killed while
+// it holds that batch leaves it active. With the heartbeat ostra sets, the next supervise pass frees
+// it and the occurrence runs; without it, the batch waits out the queue's 15-minute expiry.
+describe("a reconcile's tick that a dead replica held", () => {
+  it("F-044/c2: is freed in seconds by the forwarding queue's heartbeat, and stays stranded without it", async () => {
+    const jobs = createJobs({ databaseUrl: test.url, role: "worker", pollingIntervalSeconds: 0.5, superviseIntervalSeconds: 1 });
+    await jobs.start();
+    running.push(jobs);
+    const ran: string[] = [];
+    await jobs.work("tracker.poll-board", (context) => {
+      ran.push(context.payload.boardId);
+      return Promise.resolve();
+    });
+    // Two boards' drift polls, scheduled as core schedules them, every five minutes. Their rows are
+    // read back for what the cron pass forwards, then dropped, so no real tick fires meanwhile.
+    const held = { organizationId, boardId: boardIdSchema.parse(`board-held-${randomUUID()}`) };
+    const stranded = { organizationId, boardId: boardIdSchema.parse(`board-stranded-${randomUUID()}`) };
+    const rowSchema = z.array(z.object({ name: z.string(), key: z.string(), data: z.unknown(), options: z.unknown() }));
+    const rows = new Map<string, z.infer<typeof rowSchema>[number]>();
+    for (const payload of [held, stranded]) {
+      await jobs.schedule("tracker.poll-board", payload.boardId, "*/5 * * * *", payload);
+      const [row] = rowSchema.parse(await test.db.$queryRawUnsafe(`SELECT name, key, data, options FROM pgboss.schedule WHERE name = 'tracker.poll-board' AND key = $1`, payload.boardId));
+      if (row === undefined) throw new Error("no schedule row");
+      rows.set(payload.boardId, row);
+      await jobs.unschedule("tracker.poll-board", payload.boardId);
+    }
+    // Past the worker's first supervise pass, so only a later one can free a batch.
+    await sleep(3_000);
+    // Each occurrence's batch, as a replica killed while holding it leaves it: active, started and
+    // last beating a minute ago. One carries the forwarding queue's heartbeat; the other has none,
+    // as pg-boss made the queue before ostra set it.
+    for (const [boardId, heartbeat] of [
+      [held.boardId, true],
+      [stranded.boardId, false],
+    ] as const) {
+      const row = rows.get(boardId);
+      await test.db.$executeRawUnsafe(
+        `INSERT INTO pgboss.job (name, data, state, started_on, heartbeat_on, heartbeat_seconds, expire_seconds)
+         SELECT q.name, $2::jsonb, 'active', now() - interval '1 minute', now() - interval '1 minute', ${heartbeat ? "q.heartbeat_seconds" : "NULL"}, q.expire_seconds
+         FROM pgboss.queue q WHERE q.name = $1`,
+        FORWARDING_QUEUE,
+        JSON.stringify({ name: row?.name, key: row?.key, data: row?.data, options: row?.options }),
+      );
+    }
+    const forwarded = async () =>
+      z
+        .array(z.object({ key: z.string(), state: z.string(), heartbeat_seconds: z.number().nullable(), expire_seconds: z.number() }))
+        .parse(
+          await test.db.$queryRawUnsafe(
+            `SELECT data->>'key' AS key, state, heartbeat_seconds, expire_seconds FROM pgboss.job WHERE name = $1 AND data->>'name' = 'tracker.poll-board' ORDER BY created_on`,
+            FORWARDING_QUEUE,
+          ),
+        );
+    // The held tick runs within seconds: the heartbeat expired, the batch was freed and forwarded.
+    const freedBy = Date.now() + 20_000;
+    await waitFor(() => ran.includes(held.boardId), 25_000);
+    expect(Date.now()).toBeLessThan(freedBy);
+    // The other is still held a few supervise passes later, and would be for the rest of its
+    // 15-minute expiry: its board isn't polled.
+    await sleep(3_000);
+    expect(ran).not.toContain(stranded.boardId);
+    const left = (await forwarded()).find((job) => job.key === stranded.boardId);
+    expect(left).toMatchObject({ state: "active", heartbeat_seconds: null });
+    expect(left?.expire_seconds).toBeGreaterThanOrEqual(15 * 60);
+    await test.db.$executeRawUnsafe(`DELETE FROM pgboss.job WHERE name = $1 AND data->>'key' = $2`, FORWARDING_QUEUE, stranded.boardId);
+  }, 60_000);
 });
 
 describe("UTC on every connection (Q158)", () => {
