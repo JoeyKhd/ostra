@@ -118,6 +118,8 @@ export const acceptPrCommentWith = async (deps: M3Deps, extras: AcceptPrCommentE
         text: prCommentPrompt({ login: input.commenterLogin, text: input.text, url: input.url, path: input.path, line: input.line }),
         intent: "pr-comment",
         sender: "anyone",
+        // Credited below, by the link's no-reply address (ADR 0052).
+        credit: false,
       });
       if (!sent.ok) {
         // A comment carries no file, so it never meets a runner too old for one.

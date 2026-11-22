@@ -217,8 +217,11 @@ export const buildTaskSpec = async (
 
   // A member with a verified GitHub link (F-119, ADR 0052) is credited by their no-reply address; one
   // without, by the name and email they had when the task started. Read now, so a link made after the
-  // task began is used from the next commit on.
-  const coAuthorRows = await db.taskCoAuthor.findMany({ where: { taskId: task.id }, orderBy: { createdAt: "asc" } });
+  // task began is used from the next commit on. One trailer per member (F-078): a member credited
+  // twice, at the start by their ostra email and by an `@ostra` comment's no-reply address, keeps the first.
+  const coAuthorRows = (await db.taskCoAuthor.findMany({ where: { taskId: task.id }, orderBy: { createdAt: "asc" } })).filter(
+    (row, index, rows) => row.memberId === null || rows.findIndex((other) => other.memberId === row.memberId) === index,
+  );
   const linked = await db.member.findMany({
     where: { id: { in: coAuthorRows.flatMap((row) => (row.memberId === null ? [] : [row.memberId])) }, organizationId },
     select: { id: true, user: { select: { githubUserId: true, githubLogin: true } } },

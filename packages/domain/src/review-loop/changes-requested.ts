@@ -172,8 +172,10 @@ export const reopenOnChangesRequested = async (
         text: promptOf(review, comments),
         intent: "changes-requested",
         sender: "anyone",
-        // The reviewer asked for changes; the task's driver stays its driver (ADR 0040, amended).
+        // The reviewer asked for changes; the task's driver stays its driver, and the reviewer gets
+        // no trailer, so their approval still counts (ADR 0040, amended).
         keepDriver: true,
+        credit: false,
       });
       if (!sent.ok) {
         // Refused: nothing of the send is kept (its counter reset included), so the transaction rolls back.

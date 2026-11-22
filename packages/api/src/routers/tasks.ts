@@ -11,6 +11,7 @@ import {
   appendServerEvent,
   checkBudget,
   checkProjectRepos,
+  creditCoAuthorInTx,
   holdTurnInTx,
   sessionModelIdInTx,
   turnOriginOfIntent,
@@ -903,6 +904,9 @@ export const tasksRouter = router({
       const modelId =
         fileIds.length > 0 || session.state === "idle" ? await sessionModelIdInTx(tx, organizationId, { agentProfileId: session.agentProfileId, modelId: session.modelId }) : null;
       const files = await filesToBindInTx(tx, organizationId, messageFiles, { fileIds, modelId, agentProfileId: session.agentProfileId });
+      // F-078 (ADR 0040): the message is sent, held or restarted below, so the driver who sent it,
+      // a member who took over included, is a co-author of what follows: a trailer on its commits.
+      await creditCoAuthorInTx(ports.jobs, tx, { organizationId, projectId, taskId: input.taskId, memberId: ctx.scope.memberId });
       const where = { organizationId, projectId, taskId: input.taskId, sessionId, at: now };
       // Milestone 4 (F-037, ADR 0055): between turns a message starts one, so it passes the budget
       // gate first; a closed gate saves it and holds the turn. A turn going takes it, gate or not.
