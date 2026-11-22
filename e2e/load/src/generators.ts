@@ -12,11 +12,30 @@ import type { GeneratorArgs, GeneratorCommand, GeneratorLine } from "./generator
 
 export type GeneratorProcess = {
   readonly index: number;
+  /** The child's process ID: each generator is a process of its own. */
+  readonly pid: number;
   readonly send: (command: GeneratorCommand) => void;
   /** Resolves with the next line of type `t` from now on. */
   readonly next: <T extends GeneratorLine["t"]>(t: T, timeoutMs: number) => Promise<Extract<GeneratorLine, { t: T }>>;
   readonly onLine: (listener: (line: GeneratorLine) => void) => void;
   readonly stop: () => Promise<void>;
+};
+
+/**
+ * How many simulated runners each generator process joins (ticket 34): one process per `perProcess`
+ * tasks, so no single event loop is the limit, and the runners split as evenly as they go.
+ */
+export const generatorShares = (tasks: number, slots: number, perProcess: number): readonly number[] => {
+  const runnerCount = Math.ceil(tasks / slots);
+  const generatorCount = Math.ceil(tasks / perProcess);
+  const perGenerator = Math.ceil(runnerCount / generatorCount);
+  const shares: number[] = [];
+  for (let index = 0; index < generatorCount; index += 1) {
+    const runners = Math.min(perGenerator, runnerCount - index * perGenerator);
+    if (runners <= 0) break;
+    shares.push(runners);
+  }
+  return shares;
 };
 
 const isLine = <T extends GeneratorLine["t"]>(line: GeneratorLine, t: T): line is Extract<GeneratorLine, { t: T }> => line.t === t;
@@ -52,6 +71,7 @@ export const startGenerator = (index: number, args: GeneratorArgs, logDir: strin
   }
   return {
     index,
+    pid: child.pid ?? 0,
     send: (command) => {
       child.stdin?.write(`${JSON.stringify(command)}\n`);
     },

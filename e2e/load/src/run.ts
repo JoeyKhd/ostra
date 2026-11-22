@@ -33,7 +33,7 @@ import type { HarnessApi } from "./api.ts";
 import { openBrowsers } from "./browsers.ts";
 import type { BrowserWatch } from "./browsers.ts";
 import type { GeneratorLine } from "./generator-protocol.ts";
-import { startGenerator } from "./generators.ts";
+import { generatorShares, startGenerator } from "./generators.ts";
 import type { GeneratorProcess } from "./generators.ts";
 import { partialTextOn } from "./mix.ts";
 import { startNetCut } from "./net-cut.ts";
@@ -179,8 +179,6 @@ const runStep = async (tasks: number, options: Options, runDir: string): Promise
     // The pool, through the API: approval required, so each runner is approved as an admin would.
     const pool = await api.admin.pools.create({ name: `load-${String(tasks)}`, requiresApproval: true, projectIds: [world.projectId] });
     const runnerCount = Math.ceil(tasks / options.slots);
-    const generatorCount = Math.ceil(tasks / options["per-process"]);
-    const perGenerator = Math.ceil(runnerCount / generatorCount);
     // The window's steers are timed against the bar; the ones after the storm are counted, not timed,
     // since they wait for runners that are still coming back.
     const steers = createSteerTimer();
@@ -189,9 +187,7 @@ const runStep = async (tasks: number, options: Options, runDir: string): Promise
     const marked = new Map<string, number>();
     const errors: string[] = [];
     const runnerData = path.join(os.tmpdir(), `ostra-load-${String(process.pid)}-${String(tasks)}`);
-    for (let index = 0; index < generatorCount; index += 1) {
-      const runners = Math.min(perGenerator, runnerCount - index * perGenerator);
-      if (runners <= 0) break;
+    for (const [index, runners] of generatorShares(tasks, options.slots, options["per-process"]).entries()) {
       const generator = startGenerator(
         index,
         {
