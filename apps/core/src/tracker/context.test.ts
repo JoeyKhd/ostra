@@ -298,7 +298,7 @@ describe("ticket.fetch-context (F-064)", () => {
 });
 
 describe("a ticket task's PR (spec section 11, item 5)", () => {
-  it("F-030/c2,c3: is titled with the key and the ticket's title as last read, and its body sums up the change and links the ticket with the board's word and the task", async () => {
+  it("F-030/c2,c3, F-078/c3: is titled with the key and the ticket's title as last read, and its body sums up the change and links the ticket with the board's word and the task", async () => {
     const task = await ticketTask();
     await runFetch(task);
     const row = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
@@ -323,7 +323,8 @@ describe("a ticket task's PR (spec section 11, item 5)", () => {
     expect(pull?.body).toContain("Adds the heron page.");
     expect(pull?.body).toContain(`Refs ${task.key}`);
     expect(pull?.body).not.toContain(`Closes ${task.key}`);
-    expect(pull?.body).toContain(`http://localhost:3000/tasks/${task.taskId}`);
+    // The task's page, in the footer.
+    expect(pull?.body).toContain(`Opened by [ostra](http://localhost:3000/tasks/${task.taskId}) for this task: http://localhost:3000/tasks/${task.taskId}`);
     expect(pull?.headBranch).toBe(row.branchName);
     expect(row.branchName.startsWith(`ostra/${task.key.toLowerCase()}-`)).toBe(true);
   });
