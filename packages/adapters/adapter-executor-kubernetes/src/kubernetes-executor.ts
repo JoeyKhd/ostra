@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { planSnapshotBuild, SETUP_FAILED_MARKER } from "@ostra/adapter-executor-docker";
-import { adapterError, ExecutorAdapter, ok } from "@ostra/adapter-sdk";
+import { adapterError, BOX_START_WITHIN_MS, ExecutorAdapter, ok } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
   AdapterResult,
@@ -61,7 +61,9 @@ import type { BuildkitSwitches, ContextPlan } from "./snapshots.ts";
 //             image has a credential, and the pod (`pod.ts`); it returns once the pod exists, so the
 //             runner has accepted the dispatch long before a node is found (ADR 0029)
 //   prepare   waits for the sidecar's readiness, saying so through `onWaiting` while the pod waits
-//             for a node the autoscaler is adding or for its image's pull (ticket 08 grows it)
+//             for a node the autoscaler is adding or for its image's pull (ticket 08 grows it); a
+//             sidecar that ends or crash-loops first fails it at once, and one not ready within
+//             `BOX_START_WITHIN_MS` of its start fails it then, as a `docker` box that doesn't start
 //   stop      deletes the pod: a stopped pod is never kept (ADR 0039)
 //   release   deletes the pod and every object left with the box's label
 //   state     the pod's phase and conditions as a `BoxState`
@@ -72,8 +74,14 @@ import type { BuildkitSwitches, ContextPlan } from "./snapshots.ts";
 // pod (ticket 20), so those calls answer `unsupported` there; given by the sidecar's process and by
 // the contract suite, which plays the sidecar against the fake cluster's process mode.
 
-/** Why a box failed before it ran (F-093): no node within the wait, or no room and no node coming. Core queues the task again (ticket 13). */
-export type BoxWaitFailure = "no-node" | "no-room" | "image-pull";
+/**
+ * Why a box failed before it ran (F-093): no node within the wait, or no room and no node coming,
+ * which ADR 0060 sends back to the queue; its image wouldn't pull; its sidecar ended or crash-looped
+ * before it was ready, or wasn't ready within `BOX_START_WITHIN_MS` of its start (amended
+ * 2026-11-22). The runner reports the last three as a lost box, as `docker`'s runner reports a box
+ * whose create fails or whose sidecar exits.
+ */
+export type BoxWaitFailure = "no-node" | "no-room" | "image-pull" | "sidecar-ended" | "not-ready";
 
 /** The task's half inside the box: the bridge to the box's init, and the executor that drives the agent through it. */
 export type InBox = {
@@ -118,6 +126,8 @@ export type KubernetesExecutorOptions = {
   readonly servicesWaitMs?: number;
   /** How long an image's pull runs before the box says it waits for it. Default 10 s (F-093). */
   readonly imagePullWaitMs?: number;
+  /** How long the sidecar has to be ready once it started. Default `BOX_START_WITHIN_MS`, a `docker` box's own. */
+  readonly sidecarReadyWithinMs?: number;
   /** Whether `health()` checks the namespace's egress baseline (F-116). Default true. */
   readonly requireEgressBaseline?: boolean;
   /** `OSTRA_K8S_BUILD_NAMESPACE`: where snapshots are built. Default `<namespace>-builds`. */
@@ -163,6 +173,8 @@ const parsePushResult = (text: string): { readonly digest: string; readonly blob
 
 /** A container's waiting reasons that mean its image won't come. */
 const PULL_FAILURES: ReadonlySet<string> = new Set(["ErrImagePull", "ImagePullBackOff", "InvalidImageName", "ErrImageNeverPull"]);
+/** A container's waiting reasons before its first start: its image's pull, its volumes. Any other means the kubelet tried to start it. */
+const NOT_YET_STARTED: ReadonlySet<string> = new Set(["ContainerCreating", "PodInitializing"]);
 /** How long release waits for a deleted pod to be gone. */
 const RELEASE_WAIT_MS = 60_000;
 
@@ -187,6 +199,10 @@ type BoxRecord = {
   waiting: { readonly reason: "node" | "image-pull"; readonly since: number } | null;
   /** When the pod was first seen scheduled. */
   scheduledAt: number | null;
+  /** When the sidecar was first seen started (or the kubelet failed to start it): its time to be ready counts from here. */
+  sidecarStartedAt: number | null;
+  /** The sidecar's exit code when it ended before it was ready. */
+  sidecarExitCode: number | null;
   readonly services: readonly TaskSpecService[];
   inner: ExecutorAdapter | null;
   closeBridge: (() => void) | null;
@@ -225,6 +241,7 @@ export class KubernetesExecutor extends ExecutorAdapter {
   readonly #serviceLimits: BoxSize;
   readonly #servicesWaitMs: number;
   readonly #imagePullWaitMs: number;
+  readonly #sidecarReadyWithinMs: number;
   readonly #requireEgressBaseline: boolean;
   readonly #buildNamespace: string;
   readonly #buildkitImage: string;
@@ -258,6 +275,7 @@ export class KubernetesExecutor extends ExecutorAdapter {
     this.#subagentWaitMinutes = options.subagentWaitMinutes ?? null;
     this.#servicesWaitMs = options.servicesWaitMs ?? 120_000;
     this.#imagePullWaitMs = options.imagePullWaitMs ?? 10_000;
+    this.#sidecarReadyWithinMs = options.sidecarReadyWithinMs ?? BOX_START_WITHIN_MS;
     this.#requireEgressBaseline = options.requireEgressBaseline ?? true;
     this.#buildNamespace = options.buildNamespace ?? `${options.namespace}-builds`;
     this.#buildkitImage = options.buildkitImage ?? BUILDKIT_IMAGE;
@@ -362,9 +380,14 @@ export class KubernetesExecutor extends ExecutorAdapter {
     return this.#capacity;
   }
 
-  /** Why a box failed before it ran, when it did: `no-node` and `no-room` send its task back to the queue (ticket 13). */
+  /** Why a box failed before it ran, when it did: `no-node` and `no-room` send its task back to the queue (ADR 0060). */
   failureOf(box: BoxRef): BoxWaitFailure | null {
     return this.#boxes.get(keyOf(box))?.failure ?? null;
+  }
+
+  /** The sidecar's exit code, when it ended before the box was ready (`sidecar-ended`). */
+  sidecarExitCodeOf(box: BoxRef): number | null {
+    return this.#boxes.get(keyOf(box))?.sidecarExitCode ?? null;
   }
 
   async create(input: CreateBoxInput): Promise<AdapterResult<CreatedBox>> {
@@ -426,6 +449,8 @@ export class KubernetesExecutor extends ExecutorAdapter {
       failure: null,
       waiting: null,
       scheduledAt: null,
+      sidecarStartedAt: null,
+      sidecarExitCode: null,
       services: input.spec.services ?? [],
       inner: null,
       closeBridge: listening?.close ?? null,
@@ -601,6 +626,30 @@ export class KubernetesExecutor extends ExecutorAdapter {
         record.waiting = null;
       }
       return { kind: "running", tell, unschedulableSince: null };
+    }
+    if (sidecar !== undefined) {
+      // Ended before it was ready, or started again by the kubelet (a native sidecar always is), as
+      // a crash loop: the box never ran, and waiting would wait for ever. A `docker` box's sidecar
+      // that exits is reported at once, with its exit code (ADR 0029's parity).
+      if (sidecar.state === "terminated" || sidecar.restarts > 0 || sidecar.reason === "CrashLoopBackOff") {
+        record.sidecarExitCode = sidecar.state === "terminated" ? sidecar.exitCode : sidecar.lastExitCode;
+        const code = record.sidecarExitCode === null ? "no exit code" : `exit ${String(record.sidecarExitCode)}`;
+        return { kind: "fail", failure: "sidecar-ended", message: `The box's sidecar ended before it was ready (${code}).`, tell, unschedulableSince: null };
+      }
+      // Started, or the kubelet tried to: from here it has as long to be ready as a `docker` box has to start.
+      const started = sidecar.state !== "waiting" || (sidecar.reason !== null && !NOT_YET_STARTED.has(sidecar.reason));
+      if (started) {
+        record.sidecarStartedAt ??= now;
+      }
+      if (record.sidecarStartedAt !== null && now - record.sidecarStartedAt >= this.#sidecarReadyWithinMs) {
+        return {
+          kind: "fail",
+          failure: "not-ready",
+          message: `The box's sidecar wasn't ready within ${String(Math.round(this.#sidecarReadyWithinMs / 1000))} s of its start.`,
+          tell,
+          unschedulableSince: null,
+        };
+      }
     }
     // A pull still under way past its wait (`Pulling` without its `Pulled`): the box says it waits for its image.
     if (record.scheduledAt !== null && record.waiting === null && now - record.scheduledAt >= this.#imagePullWaitMs) {

@@ -1,13 +1,14 @@
-import { defaultAdapterContext } from "@ostra/adapter-sdk";
+import { BOX_START_WITHIN_MS, defaultAdapterContext } from "@ostra/adapter-sdk";
 import type { BoxRef, BoxWaitChange, TaskProxies } from "@ostra/adapter-sdk";
 import { boxIdSchema, taskIdSchema } from "@ostra/protocol";
 import { taskSpecFixture } from "@ostra/protocol/testing";
 import { describe, expect, it } from "vitest";
 
+import type { ContainerView } from "./kube-api.ts";
 import { KubernetesExecutor } from "./kubernetes-executor.ts";
 import type { KubernetesExecutorOptions } from "./kubernetes-executor.ts";
 import { boxNames } from "./pod.ts";
-import { containerStatus, memoryKubeApi, steppedClock } from "./testing/memory-kube-api.ts";
+import { containerStatus, crashLooping, memoryKubeApi, steppedClock } from "./testing/memory-kube-api.ts";
 import type { MemoryKube } from "./testing/memory-kube-api.ts";
 
 // Ticket 08: waiting for a node and for an image's pull (F-093), on the `KubeApi` port's in-memory
@@ -28,7 +29,14 @@ const sidecarReady = { phase: "Running", ready: true, initContainers: [container
 const boxOn = async (
   script: (kube: MemoryKube, now: number) => void,
   options: Partial<KubernetesExecutorOptions> = {},
-): Promise<{ readonly kube: MemoryKube; readonly executor: KubernetesExecutor; readonly heard: BoxWaitChange[]; readonly prepared: Awaited<ReturnType<KubernetesExecutor["prepare"]>> }> => {
+): Promise<{
+  readonly kube: MemoryKube;
+  readonly executor: KubernetesExecutor;
+  readonly heard: BoxWaitChange[];
+  readonly prepared: Awaited<ReturnType<KubernetesExecutor["prepare"]>>;
+  /** The clock's time when `prepare` answered. */
+  readonly at: number;
+}> => {
   const kube = memoryKubeApi();
   const clock = steppedClock((now) => {
     script(kube, now);
@@ -42,7 +50,7 @@ const boxOn = async (
   if (!created.ok) throw new Error(created.error.message);
   script(kube, 0);
   const prepared = await executor.prepare({ box, spec: taskSpecFixture, secrets: [], onSetupOutput: () => undefined });
-  return { kube, executor, heard, prepared };
+  return { kube, executor, heard, prepared, at: clock.now() };
 };
 
 const kinds = (heard: readonly BoxWaitChange[]): string[] => heard.map((change) => (change.kind === "waiting" ? `waiting:${change.reason}` : `scheduled:${String(change.afterMs)}`));
@@ -161,5 +169,66 @@ describe("waiting for a node and an image (ticket 08)", () => {
     });
     expect(prepared.ok).toBe(false);
     expect(executor.failureOf(box)).toBe("image-pull");
+  });
+});
+
+// A sidecar that never gets ready (amended 2026-11-22, ADR 0029's parity): `prepare` waited for its
+// readiness for ever. Now it fails as a `docker` box that doesn't start does: at once when the
+// sidecar ends first (a `docker` sidecar's exit is seen at once), and at `BOX_START_WITHIN_MS` after
+// its start when it runs and isn't ready (a `docker` sidecar gives the box's init that long).
+describe("a box whose sidecar doesn't start (F-047)", () => {
+  const ended = (exitCode: number): ContainerView => ({ ...containerStatus("sidecar", "terminated", "Error"), exitCode });
+  const agentRuns = { phase: "Running", containers: [containerStatus("agent", "running")] } as const;
+
+  it("F-047/c1: a sidecar that ends before it's ready fails the box at once, with its exit code, and its pod is deleted", async () => {
+    const { prepared, executor, kube, at } = await boxOn((pods, now) => {
+      if (now === 0) pods.setPod(POD, { scheduled, ...agentRuns, initContainers: [ended(1)] });
+    });
+    expect(prepared).toMatchObject({ ok: false, error: { code: "unavailable" } });
+    expect(prepared.ok ? "" : prepared.error.message).toContain("The box's sidecar ended before it was ready (exit 1)");
+    expect(at).toBe(0);
+    expect(executor.failureOf(box)).toBe("sidecar-ended");
+    expect(executor.sidecarExitCodeOf(box)).toBe(1);
+    expect(await executor.state(box)).toEqual({ ok: true, value: "failed" });
+    expect(kube.deleted).toEqual([POD]);
+  });
+
+  it("F-047/c1: a crash-looping sidecar fails the box at once with its last exit code, backing off or started again", async () => {
+    const backingOff = await boxOn((pods, now) => {
+      if (now === 0) pods.setPod(POD, { scheduled, ...agentRuns, initContainers: [crashLooping("sidecar", 2)] });
+    });
+    expect(backingOff.prepared.ok).toBe(false);
+    expect(backingOff.at).toBe(0);
+    expect(backingOff.executor.failureOf(box)).toBe("sidecar-ended");
+    expect(backingOff.executor.sidecarExitCodeOf(box)).toBe(2);
+    expect(backingOff.kube.deleted).toEqual([POD]);
+    // Caught between two runs: running again, not ready, after an exit.
+    const again = await boxOn((pods, now) => {
+      if (now === 0) pods.setPod(POD, { scheduled, ...agentRuns, initContainers: [{ ...containerStatus("sidecar", "running", null, false), restarts: 1, lastExitCode: 137 }] });
+    });
+    expect(again.prepared.ok).toBe(false);
+    expect(again.executor.failureOf(box)).toBe("sidecar-ended");
+    expect(again.executor.sidecarExitCodeOf(box)).toBe(137);
+  });
+
+  it("F-047/c1: a sidecar that runs and is never ready fails the box at BOX_START_WITHIN_MS after its start, its image's pull not counted", async () => {
+    const neverReady = containerStatus("sidecar", "running", null, false);
+    const { prepared, executor, kube, at } = await boxOn((pods, now) => {
+      if (now === 0) pods.setPod(POD, { scheduled, initContainers: [containerStatus("sidecar", "waiting", "ContainerCreating")] });
+      // Its image took five minutes; then it runs, and its readiness never passes.
+      if (now === 5 * MINUTE) pods.setPod(POD, { ...agentRuns, initContainers: [neverReady] });
+    });
+    expect(BOX_START_WITHIN_MS).toBe(2 * MINUTE);
+    expect(prepared.ok ? "" : prepared.error.message).toContain("The box's sidecar wasn't ready within 120 s of its start.");
+    expect(at).toBe(5 * MINUTE + BOX_START_WITHIN_MS);
+    expect(executor.failureOf(box)).toBe("not-ready");
+    expect(executor.sidecarExitCodeOf(box)).toBeNull();
+    expect(kube.deleted).toEqual([POD]);
+    // Ready a second before the time is up, it runs.
+    const late = await boxOn((pods, now) => {
+      if (now === 0) pods.setPod(POD, { scheduled, ...agentRuns, initContainers: [neverReady] });
+      if (now === BOX_START_WITHIN_MS - 1000) pods.setPod(POD, sidecarReady);
+    });
+    expect(late.prepared.ok).toBe(true);
   });
 });

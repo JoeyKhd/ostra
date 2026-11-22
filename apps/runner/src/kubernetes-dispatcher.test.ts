@@ -278,6 +278,19 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
       expect(lost()).toHaveLength(1);
     }, 60_000);
 
+    it("F-047/c1: a pod whose sidecar the kubelet started again mid-task is reported lost with its last exit code; one started again after it ended its task with 0 reports nothing", async () => {
+      const { cluster, make, lost, runningBox } = await lostBench();
+      const dispatcher = make();
+      // A native sidecar is always started again: the watch sees it running, its end only in its restarts.
+      cluster.fake.restartContainer(NS, await runningBox(dispatcher, "box-k8s-ended-restarted"), "sidecar", 0);
+      await Promise.all(dispatcher.boxes());
+      expect(lost()).toEqual([]);
+      cluster.fake.restartContainer(NS, await runningBox(dispatcher, "box-k8s-killed-restarted"), "sidecar", 137);
+      await Promise.all(dispatcher.boxes());
+      expect(lost()).toEqual([{ kind: "box.lost", boxId: "box-k8s-killed-restarted", exitCode: 137 }]);
+      expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
+    }, 60_000);
+
     it("F-047/c1: a pod whose sidecar fails while its runner is away is reported lost by the next start, as it adopts its boxes", async () => {
       const { cluster, make, lost, runningBox } = await lostBench();
       const first = make();
@@ -289,6 +302,66 @@ describe("kubernetes boxes from the runner (ticket 20)", () => {
       await Promise.all(next.boxes());
       expect(lost()).toEqual([{ kind: "box.lost", boxId: "box-k8s-away", exitCode: 1 }]);
       expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
+    }, 60_000);
+  });
+
+  describe("a box that never runs (F-047, ADR 0029's parity)", () => {
+    // A `docker` box whose sidecar exits before it connects is reported `box.lost` with its exit
+    // code at once (`box-dispatcher.test.ts`); one whose init doesn't connect within the box's start
+    // time, when its sidecar exits. A pod's sidecar is the same `ostra sidecar`, restarted by the
+    // kubelet instead: these waited in `prepare` for ever, and core heard nothing.
+    const neverRuns = (id: string): CommandOf<"dispatch"> => commandOf("dispatch", 1, { taskId: spec.taskId, sessionId: spec.sessionId, boxId: boxIdSchema.parse(id), leaseEpoch: spec.leaseEpoch });
+    const leftOfBox = async (cluster: FakeCluster, id: string): Promise<number> => {
+      const ref = { taskId: spec.taskId, boxId: boxIdSchema.parse(id) };
+      const pods = await cluster.kube.listPods(NS, boxSelector(ref));
+      const secrets = await cluster.kube.listSecretNames(NS, boxSelector(ref));
+      if (!pods.ok || !secrets.ok) throw new Error("the fake API didn't answer");
+      return pods.value.length + secrets.value.length;
+    };
+
+    it("F-047/c1: a pod whose sidecar dies before it's ready, or crash-loops, is reported lost with its exit code at once, as a docker box whose sidecar exits, and nothing of it is left", async () => {
+      const { cluster, events, make } = await setup(false);
+      const dispatcher = make();
+      for (const [id, how, exitCode] of [
+        ["box-k8s-dies", "exits", 1],
+        ["box-k8s-loops", "crash-loop", 2],
+      ] as const) {
+        cluster.fake.breakContainer("sidecar", { kind: how, exitCode });
+        const started = Date.now();
+        expect(await dispatcher.handlers.dispatch(neverRuns(id))).toEqual({ result: "accepted" });
+        await Promise.all(dispatcher.boxes());
+        // At once: well within the box's start time, which a sidecar that ended needn't wait out.
+        expect(Date.now() - started).toBeLessThan(10_000);
+        expect(events.filter((event) => event.kind === "box.lost").at(-1)).toEqual({ kind: "box.lost", boxId: id, exitCode });
+        expect(await leftOfBox(cluster, id)).toBe(0);
+      }
+      expect(events.filter((event) => event.kind === "box.lost")).toHaveLength(2);
+      expect(await readdir(path.join(root, "runner", "kubernetes-boxes"))).toEqual([]);
+      expect(dispatcher.status().running).toEqual([]);
+    }, 60_000);
+
+    it("F-047/c1: a pod whose sidecar runs and never gets ready is reported lost at the box's start time, with no exit code; a release while it waits reports nothing", async () => {
+      const { cluster, events, make } = await setup(false);
+      const dispatcher = make({ sidecarReadyWithinMs: 1_500 });
+      cluster.fake.breakContainer("sidecar", { kind: "never-ready" });
+      const started = Date.now();
+      expect(await dispatcher.handlers.dispatch(neverRuns("box-k8s-never-ready"))).toEqual({ result: "accepted" });
+      await Promise.all(dispatcher.boxes());
+      const took = Date.now() - started;
+      expect(took).toBeGreaterThanOrEqual(1_500);
+      expect(took).toBeLessThan(15_000);
+      expect(events.filter((event) => event.kind === "box.lost")).toEqual([{ kind: "box.lost", boxId: "box-k8s-never-ready", exitCode: null }]);
+      expect(await leftOfBox(cluster, "box-k8s-never-ready")).toBe(0);
+
+      // Core's release ends the wait: the box was asked for, not lost.
+      const waiting = await setup(false);
+      const second = waiting.make({ sidecarReadyWithinMs: 60_000 });
+      waiting.cluster.fake.breakContainer("sidecar", { kind: "never-ready" });
+      expect(await second.handlers.dispatch(neverRuns("box-k8s-released-waiting"))).toEqual({ result: "accepted" });
+      await until(async () => (await leftOfBox(waiting.cluster, "box-k8s-released-waiting")) > 0, "the box's pod");
+      expect(await second.handlers.release(commandOf("release", 2, { taskId: spec.taskId, boxId: boxIdSchema.parse("box-k8s-released-waiting"), reason: "prs-closed" }))).toEqual({ result: "done" });
+      await Promise.all(second.boxes());
+      expect(waiting.events.filter((event) => event.kind === "box.lost")).toEqual([]);
     }, 60_000);
   });
 

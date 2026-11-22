@@ -24,6 +24,10 @@ export type ContainerView = {
   /** The waiting or terminated state's reason (`ImagePullBackOff`, `ContainerCreating`, `Completed`), or `null`. */
   readonly reason: string | null;
   readonly exitCode: number | null;
+  /** How often the kubelet restarted it: a native sidecar that ends is started again, so its end shows here. */
+  readonly restarts: number;
+  /** The exit code of its last run before this one (`lastState.terminated`), or `null`. */
+  readonly lastExitCode: number | null;
 };
 
 export type PodPhase = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown";
@@ -101,7 +105,14 @@ const stateSchema = z
   })
   .nullish();
 
-const containerStatusSchema = z.looseObject({ name: z.string(), image: z.string().nullish(), ready: z.boolean().nullish(), state: stateSchema });
+const containerStatusSchema = z.looseObject({
+  name: z.string(),
+  image: z.string().nullish(),
+  ready: z.boolean().nullish(),
+  restartCount: z.number().nullish(),
+  state: stateSchema,
+  lastState: stateSchema,
+});
 const resourcesSchema = z
   .looseObject({
     requests: z.record(z.string(), z.unknown()).nullish(),
@@ -141,6 +152,8 @@ const containerView = (status: z.infer<typeof containerStatusSchema>): Container
     state: terminated !== null ? "terminated" : state?.running !== null && state?.running !== undefined ? "running" : "waiting",
     reason: terminated?.reason ?? waiting?.reason ?? null,
     exitCode: terminated?.exitCode ?? null,
+    restarts: status.restartCount ?? 0,
+    lastExitCode: status.lastState?.terminated?.exitCode ?? null,
   };
 };
 

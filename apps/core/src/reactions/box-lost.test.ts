@@ -308,6 +308,32 @@ describe("a pool runner's box lost under its task (F-047, F-045/c3)", () => {
     }, 120_000);
   }
 
+  it("F-047/c1: a box that never started, reported lost before its sidecar ever connected, crashes its preparing task on docker and kubernetes alike: it needs its driver, the box failed, the lease ended", async () => {
+    for (const executor of ["docker", "kubernetes"] as const) {
+      await test.db.runner.update({ where: { id: poolRunner }, data: { executor } });
+      const runner = await connectPeer(url, runnerToken(), poolRunner, { executor, lastCommandSeq });
+      peers.push(runner);
+      await runner.next("welcome");
+      const task = await acceptNextDispatch(runner, await seedQueuedTask(test.db, world, fixture.a.member, null));
+      expect(await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).toMatchObject({ state: "starting" });
+
+      // Its create failed, or its sidecar ended or wasn't ready in time: the runner's word, with no session event before it.
+      runner.send({ type: "runner-event", at: Date.now(), event: { kind: "box.lost", boxId: task.boxId, exitCode: null } });
+      await waitFor(`the ${executor} box's crash`, async () => (await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).state === "crashed");
+      expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "needs_you", needsYouReason: "crashed" });
+      expect(await test.db.needsYouItem.findMany({ where: { taskId: task.taskId, reason: "crashed" } })).toMatchObject([{ audience: "driver", state: "open" }]);
+      expect(await test.db.box.findUniqueOrThrow({ where: { id: task.boxId } })).toMatchObject({ state: "failed" });
+      expect(await test.db.lease.findFirstOrThrow({ where: { taskId: task.taskId, epoch: task.leaseEpoch } })).toMatchObject({ state: "ended", endReason: "released" });
+      expect((await test.db.event.findMany({ where: { taskId: task.taskId, kind: "session.crashed" } })).map((row) => row.payload)).toEqual([
+        { kind: "session.crashed", error: BOX_LOST_ERROR, cause: "box_lost" },
+      ]);
+      runner.close();
+      await runner.closed;
+      await test.db.runner.update({ where: { id: poolRunner }, data: { state: "online" } });
+      await test.db.runnerPresence.update({ where: { runnerId: poolRunner }, data: { disconnectedAt: null } });
+    }
+  }, 120_000);
+
   it("F-047/c1: a box.lost from a runner the box isn't on, or for a box whose session already ended, changes nothing", async () => {
     await test.db.runner.update({ where: { id: poolRunner }, data: { executor: "docker" } });
     const runner = await connectPeer(url, runnerToken(), poolRunner, { executor: "docker", lastCommandSeq });

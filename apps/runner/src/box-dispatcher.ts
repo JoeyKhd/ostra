@@ -26,6 +26,8 @@ import type { LinkResult, ServerLink } from "./task-host/server-link.ts";
 // when the sidecar exits, the runner removes the box. Commands for a task go to its sidecar. A
 // sidecar that exits with anything but 0, or whose container is gone, lost its box under its task
 // (F-047): the runner says so in a `box.lost` runner event, and core records the session crashed.
+// So is a box that never started: its create failed, or its sidecar gave the box's init
+// `BOX_START_WITHIN_MS` to connect and exited (amended 2026-11-22).
 //
 // The sidecar's token is the task token (ADR 0034, Q129, ticket 41): the runner asks core for it
 // once, when it makes the box, and writes it to the box's token file, which the sidecar reads when
@@ -375,6 +377,13 @@ export const createBoxDispatcher = (options: BoxDispatcherOptions): BoxDispatche
       });
       if (!created.ok) {
         boxLog.error("creating the box failed", { status: created.error.status });
+        // F-047: a box that never started (its image's pull, a container's create or start
+        // refused), its task still on it, is lost as one whose sidecar exits before it connects;
+        // without the word, the task waited in `preparing` for ever. A box ID in use (409) is
+        // another start's box.
+        if (created.error.status !== 409) {
+          report({ kind: "box.lost", boxId: body.boxId, exitCode: null });
+        }
         return;
       }
       boxLog.info("box created", { services: services.value.length, fromSnapshot: snapshotImage !== null, fromRegistry: image.value !== null, sized: size !== null });

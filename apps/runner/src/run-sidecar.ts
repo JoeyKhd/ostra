@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { DockerExecutor, listenForInit } from "@ostra/adapter-executor-docker";
 import { OpenCodeAdapter, OPENCODE_VERSION } from "@ostra/adapter-opencode";
-import { ok } from "@ostra/adapter-sdk";
+import { BOX_START_WITHIN_MS, ok } from "@ostra/adapter-sdk";
 import { boxIdSchema, commandSchema, dispatchPurposeSchema, httpUrlSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import { z } from "zod";
 import type { RunSidecar } from "./cli/cli.ts";
@@ -73,8 +73,8 @@ export type SidecarEnv = z.infer<typeof sidecarEnvSchema>;
  */
 export const sidecarAppReach = (executor: SidecarEnv["OSTRA_BOX_EXECUTOR"]): "forwarder" | "loopback" => (executor === "kubernetes" ? "loopback" : "forwarder");
 
-/** How long the box's init has to connect to the bridge. */
-const INIT_CONNECT_MS = 120_000;
+/** How long the box's init has to connect to the bridge: the box's start, as a pod's sidecar has to be ready. */
+const INIT_CONNECT_MS = BOX_START_WITHIN_MS;
 
 const fileTokens = (file: string): TokenSource => ({
   get: async () => {

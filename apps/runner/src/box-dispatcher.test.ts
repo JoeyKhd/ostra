@@ -166,6 +166,24 @@ describe("the box dispatcher", () => {
     expect(dispatcher.status().freeSlots).toBe(1);
   }, 60_000);
 
+  it("F-047/c1: a box whose create fails is reported lost with no exit code at once, as a pod that never runs; a box ID in use reports nothing", async () => {
+    const events: TaskEvent[] = [];
+    const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 }, events });
+    // The Engine refuses a container: nothing of the box starts, and its task waited in `preparing` for ever.
+    engine.failNext.set("container", 500);
+    expect(await dispatcher.handlers.dispatch(dispatchOf("box-never-made"))).toEqual({ result: "accepted" });
+    await Promise.all(dispatcher.boxes());
+    expect(events).toEqual([{ kind: "box.lost", boxId: "box-never-made", exitCode: null }]);
+    expect(engine.containers.size).toBe(0);
+    expect(dispatcher.status().freeSlots).toBe(1);
+
+    // Something of another start holds the box's ID: the Engine's 409 isn't this start's to report.
+    engine.networks.set("ostra-box-box-taken", { Name: "ostra-box-box-taken" });
+    expect(await dispatcher.handlers.dispatch(dispatchOf("box-taken"))).toEqual({ result: "accepted" });
+    await Promise.all(dispatcher.boxes());
+    expect(events).toHaveLength(1);
+  }, 60_000);
+
   it("F-096/c9: at its idle stop the sidecar ends its one session and exits 0: the whole box goes, nothing is reported lost, and nothing is kept to resume", async () => {
     const events: TaskEvent[] = [];
     const dispatcher = makeDispatcher({ tokenAccess: { kind: "group", gid: 4242 }, events });

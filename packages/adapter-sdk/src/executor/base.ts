@@ -68,6 +68,14 @@ export type BoxImage = {
 /** Why a box waits before it runs (F-093): a node the cluster is adding, or its image's pull. */
 export type BoxWaitReason = "node" | "image-pull";
 
+/**
+ * How long a box has to start once its sidecar runs, on every executor with a sidecar (ADR 0029's
+ * parity, ADR 0060 amended 2026-11-22): a `docker` box's sidecar gives the box's init this long to
+ * connect, and exits with an error after it; a `kubernetes` box's sidecar has this long to be ready.
+ * A box that doesn't start within it is reported lost (`box.lost`), as one whose sidecar exits.
+ */
+export const BOX_START_WITHIN_MS = 120_000;
+
 /** What `onWaiting` hears: the box waits, then it's scheduled. The runner sends them as `box.waiting` and `box.scheduled`. */
 export type BoxWaitChange =
   | { readonly kind: "waiting"; readonly reason: BoxWaitReason; readonly since: Date }

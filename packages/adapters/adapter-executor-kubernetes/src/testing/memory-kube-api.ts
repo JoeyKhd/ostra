@@ -27,6 +27,15 @@ export const containerStatus = (name: string, state: ContainerView["state"], rea
   state,
   reason,
   exitCode: state === "terminated" ? 0 : null,
+  restarts: 0,
+  lastExitCode: null,
+});
+
+/** A native sidecar in a crash loop: it exited with `exitCode`, and the kubelet backs off before its next start. */
+export const crashLooping = (name: string, exitCode: number, restarts = 3): ContainerView => ({
+  ...containerStatus(name, "waiting", "CrashLoopBackOff", false),
+  restarts,
+  lastExitCode: exitCode,
 });
 
 export const memoryKubeApi = (): MemoryKube => {

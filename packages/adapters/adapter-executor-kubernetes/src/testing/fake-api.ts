@@ -93,7 +93,15 @@ type ContainerStatus = {
   readonly started: boolean;
   readonly restartCount: number;
   readonly state: ContainerState;
+  readonly lastState?: ContainerState;
 };
+
+/**
+ * How a simulated container starts when it's broken (`breakContainer`): it `exits` with the code
+ * before it's ready; it's in a `crash-loop`, the kubelet backing off after it exited with the code
+ * three times; or it runs and is `never-ready`, its readiness probe failing.
+ */
+export type BrokenContainer = { readonly kind: "exits" | "crash-loop"; readonly exitCode: number } | { readonly kind: "never-ready" };
 
 export type FakePodPhase = "Pending" | "Running" | "Succeeded" | "Failed";
 
@@ -104,6 +112,10 @@ type PodRuntime = {
   conditions: Condition[];
   /** Simulated containers' states, by name; the process mode's come from its runs. */
   readonly simulated: Map<string, ContainerState>;
+  /** Simulated containers the kubelet restarted, by name: how often, and how the last run ended. */
+  readonly restarts: Map<string, { readonly count: number; readonly lastExitCode: number }>;
+  /** Simulated containers that run and never pass their readiness. */
+  readonly notReady: Set<string>;
   /** Containers whose image's pull failed, by name, with the image. */
   readonly pullFailed: Map<string, string>;
   scheduled: boolean;
@@ -156,6 +168,11 @@ export type FakeKubeApi = {
   readonly denyAccess: (deny: (attributes: { readonly namespace: string | null; readonly verb: string; readonly group: string; readonly resource: string }) => boolean) => void;
   /** Ends a simulated container with an exit code, as if its process ended. */
   readonly exitContainer: (namespace: string, pod: string, container: string, exitCode: number) => void;
+  /** Ends a simulated container's run with an exit code and starts it again, as the kubelet does with a native sidecar. */
+  readonly restartContainer: (namespace: string, pod: string, container: string, exitCode: number) => void;
+  /** From now on, a simulated container of this name starts broken in every pod, until `clearBrokenContainers`. */
+  readonly breakContainer: (container: string, how: BrokenContainer) => void;
+  readonly clearBrokenContainers: () => void;
   /** The process mode's view of a pod: its folder, its containers and their output. */
   readonly processesOf: (namespace: string, pod: string) => { readonly dir: string; readonly containers: readonly ContainerRun[]; readonly logs: (container: string) => string } | undefined;
   readonly pulls: () => readonly FakeKubePull[];
@@ -277,6 +294,7 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
   let resourceVersion = 1;
   let holdUntil = 0;
   const pullFailures = new Set<string>();
+  const broken = new Map<string, BrokenContainer>();
   let deny: Parameters<FakeKubeApi["denyAccess"]>[0] = () => false;
   const pulls: FakeKubePull[] = [];
   const requests: FakeKubeRequest[] = [];
@@ -390,14 +408,16 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
         state = runtime.simulated.get(container.name) ?? { waiting: { reason: runtime.scheduled ? "ContainerCreating" : "PodInitializing" } };
       }
       const running = "running" in state;
+      const restarted = runtime.restarts.get(container.name);
       return {
         name: container.name,
         image,
         imageID: running || "terminated" in state ? `${image.split("@")[0] ?? image}@sha256:${"0".repeat(64)}` : "",
-        ready: running,
+        ready: running && !runtime.notReady.has(container.name),
         started: running || (sidecars && running),
-        restartCount: 0,
+        restartCount: restarted?.count ?? 0,
         state,
+        ...(restarted === undefined ? {} : { lastState: { terminated: { exitCode: restarted.lastExitCode, reason: restarted.lastExitCode === 0 ? "Completed" : "Error", finishedAt: now() } } }),
       };
     });
 
@@ -481,6 +501,25 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
         runtime.simulated.set(container.name, container.restartPolicy === "Always" ? { running: { startedAt: time } } : { terminated: { exitCode: 0, reason: "Completed", startedAt: time, finishedAt: time } });
       }
       for (const container of runtime.spec.containers) runtime.simulated.set(container.name, { running: { startedAt: time } });
+      for (const container of containers) {
+        const how = broken.get(container.name);
+        switch (how?.kind) {
+          case undefined:
+            break;
+          case "exits":
+            runtime.simulated.set(container.name, { terminated: { exitCode: how.exitCode, reason: how.exitCode === 0 ? "Completed" : "Error", startedAt: time, finishedAt: time } });
+            break;
+          case "crash-loop":
+            runtime.simulated.set(container.name, { waiting: { reason: "CrashLoopBackOff", message: `back-off restarting failed container ${container.name}` } });
+            runtime.restarts.set(container.name, { count: 3, lastExitCode: how.exitCode });
+            break;
+          case "never-ready":
+            runtime.notReady.add(container.name);
+            break;
+          default:
+            how satisfies never;
+        }
+      }
       refreshPod(runtime);
       return;
     }
@@ -839,7 +878,20 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
     if (pod !== null) body["status"] = { phase: "Pending" };
     const stored = insert(info, metadata, body);
     if (pod !== null) {
-      const runtime: PodRuntime = { stored, spec: pod, phase: "Pending", conditions: [], simulated: new Map(), pullFailed: new Map(), scheduled: false, processes: null, timers: [], deleting: false };
+      const runtime: PodRuntime = {
+        stored,
+        spec: pod,
+        phase: "Pending",
+        conditions: [],
+        simulated: new Map(),
+        restarts: new Map(),
+        notReady: new Set(),
+        pullFailed: new Map(),
+        scheduled: false,
+        processes: null,
+        timers: [],
+        deleting: false,
+      };
       pods.set(stored.metadata.uid, runtime);
       refreshPod(runtime);
       schedule(runtime);
@@ -1146,6 +1198,20 @@ export const startFakeKubeApi = async (options: FakeKubeOptions = {}): Promise<F
       const time = now();
       runtime.simulated.set(container, { terminated: { exitCode, reason: exitCode === 0 ? "Completed" : "Error", finishedAt: time } });
       refreshPod(runtime);
+    },
+    restartContainer: (namespace, pod, container, exitCode) => {
+      const stored = findStored("pods", namespace, pod);
+      const runtime = stored === undefined ? undefined : pods.get(stored.metadata.uid);
+      if (runtime === undefined) throw new Error(`no pod ${namespace}/${pod}`);
+      runtime.restarts.set(container, { count: (runtime.restarts.get(container)?.count ?? 0) + 1, lastExitCode: exitCode });
+      runtime.simulated.set(container, { running: { startedAt: now() } });
+      refreshPod(runtime);
+    },
+    breakContainer: (container, how) => {
+      broken.set(container, how);
+    },
+    clearBrokenContainers: () => {
+      broken.clear();
     },
     processesOf: (namespace, pod) => {
       const stored = findStored("pods", namespace, pod);

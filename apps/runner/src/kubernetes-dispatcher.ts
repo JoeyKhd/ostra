@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { BOX_ROLE, boxNames, boxSelector, LABELS } from "@ostra/adapter-executor-kubernetes";
-import type { KubeApi, KubernetesExecutor, PodView } from "@ostra/adapter-executor-kubernetes";
+import type { BoxWaitFailure, KubeApi, KubernetesExecutor, PodView } from "@ostra/adapter-executor-kubernetes";
 import type { BoxImage, BoxWaitChange, Logger, TaskProxies } from "@ostra/adapter-sdk";
 import { boxIdSchema, leaseEpochSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { BoxId, BoxReleaseReason, CommandOf, LeaseEpoch, RegistryCredential, RunnerLabel, SnapshotCredentials, SnapshotId, TaskEvent, TaskId } from "@ostra/protocol";
@@ -26,8 +26,11 @@ import type { LinkResult, ServerLink } from "./task-host/server-link.ts";
 // - **Release:** when the pod's sidecar ends (the task is over), or on `release`, the executor deletes
 //   the pod and its secrets, and the runner lists what's left by the box's label and logs the count.
 // - **A lost box** (F-047): a pod deleted or failed under its task, or whose sidecar ended with an
-//   error, none of it by a `release`, goes up as a `box.lost` runner event, and core records the
-//   session crashed. So does one found so at the start, after the runner was away.
+//   error (the kubelet restarting it counts), none of it by a `release`, goes up as a `box.lost`
+//   runner event, and core records the session crashed. So does one found so at the start, after
+//   the runner was away, and a box that never ran: its create failed, its image wouldn't pull, its
+//   sidecar ended or crash-looped before it was ready, or wasn't ready within the box's start time
+//   (amended 2026-11-22, as `docker`'s runner reports a box that doesn't start).
 
 /** What the runner keeps of a box it made: IDs only. Never the task token or a credential. */
 const boxRecordSchema = z.strictObject({
@@ -86,12 +89,27 @@ export type KubernetesDispatcher = {
 /** A box this runner holds: its IDs, its lifetime, and the `release` that ends it early. */
 type Running = { readonly record: BoxRecord; done: Promise<void>; release: BoxReleaseReason | null; released: boolean };
 
+/**
+ * How the pod's sidecar ended, when it did: it's terminated, or the kubelet started it again (a
+ * native sidecar always is), its last run's end then being the one. `null` while it runs.
+ */
+const sidecarEnd = (pod: PodView | null): { readonly exitCode: number | null } | null => {
+  const sidecar = pod?.initContainers.find((container) => container.name === "sidecar");
+  if (sidecar === undefined) {
+    return null;
+  }
+  if (sidecar.state === "terminated") {
+    return { exitCode: sidecar.exitCode };
+  }
+  return sidecar.restarts > 0 ? { exitCode: sidecar.lastExitCode } : null;
+};
+
 /** Whether a box's task is over, by its pod: gone, deleting, ended, or its sidecar ended. */
 const podIsOver = (pod: PodView | null): boolean => {
   if (pod === null || pod.deleting || pod.phase === "Succeeded" || pod.phase === "Failed") {
     return true;
   }
-  return pod.initContainers.some((container) => container.name === "sidecar" && container.state === "terminated");
+  return sidecarEnd(pod) !== null;
 };
 
 /**
@@ -101,9 +119,9 @@ const podIsOver = (pod: PodView | null): boolean => {
  * `release` ended.
  */
 const podLoss = (pod: PodView | null): { readonly lost: boolean; readonly exitCode: number | null } => {
-  const sidecar = pod?.initContainers.find((container) => container.name === "sidecar" && container.state === "terminated");
-  if (sidecar !== undefined) {
-    return { lost: sidecar.exitCode !== 0, exitCode: sidecar.exitCode };
+  const end = sidecarEnd(pod);
+  if (end !== null) {
+    return { lost: end.exitCode !== 0, exitCode: end.exitCode };
   }
   if (pod === null || pod.deleting || pod.phase === "Failed") {
     return { lost: true, exitCode: null };
@@ -171,6 +189,20 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
       log.warn("the box went away under its task", { taskId: entry.record.taskId, boxId: entry.record.boxId, exitCode: loss.exitCode, phase: pod?.phase ?? "gone" });
       options.reportRunnerEvent({ kind: "box.lost", boxId: entry.record.boxId, exitCode: loss.exitCode });
     }
+  };
+
+  /**
+   * A box that never ran, its task still on it, unless a `release` ended it: core hears it as
+   * `box.lost` (F-047), as `docker`'s runner reports a box whose create fails or whose sidecar exits
+   * before it connects (ADR 0029's parity), and records the session crashed. A box with no node
+   * (`no-node`, `no-room`) isn't: ADR 0060 sends its task back to the queue, not to a crash.
+   */
+  const reportNeverRan = (entry: Running, failure: BoxWaitFailure | null, exitCode: number | null): void => {
+    if (entry.release !== null || isDetached() || failure === "no-node" || failure === "no-room") {
+      return;
+    }
+    log.warn("the box never ran: reported lost", { taskId: entry.record.taskId, boxId: entry.record.boxId, failure: failure ?? "pod", exitCode });
+    options.reportRunnerEvent({ kind: "box.lost", boxId: entry.record.boxId, exitCode });
   };
 
   /** Watches the box's pod until its task is over (or the runner detaches), then releases it. */
@@ -265,14 +297,21 @@ export const createKubernetesDispatcher = (options: KubernetesDispatcherOptions)
     });
     if (!created.ok) {
       boxLog.error("creating the box failed", { code: created.error.code });
+      // A box ID in use is another start's box, left as it is.
+      if (created.error.code !== "conflict") {
+        reportNeverRan(entry, null, null);
+      }
       await releaseOnce(entry, "requested");
       return;
     }
     boxLog.info("box pod created", { sized: size !== null, fromRegistry: image.value !== null });
-    // Until the sidecar is ready: the node wait and the image's pull happen here.
+    // Until the sidecar is ready: the node wait and the image's pull happen here, and a sidecar that
+    // ends or isn't ready within the box's start time fails it.
     const prepared = await options.executor.prepare({ box, spec: spec.value, secrets: [], onSetupOutput: () => undefined });
     if (!prepared.ok) {
-      boxLog.warn("the box never ran", { code: prepared.error.code, failure: options.executor.failureOf(box) ?? "pod" });
+      const failure = options.executor.failureOf(box);
+      boxLog.warn("the box never ran", { code: prepared.error.code, failure: failure ?? "pod" });
+      reportNeverRan(entry, failure, options.executor.sidecarExitCodeOf(box));
       await releaseOnce(entry, entry.release ?? "requested");
       return;
     }
