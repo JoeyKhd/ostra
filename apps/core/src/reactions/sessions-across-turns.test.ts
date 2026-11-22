@@ -104,8 +104,8 @@ const saved = (turnOrdinal: number, ahead: boolean, head: string | null, archive
   archive: archive ? { blobId: blobIdSchema.parse(`blob-archive-${String(turnOrdinal)}`), size: 100, sha256: "a".repeat(64) } : null,
 });
 
-/** A turn: started, a message, maybe a push, ended, then saved. */
-const turn = async (task: DrivenTask, ordinal: number, changes: boolean): Promise<void> => {
+/** A turn: started, a message, maybe a push and the PR's text, ended, then saved. */
+const turn = async (task: DrivenTask, ordinal: number, changes: boolean, title = "ignored"): Promise<void> => {
   const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
   const events: TaskEvent[] = [];
   if (ordinal > 1) {
@@ -115,7 +115,7 @@ const turn = async (task: DrivenTask, ordinal: number, changes: boolean): Promis
   if (changes) {
     events.push(
       { kind: "git.pushed", repoId: repo(), branch: branchName, headSha: sha(`head-${String(ordinal)}`), ref: `refs/heads/${branchName}` },
-      { kind: "pr.text_set", repoId: repo(), title: "ignored", body: `The change of turn ${String(ordinal)}.` },
+      { kind: "pr.text_set", repoId: repo(), title, body: `The change of turn ${String(ordinal)}.` },
     );
   }
   events.push({ kind: "turn.ended", turnId, stopReason: "end_turn" });
@@ -243,6 +243,40 @@ describe("a session across turns (F-096, F-030, F-065)", () => {
     expect(timer.every((job) => job.state === "cancelled")).toBe(true);
 
     await untouched(other);
+  });
+
+  it("F-030/c2: a later turn's new title from the agent renames the open PR; the same title again leaves a person's rename", async () => {
+    const task = await runningTask();
+    await turn(task, 1, true, "Add a history panel");
+    await runOpener(task, 1);
+    const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+    const pull = (): { readonly title: string; readonly number: number } | undefined => codeHost.pulls.find((item) => item.headBranch === branchName);
+    expect(pull()?.title).toBe("Add a history panel");
+    const renames = codeHost.titleUpdates.length;
+
+    // Turn 2 changes the PR and the agent says so in a new title: the opener runs for the save and renames it.
+    await turn(task, 2, true, "Add a history panel with a clear button");
+    expect(await openPrJobs(task, 2)).toHaveLength(1);
+    // A member's next message has started a turn by the time the opener runs: the task stays running.
+    await test.db.task.update({ where: { id: task.taskId }, data: { state: "running", subState: null } });
+    await runOpener(task, 2);
+    expect(pull()?.title).toBe("Add a history panel with a clear button");
+    expect(codeHost.titleUpdates.slice(renames)).toEqual([{ repo: "ostra-test/test1", number: pull()?.number, title: "Add a history panel with a clear button" }]);
+    expect(await state(task)).toMatchObject({ state: "running" });
+    expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "pr.opened" } })).toBe(1);
+    await test.db.task.update({ where: { id: task.taskId }, data: { state: "in_review", subState: "waiting_for_reviewer" } });
+
+    // A person renames it on the host; turn 3 sets the same title again: no job, and the person's title stays.
+    const index = codeHost.pulls.findIndex((item) => item.headBranch === branchName);
+    const current = codeHost.pulls[index];
+    if (current === undefined) {
+      throw new Error("the PR is there");
+    }
+    codeHost.pulls[index] = { ...current, title: "History panel (by hand)" };
+    await turn(task, 3, true, "Add a history panel with a clear button");
+    expect(await openPrJobs(task, 3)).toHaveLength(0);
+    expect(pull()?.title).toBe("History panel (by hand)");
+    expect(codeHost.titleUpdates.slice(renames)).toHaveLength(1);
   });
 
   it("F-065/c2, F-036/c2, F-062/c2: two turns that end without changes leave one open no-changes item, the second's, and dismiss the first with its fan-out", async () => {

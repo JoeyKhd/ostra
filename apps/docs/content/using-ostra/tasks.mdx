@@ -25,6 +25,6 @@ When the task waits on a person, it shows **Needs you**, in amber, and it's the 
 
 ## Review the pull request
 
-When a session ends with changes, ostra runs the environment's checks, and the project's GitHub App opens a pull request in each repo the task changed. Its title holds the ticket's ID, and its body links the ticket, the task and the task's other pull requests. A failing check makes the pull request a draft.
+When a session ends with changes, ostra runs the environment's checks, and the project's GitHub App opens a pull request in each repo the task changed. Its title is the agent's summary of the change, in the repo's style, after the ticket's ID for a ticket task, and its body links the ticket, the task and the task's other pull requests. When a later turn changes the pull request, the agent can give it a new title. A failing check makes the pull request a draft.
 
 Commits are authored by the App's bot, with a `Co-authored-by` trailer for each member whose prompt led to them. The **Changes** tab shows the diff in the panel, where you can comment on lines and send your comments to the agent together, as one prompt.

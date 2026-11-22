@@ -17,6 +17,8 @@ import {
   memorySearchRequestSchema,
   noteIdSchema,
   parseJson,
+  PR_TITLE_TARGET_CHARS,
+  prTitleSchema,
   PROPOSE_ENVIRONMENT_TOOL,
   proposeEnvironmentDescription,
   proposeEnvironmentInputSchema,
@@ -61,6 +63,7 @@ import type {
   TakeScreenshotInput,
   TaskEventOf,
   TaskId,
+  TicketKey,
 } from "@ostra/protocol";
 import { z } from "zod";
 import type { MemoryCallFailure, MemoryLink, TeamLink } from "../task-host/server-link.ts";
@@ -73,7 +76,11 @@ import { RUNNER_VERSION } from "../version.ts";
 //
 // Milestone 1 has one tool, `set_pull_request_text`, which the agent calls to write the PR's title
 // and body. Its input is untrusted: parsed with a strict schema, checked against the task's repos
-// and size caps, never passed to a shell, and handed on as a `pr.text_set` event (data).
+// and size caps, never passed to a shell, and handed on as a `pr.text_set` event (data). Since
+// 2026-11-22 (F-030/c2, the maintainer's report of a PR titled "hiiiiiiiiiiiii"), the title is the
+// agent's own summary of the change, in the repo's style for PR titles and commit subjects, read
+// through the protocol's `prTitleSchema` (one line, no control characters, cut to its cap); a ticket
+// task's key is ostra's to put in front, so the agent is told not to write it.
 //
 // Milestone 4 (ticket 20, ADR 0044, F-110, F-111): with the spec's `memory.tools`, three more tools,
 // `memory_search`, `memory_read` and `memory_propose`. Each input is parsed with the protocol's
@@ -117,8 +124,8 @@ export const MEMORY_UNAVAILABLE = "Memory is unavailable right now. Carry on wit
 const DEFAULT_SEARCH_LIMIT = 5;
 /** The path the server answers on. */
 export const MCP_PATH = "/mcp";
-/** The PR title's cap (GitHub allows 256). */
-export const PR_TITLE_MAX = 256;
+/** The most a title may be before it's cleaned (`prTitleSchema` cuts it to its cap). */
+const PR_TITLE_INPUT_MAX = 1024;
 /** The PR body's cap (GitHub allows 65,536). */
 export const PR_BODY_MAX = 65_536;
 /** How much of a repo's PR template goes in the tool's description. */
@@ -134,8 +141,8 @@ export type McpToolsRepo = {
 export type McpToolsOptions = {
   readonly taskId: TaskId;
   readonly repos: readonly McpToolsRepo[];
-  /** The task's title, which the PR title should stay close to. */
-  readonly taskTitle: string;
+  /** A ticket task's key, which ostra puts in front of the PR's title; `null` or absent for a prompt task. */
+  readonly ticketKey?: TicketKey | null;
   readonly listenHost: string;
   readonly advertiseHost?: string;
   readonly port?: number;
@@ -183,7 +190,11 @@ export type McpTools = {
 
 const inputSchema = z.strictObject({
   repo: z.string().min(1).max(201).describe("The repo, as owner/name, exactly as the task lists it."),
-  title: z.string().min(1).max(PR_TITLE_MAX * 4).describe("The pull request's title: one line, close to the task's prompt."),
+  title: z
+    .string()
+    .min(1)
+    .max(PR_TITLE_INPUT_MAX)
+    .describe(`The pull request's title: a short imperative summary of what it changes, in the repo's style, on one line of at most ${String(PR_TITLE_TARGET_CHARS)} characters.`),
   body: z.string().max(PR_BODY_MAX * 4).describe("The pull request's body, in Markdown."),
 });
 
@@ -237,8 +248,15 @@ const PROPOSE_DESCRIPTION = [
 const describeTool = (options: McpToolsOptions): string => {
   const lines = [
     "Set the title and body of the pull request ostra opens for a repo when this task's session ends with changes.",
-    "Call it once per changed repo, before you finish. A later call for the same repo replaces the earlier text.",
-    `Keep the title to one line, close to the task's own title ("${options.taskTitle.slice(0, 200)}"), at most ${String(PR_TITLE_MAX)} characters.`,
+    "Call it once per changed repo, before you finish. A later call for the same repo replaces the earlier text, and once the pull request is open, a new title renames it.",
+    [
+      "The title says what the pull request changes: a short summary in the imperative, such as \"Add a history panel to the calculator\", not a copy of the member's message, which may be a greeting or a question.",
+      "Write it in the repo's own style for pull request titles and commit subjects, which you read from its history (`git log -n 20 --format=%s`): a prefix like `feat:` or an emoji, the tense, the case.",
+      `One line, at most ${String(PR_TITLE_TARGET_CHARS)} characters.`,
+    ].join(" "),
+    ...(options.ticketKey === undefined || options.ticketKey === null
+      ? []
+      : [`ostra puts the ticket's key in front of the title (\`${options.ticketKey}: ...\`): don't write the key yourself.`]),
     `The body is Markdown, at most ${String(PR_BODY_MAX)} characters: say what changed and why, and how it was checked.`,
     "",
     "The task's repos:",
@@ -362,18 +380,20 @@ export const startMcpTools = async (options: McpToolsOptions): Promise<McpTools>
       log.info("tool call refused", { tool: SET_PR_TEXT_TOOL, reason: "unknown-repo" });
       return answer(`"${input.repo.slice(0, 100)}" isn't one of this task's repos: ${options.repos.map((item) => item.fullName).join(", ")}.`, true);
     }
-    const title = input.title.replace(/\s+/g, " ").trim();
-    if (title.length === 0 || title.length > PR_TITLE_MAX) {
-      log.info("tool call refused", { tool: SET_PR_TEXT_TOOL, reason: "title-size", repoId: repo.repoId });
-      return answer(`The title must be 1 to ${String(PR_TITLE_MAX)} characters on one line; it was ${String(title.length)}.`, true);
+    // Untrusted: one line, its control characters stripped, cut at a word to the protocol's cap.
+    const cleaned = prTitleSchema.safeParse(input.title);
+    if (!cleaned.success) {
+      log.info("tool call refused", { tool: SET_PR_TEXT_TOOL, reason: "title-empty", repoId: repo.repoId });
+      return answer(`The title must say what the pull request changes, on one line of at most ${String(PR_TITLE_TARGET_CHARS)} characters.`, true);
     }
+    const title = cleaned.data;
     if (input.body.length > PR_BODY_MAX) {
       log.info("tool call refused", { tool: SET_PR_TEXT_TOOL, reason: "body-size", repoId: repo.repoId });
       return answer(`The body must be at most ${String(PR_BODY_MAX)} characters; it was ${String(input.body.length)}. Shorten it.`, true);
     }
     options.onPrText({ kind: "pr.text_set", repoId: repo.repoId, title, body: input.body });
     log.info("pull request text set", { repoId: repo.repoId, titleChars: title.length, bodyChars: input.body.length });
-    return answer(`Saved the pull request text for ${repo.fullName}. ostra opens the pull request when the session ends with changes.`);
+    return answer(`Saved the pull request text for ${repo.fullName}, titled "${title}". ostra opens the pull request when the session ends with changes.`);
   };
 
   // ---- memory (minor 3) ----

@@ -13,6 +13,9 @@ import type { FakeCheckRun, FakeGitHub, FakeReview } from "./fake-github.ts";
 import { GITHUB_COM_LFS_ACTION_HOSTS, GitHubAdapter, hunkRanges } from "./github-adapter.ts";
 import { appEvents, missingAppEvents, OSTRA_PROJECT_URL } from "./manifest.ts";
 
+/** F-030/c2: the message of a branch of one commit, as git writes it. */
+const ONE_COMMIT_MESSAGE = "Add an essay about Lebanon\n\nCo-authored-by: Admin <admin@example.com>\n";
+
 const template = "## What\n\n## Why\n";
 const test1 = repoFullNameSchema.parse("fake-org/test1");
 const test2 = repoFullNameSchema.parse("fake-org/test2");
@@ -41,6 +44,8 @@ const compares = [
   },
   { base: "main", head: "ostra/other", aheadBy: 0, behindBy: 3 },
   { base: "main", head: "ostra/third", aheadBy: 2, behindBy: 1 },
+  // F-030/c2: a branch of one commit, whose message titles a prompt task's PR when the agent gave none.
+  { base: "main", head: "ostra/one-commit", aheadBy: 1, behindBy: 0, commits: [ONE_COMMIT_MESSAGE] },
   { base: "main", head: "ostra/review", aheadBy: 40, behindBy: 0, files: truncatedFiles },
   // Milestone 6 (F-100): the commented PR's diff, at its head: new lines 10 to 14, old 10 to 12.
   {
@@ -211,7 +216,7 @@ const startFake = (): Promise<FakeGitHub> =>
           ".github/pull_request_template.md": template,
           "src/index.ts": "export {};\n",
         },
-        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth", "ostra/classic", "ostra/review", "ostra/open", "ostra/drafts", "ostra/closing", "ostra/draft-token", "ostra/read-back"],
+        branches: ["main", "ostra/contract", "ostra/other", "ostra/third", "ostra/fourth", "ostra/classic", "ostra/review", "ostra/open", "ostra/drafts", "ostra/closing", "ostra/draft-token", "ostra/read-back", "ostra/rename"],
         protectedBranches: ["ostra/classic"],
         rulesets: {
           main: ["deletion", "required_signatures"],
@@ -749,6 +754,23 @@ describe("the GitHub adapter", () => {
       expect(await adapter.updatePullRequestBody({ access: fixture.access, number: 9999, body })).toMatchObject({ ok: false, error: { code: "not-found" } });
     });
 
+    it("F-030/c2: renames a PR as the App, with the title as data, and refuses a PR that isn't there or an empty title", async () => {
+      const opened = await adapter.openPullRequest({ access: fixture.access, head: "ostra/rename", base: "main", title: "hiiiiiiiiiiiii", body: "text", draft: false });
+      if (!opened.ok) {
+        throw new Error("open failed");
+      }
+      const title = "Add an essay about Lebanon `whoami` $(id)";
+      const renamed = await adapter.updatePullRequestTitle({ access: fixture.access, number: opened.value.number, title });
+      expect(renamed).toMatchObject({ ok: true, value: { number: opened.value.number, title, state: "open" } });
+      const stored = fake.pulls.find((pr) => pr.number === opened.value.number);
+      expect(stored?.title).toBe(title);
+      expect(stored?.body).toBe("text");
+      const write = [...fake.tokens.values()].at(-1);
+      expect(write?.permissions).toEqual({ pull_requests: "write", metadata: "read" });
+      expect(await adapter.updatePullRequestTitle({ access: fixture.access, number: 9999, title })).toMatchObject({ ok: false, error: { code: "not-found" } });
+      expect(await adapter.updatePullRequestTitle({ access: fixture.access, number: opened.value.number, title: "  " })).toMatchObject({ ok: false, error: { code: "invalid-input" } });
+    });
+
     it("answers conflict for a branch whose PR is open, without a second call to create", async () => {
       const posts = () => fake.requests.filter((request) => request.method === "POST" && request.path.endsWith("/pulls")).length;
       const input = { access: fixture.access, head: "ostra/third", base: "main", title: "third", body: "", draft: false };
@@ -1107,6 +1129,13 @@ describe("the GitHub adapter", () => {
         // A status GitHub adds later reads as `changed`, never an error.
         { path: "odd.txt", previousPath: null, status: "changed", additions: 1, deletions: 0, patch: "@@ -0,0 +1 @@\n+a\n", truncated: false },
       ]);
+    });
+
+    it("F-030/c2: reads the message of a branch's only commit, and none for a branch of several", async () => {
+      const one = await adapter.compare(fixture.access, "main", "ostra/one-commit");
+      expect(one).toMatchObject({ ok: true, value: { aheadBy: 1, soleCommitMessage: ONE_COMMIT_MESSAGE } });
+      const several = await adapter.compare(fixture.access, "main", "ostra/contract");
+      expect(several).toMatchObject({ ok: true, value: { aheadBy: 2, soleCommitMessage: null } });
     });
 
     it("F-027/c1: reports GitHub's limits: a patch it left out over 500 KB is truncated, and a list of 300 files is cut", async () => {

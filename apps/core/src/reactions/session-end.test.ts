@@ -141,7 +141,7 @@ describe("a session that ends with changes", () => {
       task,
       task.next,
       { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s1"), text: "I added CONTRIBUTING.md." },
-      { kind: "pr.text_set", repoId: theRepo(), title: "ignored: the title comes from the prompt", body: "## What\nAdds CONTRIBUTING.md.\n\n## Why\nSo people can run the tests." },
+      { kind: "pr.text_set", repoId: theRepo(), title: "Add CONTRIBUTING.md on running the tests", body: "## What\nAdds CONTRIBUTING.md.\n\n## Why\nSo people can run the tests." },
       { kind: "turn.ended", turnId, stopReason: "end_turn" },
       { kind: "session.ended", outcome: "with-changes", repos: [{ repoId: theRepo(), ahead: true }] },
     );
@@ -167,7 +167,8 @@ describe("a session that ends with changes", () => {
     const pulls = codeHost.pulls.slice(before);
     expect(pulls).toHaveLength(1);
     const [pull] = pulls;
-    expect(pull?.title).toBe("Add a short CONTRIBUTING.md");
+    // F-030/c2: the agent's own summary of the change, not the task's title.
+    expect(pull?.title).toBe("Add CONTRIBUTING.md on running the tests");
     expect(pull?.body).toContain("Adds CONTRIBUTING.md.");
     expect(pull?.body).toContain(`http://localhost:3000/tasks/${task.taskId}`);
     expect(pull?.baseBranch).toBe("main");
@@ -242,8 +243,8 @@ describe("a task with several repos", () => {
       task,
       task.next,
       { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s1"), text: "I changed the app and its API." },
-      { kind: "pr.text_set", repoId: theRepo(), title: "ignored", body: "The app's side of the change." },
-      { kind: "pr.text_set", repoId: second, title: "ignored", body: "The API's side of the change." },
+      { kind: "pr.text_set", repoId: theRepo(), title: "Show the API's version in the app", body: "The app's side of the change." },
+      { kind: "pr.text_set", repoId: second, title: "Serve the API's version", body: "The API's side of the change." },
       { kind: "turn.ended", turnId, stopReason: "end_turn" },
       {
         kind: "session.ended",
@@ -266,8 +267,10 @@ describe("a task with several repos", () => {
     const taskUrl = `http://localhost:3000/tasks/${task.taskId}`;
     expect(app.body).toContain("The app's side of the change.");
     expect(api.body).toContain("The API's side of the change.");
+    // F-030/c2: each repo's PR takes the title the agent set for that repo.
+    expect(app.title).toBe("Show the API's version in the app");
+    expect(api.title).toBe("Serve the API's version");
     for (const pull of pulls) {
-      expect(pull.title).toBe("Add a short CONTRIBUTING.md");
       expect(pull.body).toContain(taskUrl);
     }
     // Each links the other: the first one too, opened before the second existed.
@@ -276,6 +279,66 @@ describe("a task with several repos", () => {
     expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId, repoId: untouched } })).toMatchObject({ prNumber: null, ahead: false });
     expect(await test.db.event.count({ where: { taskId: task.taskId, kind: "pr.opened" } })).toBe(2);
     expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "in_review" });
+  });
+});
+
+describe("a PR's title (F-030/c2, the maintainer's report of 2026-11-22)", () => {
+  /** A running task whose first message was a greeting, as in the report, and its turn's events up to the session's end. */
+  const endWith = async (head: string, ...events: TaskEvent[]): Promise<QueuedTask & { readonly branchName: string }> => {
+    const task = await runningTask();
+    const { branchName } = await test.db.task.update({ where: { id: task.taskId }, data: { title: "hiiiiiiiiiiiii" } });
+    await send(
+      task,
+      task.next,
+      { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("s1"), text: "I wrote the essay." },
+      { kind: "git.pushed", repoId: theRepo(), branch: branchNameSchema.parse(branchName), headSha: gitShaSchema.parse(head), ref: `refs/heads/${branchName}` },
+      ...events,
+      { kind: "turn.ended", turnId, stopReason: "end_turn" },
+      { kind: "session.ended", outcome: "with-changes", repos: [{ repoId: theRepo(), ahead: true }] },
+    );
+    await reactToEnd(task);
+    await openPrs(task);
+    return { ...task, branchName };
+  };
+
+  const titleOf = (branchName: string): string | undefined => codeHost.pulls.find((pull) => pull.headBranch === branchName)?.title;
+
+  it("F-030/c2: is the agent's summary of the change, read as one clean line, never the task's first message", async () => {
+    const task = await endWith("1".repeat(40), {
+      kind: "pr.text_set",
+      repoId: theRepo(),
+      title: "Add an essay\u0007 about Lebanon\n\nIt covers its history.",
+      body: "## What changed\nESSAY-lebanon.md.\n\n## Why\nAsked for.\n\n## How it was checked\nRead it.",
+    });
+    // This frame reaches ingest as an object, past the codec that cleans it on a runner's socket
+    // (`pr-title.test.ts` in the protocol): the opener reads the title as one clean line again.
+    expect(titleOf(task.branchName)).toBe("Add an essay about Lebanon");
+    const body = codeHost.pulls.find((pull) => pull.headBranch === task.branchName)?.body ?? "";
+    expect(body).toContain("## How it was checked\nRead it.");
+  });
+
+  it("F-030/c2: with no title from the agent, takes the branch's only commit's subject, else names the PR's files, never the first message", async () => {
+    const one = "2".repeat(40);
+    const several = "3".repeat(40);
+    const repoName = "ostra-test/test1";
+    const compared = { behindBy: 0, mergeBase: null, filesTruncated: false, limits: { maxFiles: 300, maxPatchBytes: 512_000 } };
+    const file = (path: string, status: "added" | "modified") => ({ path, previousPath: null, status, additions: 1, deletions: 0, patch: null, truncated: false });
+    // One commit, ostra's own leftover commit of a stopped turn: its subject without the note.
+    codeHost.compares.set(`${repoName}:main...${one}`, {
+      ...compared,
+      aheadBy: 1,
+      files: [file("ESSAY-lebanon.md", "added")],
+      soleCommitMessage: "Add ESSAY-lebanon.md (stopped: unfinished work)\n\nCo-authored-by: Admin <admin@example.com>\n",
+    });
+    // Several commits: what the PR's files are.
+    codeHost.compares.set(`${repoName}:main...${several}`, { ...compared, aheadBy: 3, files: [file("ESSAY-lebanon.md", "added"), file("README.md", "modified")], soleCommitMessage: null });
+    const first = await endWith(one);
+    expect(titleOf(first.branchName)).toBe("Add ESSAY-lebanon.md");
+    const second = await endWith(several);
+    expect(titleOf(second.branchName)).toBe("Add ESSAY-lebanon.md, update README.md");
+    for (const task of [first, second]) {
+      expect(titleOf(task.branchName)).not.toContain("hiiii");
+    }
   });
 });
 
@@ -319,7 +382,8 @@ describe("a prompt task in a project with no tracker (F-097, Q31)", () => {
     await reactToEnd(task);
     await openPrs(task);
     const pull = codeHost.pulls.find((item) => item.headBranch === created.branchName);
-    expect(pull).toMatchObject({ title: prompt, baseBranch: "main" });
+    // F-030/c2: the agent set no title and the host can't compare this branch: never the prompt.
+    expect(pull).toMatchObject({ title: "Update test1", baseBranch: "main" });
     expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ source: "prompt", state: "in_review", ticketKey: null, ticketId: null, boardId: null });
     expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "pr_open", prNumber: pull?.number });
     expect(await test.db.ticket.count({ where: { projectId: world.projectId } })).toBe(0);

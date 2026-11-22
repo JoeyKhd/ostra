@@ -163,6 +163,13 @@ export type UpdatePullRequestBodyInput = {
   readonly body: string;
 };
 
+export type UpdatePullRequestTitleInput = {
+  readonly access: RepoAccess;
+  readonly number: number;
+  /** The agent's summary of the change, with a ticket task's key in front (F-030): untrusted text, sent as data. */
+  readonly title: string;
+};
+
 export type WebhookInput = {
   readonly headers: Readonly<Record<string, string | undefined>>;
   /** The raw body, exactly as received: the signature is over these bytes. */
@@ -377,6 +384,12 @@ export type CompareResult = {
   readonly files: readonly CompareFile[];
   /** The host listed fewer files than changed. */
   readonly filesTruncated: boolean;
+  /**
+   * F-030/c2: the whole message of the head's one commit the base lacks, when `aheadBy` is 1 and
+   * the host lists it; absent or `null` otherwise. A prompt task's PR is titled from its subject when
+   * the agent gave no title. Untrusted text: never logged.
+   */
+  readonly soleCommitMessage?: string | null;
   /** The host's limits, as it applied them: the most files it lists and the largest patch it sends. */
   readonly limits: { readonly maxFiles: number; readonly maxPatchBytes: number };
 };
@@ -697,6 +710,16 @@ export abstract class CodeHostAdapter {
   updatePullRequestBody(input: UpdatePullRequestBodyInput): Promise<AdapterResult<PullRequest>> {
     this.plumbing.logger.debug("updatePullRequestBody is not supported", { repo: input.access.repo, prNumber: input.number });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't change a PR's body`));
+  }
+
+  /**
+   * Replaces a PR's title, as the App: a later turn's new title from the agent renames its open PR
+   * (F-030/c2). Optional, as `updatePullRequestBody` is: a host that can't answers `unsupported`,
+   * and the PR keeps the title it opened with.
+   */
+  updatePullRequestTitle(input: UpdatePullRequestTitleInput): Promise<AdapterResult<PullRequest>> {
+    this.plumbing.logger.debug("updatePullRequestTitle is not supported", { repo: input.access.repo, prNumber: input.number });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't change a PR's title`));
   }
 
   /** Checks a webhook's signature. */

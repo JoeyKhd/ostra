@@ -39,6 +39,7 @@ import type {
   Installation,
   OpenPullRequestInput,
   UpdatePullRequestBodyInput,
+  UpdatePullRequestTitleInput,
   PermissionLevel,
   PullRequest,
   ReadFilesResult,
@@ -248,6 +249,24 @@ export class FakeCodeHost extends CodeHostAdapter {
       return Promise.resolve(adapterError("not-found", "no such PR"));
     }
     const updated: OpenedPull = { ...found, body: input.body };
+    this.pulls[index] = updated;
+    return Promise.resolve(ok(updated));
+  }
+
+  /** F-030/c2: every rename, refused or not, so a test can count them. */
+  readonly titleUpdates: { readonly repo: string; readonly number: number; readonly title: string }[] = [];
+
+  override updatePullRequestTitle(input: UpdatePullRequestTitleInput): Promise<AdapterResult<PullRequest>> {
+    if (!this.known(input.access.app)) {
+      return Promise.resolve(adapterError("unauthorized", "refused"));
+    }
+    this.titleUpdates.push({ repo: input.access.repo, number: input.number, title: input.title });
+    const index = this.pulls.findIndex((pull) => pull.repo === input.access.repo && pull.number === input.number);
+    const found = this.pulls[index];
+    if (found === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    const updated: OpenedPull = { ...found, title: input.title };
     this.pulls[index] = updated;
     return Promise.resolve(ok(updated));
   }

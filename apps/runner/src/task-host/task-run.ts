@@ -1939,7 +1939,7 @@ export const startTaskRun = (deps: TaskRunDeps, dispatch: DispatchBody): TaskRun
     mcp = await startMcpTools({
       taskId: taskSpec.taskId,
       repos: taskSpec.repos.map((repo) => ({ repoId: repo.repoId, fullName: repo.fullName, prTemplate: repo.prTemplate })),
-      taskTitle: taskSpec.title,
+      ticketKey: taskSpec.ticket?.key ?? null,
       ...listen,
       logger: log,
       onPrText: (event) => {

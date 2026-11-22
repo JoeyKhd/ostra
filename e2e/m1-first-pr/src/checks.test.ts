@@ -70,7 +70,7 @@ const goodPull = { title: "Add a CONTRIBUTING.md", body: "Done.\n\nhttp://localh
 const goodCommit = { commit: { message: "Add it\n\nCo-authored-by: admin <admin@example.com>\n", author: bot, committer: bot } };
 
 describe("judgePullRequest", () => {
-  it("passes a PR the bot opened, with the admin as co-author, the prompt as title and the task linked", () => {
+  it("passes a PR the bot opened, with the admin as co-author, the agent's title and the task linked", () => {
     expect(judgePullRequest(goodPull, [goodCommit], expected).ok).toBe(true);
   });
 
@@ -92,8 +92,9 @@ describe("judgePullRequest", () => {
     expect(result.detail).toContain("Co-authored-by admin");
   });
 
-  it("fails another title, a body without the task's link, and a PR with no commits", () => {
-    expect(judgePullRequest({ ...goodPull, title: "Something else" }, [goodCommit], expected).ok).toBe(false);
+  it("fails a title that isn't one clean line, a body without the task's link, and a PR with no commits", () => {
+    expect(judgePullRequest({ ...goodPull, title: "Add a CONTRIBUTING.md\n\nwith more" }, [goodCommit], expected).detail).toContain("isn't one clean line");
+    expect(judgePullRequest({ ...goodPull, title: "" }, [goodCommit], expected).ok).toBe(false);
     expect(judgePullRequest({ ...goodPull, body: "Done." }, [goodCommit], expected).detail).toContain("doesn't link the task");
     expect(judgePullRequest({ ...goodPull, body: null }, [goodCommit], expected).ok).toBe(false);
     expect(judgePullRequest(goodPull, [], expected).ok).toBe(false);

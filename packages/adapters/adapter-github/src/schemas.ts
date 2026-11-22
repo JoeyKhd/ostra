@@ -114,6 +114,8 @@ export const compareSchema = z.looseObject({
   ahead_by: z.number().int().nonnegative(),
   behind_by: z.number().int().nonnegative(),
   merge_base_commit: z.looseObject({ sha: z.string().min(1) }).nullish(),
+  /** The page of commits asked for, oldest first: their messages are untrusted text, never logged. */
+  commits: z.array(z.looseObject({ commit: z.looseObject({ message: z.string() }) })).optional(),
   files: z
     .array(
       z.looseObject({

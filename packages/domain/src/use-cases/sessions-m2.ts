@@ -15,6 +15,7 @@ import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 import { moveSessionInTx, moveTaskInTx } from "./moves.ts";
 import { createNeedsYouItemInTx } from "./needs-you-items.ts";
+import { retitledReposInTx } from "./pr-title.ts";
 import { lastAgentMessageInTx } from "./record-session-end.ts";
 import { appendCoreEvent } from "./server-events.ts";
 import { enterReviewLoopInTx, reviewRoundsInTx } from "../review-loop/loop.ts";
@@ -258,8 +259,9 @@ export const recordWorkSaved: RecordWorkSaved = async (deps, input) => {
     if (moved && deps.reviewLoop !== undefined) {
       await enterReviewLoopInTx(deps, tx, organizationId, task.id);
     }
-    if (prOpen && (input.event.checks?.length ?? 0) > 0) {
-      // F-054 (ticket 23): the turn's checks go into each changed PR's body and draft state.
+    // F-054 (ticket 23): the turn's checks go into each changed PR's body and draft state. F-030/c2:
+    // a new title the agent set in the turn renames its open PR.
+    if (prOpen && ((input.event.checks?.length ?? 0) > 0 || (await retitledReposInTx(tx, task.id, input.eventSeq)).size > 0)) {
       await deps.jobs.enqueueInTx(tx, "task.open-pull-requests", { organizationId, taskId: task.id, sessionId: input.sessionId, eventSeq: input.eventSeq });
     }
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "task", entityId: task.id });

@@ -57,6 +57,8 @@ export type FakeCompare = {
   readonly aheadBy: number;
   readonly behindBy: number;
   readonly mergeBase?: string;
+  /** F-030/c2: the head's commits the base lacks, oldest first, by their messages. None by default. */
+  readonly commits?: readonly string[];
   readonly files?: readonly {
     readonly path: string;
     readonly previousPath?: string;
@@ -76,7 +78,7 @@ export type FakePullRequest = {
   readonly repo: string;
   readonly head: string;
   readonly base: string;
-  readonly title: string;
+  title: string;
   body: string;
   draft: boolean;
   state: "open" | "closed";
@@ -1170,7 +1172,10 @@ export const createFakeGitHub = async (options: {
         behind_by: scripted?.behindBy ?? 0,
         total_commits: scripted?.aheadBy ?? 0,
         merge_base_commit: { sha: scripted?.mergeBase ?? "0".repeat(40) },
-        commits: [],
+        // As GitHub: oldest first, one page of `per_page` (30 by default).
+        commits: (scripted?.commits ?? [])
+          .slice(0, Math.min(Number(url.searchParams.get("per_page") ?? "30"), 250))
+          .map((message, index) => ({ sha: (index + 1).toString(16).padStart(40, "c"), commit: { message } })),
         // As GitHub: at most 300 files, and a patch over 500 KB left out.
         files: files.slice(0, COMPARE_MAX_FILES).map((file) => ({
           filename: file.path,
@@ -1508,6 +1513,9 @@ export const createFakeGitHub = async (options: {
       const body = bodySchema.parse(await readBody(request));
       if (body.body !== undefined) {
         pr.body = body.body;
+      }
+      if (body.title !== undefined) {
+        pr.title = body.title;
       }
       send(response, 200, prJson(pr));
       return;

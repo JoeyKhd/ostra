@@ -298,7 +298,7 @@ describe("ticket.fetch-context (F-064)", () => {
 });
 
 describe("a ticket task's PR (spec section 11, item 5)", () => {
-  it("F-030/c2,c3, F-078/c3: is titled with the key and the ticket's title as last read, and its body sums up the change and links the ticket with the board's word and the task", async () => {
+  it("F-030/c2,c3, F-078/c3: with no title from the agent, is titled with the key and the ticket's title as last read, and its body sums up the change and links the ticket with the board's word and the task", async () => {
     const task = await ticketTask();
     await runFetch(task);
     const row = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
@@ -327,5 +327,33 @@ describe("a ticket task's PR (spec section 11, item 5)", () => {
     expect(pull?.body).toContain(`Opened by [ostra](http://localhost:3000/tasks/${task.taskId}) for this task: http://localhost:3000/tasks/${task.taskId}`);
     expect(pull?.headBranch).toBe(row.branchName);
     expect(row.branchName.startsWith(`ostra/${task.key.toLowerCase()}-`)).toBe(true);
+  });
+
+  it("F-030/c2: keeps the ticket's key in front of the agent's own title, and takes off a key the agent wrote itself", async () => {
+    const titled = async (agentTitle: string): Promise<string | undefined> => {
+      const task = await ticketTask();
+      await runFetch(task);
+      await test.db.task.update({ where: { id: task.taskId }, data: { state: "running" } });
+      await test.db.taskRepo.updateMany({ where: { taskId: task.taskId }, data: { state: "branch_pushed", ahead: true, headSha: sha("h"), prTitle: agentTitle.replaceAll("KEY", task.key), prBody: "Adds the heron page." } });
+      const before = codeHost.pulls.length;
+      await openPullRequestsHandler({
+        db: test.db,
+        jobs,
+        notices: postgresChangeNotices,
+        audit: postgresAuditLog,
+        clock: systemClock,
+        adapters: { codeHost, secretStore, modelProvider: new FakeModelProvider() },
+        publicUrl: "http://localhost:3000",
+        logger,
+      })(jobContext("task.open-pull-requests", { organizationId: organizationIdSchema.parse(fixture.a.organization.id), taskId: task.taskId, sessionId: task.sessionId, eventSeq: taskSeqSchema.parse(1) }, logger));
+      const title = codeHost.pulls.slice(before)[0]?.title;
+      return title?.replace(task.key, "KEY");
+    };
+    expect(await titled("Show a heron with its caption")).toBe("KEY: Show a heron with its caption");
+    // The key is ostra's: one the agent put in front isn't doubled, however it wrote it.
+    expect(await titled("KEY: Show a heron with its caption")).toBe("KEY: Show a heron with its caption");
+    expect(await titled("[KEY] Show a heron with its caption")).toBe("KEY: Show a heron with its caption");
+    // A title that's only the key says nothing of the change: the ticket's title stands in.
+    expect(await titled("KEY")).toBe("KEY: Add a heron page");
   });
 });

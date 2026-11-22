@@ -919,6 +919,34 @@ export const defineCodeHostContractSuite = (options: ContractSuiteOptions<CodeHo
       }
     });
 
+    it("F-030/c2: a title update renames the PR and keeps the rest of it", async (context) => {
+      const { adapter, fixture } = subject();
+      if (fixture.prHead === null) {
+        context.skip();
+        return;
+      }
+      const found = await adapter.findPullRequest(fixture.access, fixture.prHead);
+      const pr = found.ok && found.value !== null
+        ? found.value
+        : await adapter.openPullRequest({ access: fixture.access, head: fixture.prHead, base: fixture.defaultBranch, title: "ostra contract suite", body: "Opened by the code host contract suite.", draft: false }).then((opened) => {
+            if (!opened.ok) throw new Error(opened.error.message);
+            return opened.value;
+          });
+      const title = "Rename the PR from the contract suite";
+      const renamed = await adapter.updatePullRequestTitle({ access: fixture.access, number: pr.number, title });
+      if (!renamed.ok && renamed.error.code === "unsupported") {
+        context.skip();
+        return;
+      }
+      expect(renamed).toMatchObject({ ok: true, value: { number: pr.number, title, headBranch: pr.headBranch, baseBranch: pr.baseBranch, state: pr.state } });
+      const read = await adapter.getPullRequest(fixture.access, pr.number);
+      if (read.ok) {
+        expect(read.value).toMatchObject({ number: pr.number, title, headBranch: pr.headBranch, state: pr.state });
+      }
+      // Back as it was, for the suite's other cases.
+      expect((await adapter.updatePullRequestTitle({ access: fixture.access, number: pr.number, title: pr.title })).ok).toBe(true);
+    });
+
     it("F-104: reads a review submitted and dismissed, and a new head, from their signed webhooks", (context) => {
       const { adapter, fixture } = subject();
       const hooks = fixture.reviewWebhooks;

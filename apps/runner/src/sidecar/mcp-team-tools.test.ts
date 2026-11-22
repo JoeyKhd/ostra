@@ -64,7 +64,6 @@ const start = async (sets: readonly OstraToolSet[] | undefined): Promise<{ reado
   tools = await startMcpTools({
     taskId,
     repos: [{ repoId, fullName: repo, prTemplate: null }],
-    taskTitle: "Refine the banner ticket",
     listenHost: "127.0.0.1",
     logger: createLogger((record) => logs.push(record)),
     onPrText: () => undefined,

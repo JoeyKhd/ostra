@@ -53,6 +53,7 @@ import type {
   RepoAccess,
   RepoToken,
   UpdatePullRequestBodyInput,
+  UpdatePullRequestTitleInput,
   WebhookInput,
 } from "../code-host/base.ts";
 import { logTail, pullRequestReviewStates, readTreeRefusal } from "../code-host/base.ts";
@@ -928,6 +929,21 @@ export class TinyCodeHost extends CodeHostAdapter {
     pr.body = input.body;
     pr.updatedAt = Date.now();
     return Promise.resolve(ok(withoutRepo(pr)));
+  }
+
+  override updatePullRequestTitle(input: UpdatePullRequestTitleInput): Promise<AdapterResult<PullRequest>> {
+    const repo = this.#repo(input.access);
+    if (!repo.ok) {
+      return Promise.resolve(repo);
+    }
+    const index = this.#prs.findIndex((candidate) => candidate.repo === input.access.repo && candidate.number === input.number);
+    const pr = this.#prs[index];
+    if (pr === undefined) {
+      return Promise.resolve(adapterError("not-found", "no such PR"));
+    }
+    const renamed = { ...pr, title: input.title, updatedAt: Date.now() };
+    this.#prs[index] = renamed;
+    return Promise.resolve(ok(withoutRepo(renamed)));
   }
 
   override listReviews(access: RepoAccess, number: number): Promise<AdapterResult<readonly PullRequestReview[]>> {

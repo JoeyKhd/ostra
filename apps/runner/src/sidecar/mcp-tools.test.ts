@@ -3,8 +3,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { createLogger } from "@ostra/adapter-sdk";
 import type { LogRecord } from "@ostra/adapter-sdk";
 import { createServer } from "node:http";
-import { proposalIdSchema, repoFullNameSchema, repoIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { MemoryProposalRequest, MemoryProposalResponse, MemorySearchRequest, TaskEventOf } from "@ostra/protocol";
+import { PR_TITLE_MAX_CHARS, proposalIdSchema, repoFullNameSchema, repoIdSchema, taskIdSchema, ticketKeySchema } from "@ostra/protocol";
+import type { MemoryProposalRequest, MemoryProposalResponse, MemorySearchRequest, TaskEventOf, TicketKey } from "@ostra/protocol";
 import { memoryNoteFixture } from "@ostra/protocol/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { memoryLink } from "../task-host/server-link.ts";
@@ -29,7 +29,7 @@ afterEach(async () => {
   tools = undefined;
 });
 
-const start = async (): Promise<{ readonly tools: McpTools; readonly events: TaskEventOf<"pr.text_set">[]; readonly logs: LogRecord[] }> => {
+const start = async (ticketKey: TicketKey | null = null): Promise<{ readonly tools: McpTools; readonly events: TaskEventOf<"pr.text_set">[]; readonly logs: LogRecord[] }> => {
   const events: TaskEventOf<"pr.text_set">[] = [];
   const logs: LogRecord[] = [];
   tools = await startMcpTools({
@@ -38,7 +38,7 @@ const start = async (): Promise<{ readonly tools: McpTools; readonly events: Tas
       { repoId, fullName: repoFullNameSchema.parse("ostra-test/test1"), prTemplate: template },
       { repoId: otherRepoId, fullName: repoFullNameSchema.parse("ostra-test/test2"), prTemplate: null },
     ],
-    taskTitle: "Add a short CONTRIBUTING.md",
+    ticketKey,
     listenHost: "127.0.0.1",
     logger: createLogger((record) => logs.push(record)),
     onPrText: (event) => events.push(event),
@@ -70,8 +70,35 @@ describe("ostra's MCP tools", () => {
     expect(tool?.description).toContain("ostra-test/test1: has a pull request template. Follow it");
     expect(tool?.description).toContain("## How it was tested");
     expect(tool?.description).toContain("ostra-test/test2: no pull request template");
-    expect(tool?.description).toContain("close to the task's own title");
+    // F-030/c2: the title says what changed, in the repo's style, and a prompt task has no key to leave out.
+    expect(tool?.description).toContain("a short summary in the imperative");
+    expect(tool?.description).toContain("not a copy of the member's message");
+    expect(tool?.description).toContain("the repo's own style for pull request titles and commit subjects");
+    expect(tool?.description).toContain("`git log -n 20 --format=%s`");
+    expect(tool?.description).toContain("at most 72 characters");
+    expect(tool?.description).toContain("a new title renames it");
+    expect(tool?.description).not.toContain("ticket's key");
     expect(tool?.inputSchema.required).toEqual(["repo", "title", "body"]);
+  });
+
+  it("F-030/c2: cleans the agent's title to one line, refuses one that says nothing, and tells a ticket task's agent the key is ostra's", async () => {
+    const { tools: server, events } = await start(ticketKeySchema.parse("OST-314"));
+    const client = await connect(server);
+    const description = (await client.listTools()).tools[0]?.description ?? "";
+    expect(description).toContain("ostra puts the ticket's key in front of the title (`OST-314: ...`): don't write the key yourself.");
+    const messy = await client.callTool({
+      name: SET_PR_TEXT_TOOL,
+      arguments: { repo: "ostra-test/test1", title: "Round percent mode\u0007 half up\n\nThe rounding was down.", body: "b" },
+    });
+    expect(messy.isError).not.toBe(true);
+    expect(textOf(messy)).toContain('titled "Round percent mode half up"');
+    const long = await client.callTool({ name: SET_PR_TEXT_TOOL, arguments: { repo: "ostra-test/test2", title: `Round ${"percent ".repeat(40)}mode`, body: "b" } });
+    expect(long.isError).not.toBe(true);
+    const empty = await client.callTool({ name: SET_PR_TEXT_TOOL, arguments: { repo: "ostra-test/test1", title: "\u0007 \t", body: "b" } });
+    expect(empty.isError).toBe(true);
+    expect(textOf(empty)).toContain("The title must say what the pull request changes");
+    expect(events.map((event) => event.title)).toEqual(["Round percent mode half up", expect.stringMatching(/^Round percent .*…$/)]);
+    expect(Array.from(events[1]?.title ?? "").length).toBeLessThanOrEqual(PR_TITLE_MAX_CHARS);
   });
 
   it("F-030/c4: emits pr.text_set for a call naming one of the task's repos", async () => {
@@ -162,7 +189,6 @@ const startWithMemory = async (
   tools = await startMcpTools({
     taskId: taskIdSchema.parse("task-mcp"),
     repos: [{ repoId, fullName: repoFullNameSchema.parse("ostra-test/test1"), prTemplate: null }],
-    taskTitle: "Add a short CONTRIBUTING.md",
     listenHost: "127.0.0.1",
     logger: createLogger((record) => logs.push(record)),
     onPrText: () => undefined,

@@ -55,6 +55,7 @@ export * from "./use-cases/hold-provider.ts";
 export * from "./use-cases/ingest-events.ts";
 export * from "./use-cases/issue-task-credentials.ts";
 export * from "./use-cases/open-pull-requests.ts";
+export * from "./use-cases/pr-title.ts";
 export * from "./use-cases/record-session-end.ts";
 export * from "./use-cases/register-personal-runner.ts";
 export * from "./use-cases/save-environment.ts";

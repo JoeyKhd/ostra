@@ -79,6 +79,7 @@ import {
   ticketContextReadSchema,
   userMessageFileSchema,
 } from "../task/files.ts";
+import { prTitleSchema } from "./pr-title.ts";
 import { toolKindSchema } from "./tools.ts";
 
 // ostra's event union (ADR 0018, ADR 0035, ADR 0036): one thing the agent or ostra did in a
@@ -1278,7 +1279,8 @@ const sharedEventOptions = [
   z.strictObject({
     kind: z.literal("pr.text_set"),
     repoId: repoIdSchema,
-    title: z.string().min(1).max(256),
+    /** The agent's summary of the change (F-030/c2): untrusted, read as one clean line (`prTitleSchema`). */
+    title: prTitleSchema,
     body: z.string().max(65_536),
   }),
   z.strictObject({

@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { allowedEnvNames, selfSetEnv } from "@ostra/adapter-opencode";
 import { devPgDir } from "@ostra/db/dev";
+import { cleanPrTitle } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import pg from "pg";
 import { z } from "zod";
@@ -449,15 +450,18 @@ export const titleFromPrompt = (prompt: string): string => {
   return trimmed.length <= 120 ? trimmed : `${trimmed.slice(0, 117).trimEnd()}...`;
 };
 
-/** Spec step 10 and ticket 39: the App's bot opened it, authored every commit, the admin co-authored, the prompt is the title, the body links the task. */
+/**
+ * Spec step 10 and ticket 39: the App's bot opened it, authored every commit, the admin co-authored,
+ * the title is the agent's (one clean line, F-030/c2 since 2026-11-22, no longer the prompt), the body links the task.
+ */
 export const judgePullRequest = (pull: unknown, commits: unknown, expected: PullRequestExpectation): CheckResult => {
-  const name = "the PR is the bot's, with the admin as co-author, the prompt as title and a link to the task";
+  const name = "the PR is the bot's, with the admin as co-author, the agent's title and a link to the task";
   const parsedPull = pullSchema.safeParse(pull);
   const parsedCommits = commitsSchema.safeParse(commits);
   if (!parsedPull.success || !parsedCommits.success) return { name, ok: false, detail: "GitHub's answer for the PR or its commits wasn't what was expected" };
   const problems: string[] = [];
   if (parsedPull.data.user?.login !== expected.botLogin) problems.push(`opened by ${parsedPull.data.user?.login ?? "no one"}, not ${expected.botLogin}`);
-  if (parsedPull.data.title !== titleFromPrompt(expected.prompt)) problems.push("the title isn't the prompt");
+  if (parsedPull.data.title === "" || cleanPrTitle(parsedPull.data.title) !== parsedPull.data.title) problems.push("the title isn't one clean line");
   const link = `${expected.publicUrl.replace(/\/+$/, "")}/tasks/${expected.taskId}`;
   if (parsedPull.data.body?.includes(link) !== true) problems.push("the body doesn't link the task");
   if (parsedCommits.data.length === 0) problems.push("the PR has no commits");

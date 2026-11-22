@@ -58,6 +58,7 @@ import type {
   LinkedUser,
   OpenPullRequestInput,
   UpdatePullRequestBodyInput,
+  UpdatePullRequestTitleInput,
   PermissionLevel,
   PullRequest,
   PullRequestComment,
@@ -744,6 +745,27 @@ export class GitHubAdapter extends CodeHostAdapter {
     });
   }
 
+  override async updatePullRequestTitle(input: UpdatePullRequestTitleInput): Promise<AdapterResult<PullRequest>> {
+    const { access } = input;
+    const title = input.title.trim().slice(0, MAX_TITLE_CHARS);
+    if (title.length === 0) {
+      return adapterError("invalid-input", "a PR needs a title");
+    }
+    // A PATCH that sets the same title twice is the same PR: safe to retry.
+    return this.#guarded("changing a PR's title", this.#budgetKey(access), async () => {
+      const octokit = await this.#asRepo(access, { pull_requests: "write", metadata: "read" });
+      const { owner, name } = splitRepo(access.repo);
+      // The title is the agent's text: untrusted, sent as data in the JSON body.
+      const response = await octokit.request("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", { owner, repo: name, pull_number: input.number, title });
+      const parsed = parseVendor(pullRequestSchema, response.data, "GitHub's renamed PR");
+      if (!parsed.ok) {
+        return parsed;
+      }
+      this.plumbing.logger.info("github.pr.title-updated", { repo: access.repo, prNumber: parsed.value.number });
+      return ok(toPullRequest(parsed.value));
+    });
+  }
+
   // ---------- milestone 2: branch rules, a PR by number, PR webhooks, refs ----------
 
   override async readBranchRules(access: RepoAccess, branch: string): Promise<AdapterResult<BranchRules>> {
@@ -965,6 +987,8 @@ export class GitHubAdapter extends CodeHostAdapter {
         files,
         filesTruncated: files.length >= GITHUB_COMPARE_MAX_FILES,
         limits: { maxFiles: GITHUB_COMPARE_MAX_FILES, maxPatchBytes: GITHUB_MAX_FILE_DIFF_BYTES },
+        // The one page of one commit is the oldest: with one commit ahead, it's the head's only one (F-030/c2).
+        soleCommitMessage: parsed.value.ahead_by === 1 ? (parsed.value.commits?.[0]?.commit.message ?? null) : null,
       });
     });
   }

@@ -14,7 +14,7 @@ import type { JobPayload } from "../jobs.ts";
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
 import { transitionTaskRepo } from "../lifecycles/task-repo.ts";
 import { parseBoardMapping } from "../tickets/board-mapping.ts";
-import { ticketMagicLine, ticketPullRequestTitle } from "../tickets/contracts.ts";
+import { ticketMagicLine } from "../tickets/contracts.ts";
 import type { JobQueue, Ports } from "../ports.ts";
 import { enqueueLinkRelatedInTx } from "../repos/project-repos.ts";
 import { enqueueReviewEvaluationInTx } from "../review/review-check.ts";
@@ -29,13 +29,17 @@ import { recordAgentSessionMomentInTx } from "../linear/agent-session-moments.ts
 import { appendServerEvent } from "./server-events.ts";
 import { enterReviewLoopInTx, reviewRoundsInTx } from "../review-loop/loop.ts";
 import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
+import { fallbackPullRequestTitle, pullRequestTitle, retitledReposInTx } from "./pr-title.ts";
+import type { PullRequestTicket } from "./pr-title.ts";
 
 // F-030, F-078, ADR 0040: the `task.open-pull-requests` job. One PR per changed repo, opened by the
-// App: the title from the prompt, the body from the agent's `pr.text_set` (following the repo's PR
-// template), with links to the task. Idempotent per task repo: `findPullRequest` first, and the
-// idempotency key `task:<TaskId>:open-pr:<RepoId>`. Then a `pr.opened` event per PR, and the task
-// moves to in review. Calls the code host, so it takes the client and opens its own transactions
-// around each call. Written by ticket 27.
+// App: the title and the body from the agent's `pr.text_set` (the title its summary of the change,
+// with a ticket task's key in front, `pr-title.ts`; the body following the repo's PR template), with
+// links to the task. A later turn's new title from the agent renames the open PR (F-030/c2).
+// Idempotent per task repo: `findPullRequest` first, and the idempotency key
+// `task:<TaskId>:open-pr:<RepoId>`. Then a `pr.opened` event per PR, and the task moves to in
+// review. Calls the code host, so it takes the client and opens its own transactions around each
+// call. Written by ticket 27.
 //
 // Idempotence: a task repo that is already `pr_open` is skipped, and before opening one the code
 // host is asked for an open PR of the branch, which is reused. So the job running twice, or dying
@@ -63,15 +67,6 @@ export type OpenPullRequestsDeps = Pick<Ports, "notices" | "audit" | "clock" | "
 
 export type OpenPullRequests = (deps: OpenPullRequestsDeps, input: OpenPullRequestsInput) => Promise<OpenPullRequestsResult>;
 
-/** GitHub's limit on a PR title. */
-export const PR_TITLE_MAX = 256;
-
-/** The PR's title: the task's title, which for a prompt task comes from its prompt (F-030), kept short. */
-export const pullRequestTitle = (title: string): string => {
-  const line = title.replace(/\s+/g, " ").trim();
-  return line.length <= PR_TITLE_MAX ? line : `${line.slice(0, PR_TITLE_MAX - 3).trimEnd()}...`;
-};
-
 /**
  * The PR's body: the agent's text, a ticket task's `Closes <KEY>` (or the board's word, spec
  * section 11, item 5), then a footer that links the task and its other PRs. Milestone 8 (F-121): a
@@ -90,13 +85,13 @@ export const pullRequestBody = (text: string, taskUrl: string, others: readonly 
 };
 
 /**
- * A ticket task's PR title and magic line (spec section 11, item 5): `<KEY>: <ticket title>` and
- * `Closes <KEY>`, from the ticket as last read and its board's mapping. A prompt task has neither.
+ * A ticket task's ticket for its PR's title, and its magic line (spec section 11, item 5): the key
+ * and the title as last read, and `Closes <KEY>` from its board's mapping. A prompt task has neither.
  */
 const ticketTextOf = async (
   db: Db,
   task: { readonly ticketKey: string | null; readonly ticketId: string | null; readonly boardId: string | null; readonly title: string },
-): Promise<{ readonly title: string; readonly magicLine: string } | null> => {
+): Promise<{ readonly ticket: PullRequestTicket; readonly magicLine: string } | null> => {
   const key = ticketKeySchema.safeParse(task.ticketKey);
   if (!key.success) {
     return null;
@@ -106,7 +101,27 @@ const ticketTextOf = async (
   const current = ticketKeySchema.safeParse(ticket?.key);
   const ticketKey = current.success ? current.data : key.data;
   const word = parseBoardMapping(board?.statusMap)?.magicWord ?? "Closes";
-  return { title: ticketPullRequestTitle(ticketKey, ticket?.title ?? task.title), magicLine: ticketMagicLine(ticketKey, word) };
+  return { ticket: { key: ticketKey, title: ticket?.title ?? task.title }, magicLine: ticketMagicLine(ticketKey, word) };
+};
+
+/**
+ * A new PR's title (F-030/c2): the agent's, or, with none, a ticket task's ticket and a prompt
+ * task's branch as the code host compares it (`fallbackPullRequestTitle`), never its first message.
+ */
+const newPullRequestTitle = async (
+  deps: OpenPullRequestsDeps,
+  input: { readonly access: RepoAccess; readonly taskId: TaskId; readonly repoId: RepoId; readonly repoFullName: string; readonly agentTitle: string | null; readonly ticket: PullRequestTicket | null; readonly baseBranch: string; readonly head: string },
+): Promise<string> => {
+  const own = pullRequestTitle({ agentTitle: input.agentTitle, ticket: input.ticket, fallback: "" });
+  if (own !== "") {
+    return own;
+  }
+  const { codeHost } = deps.adapters;
+  const compared = codeHost.capabilities.compare ? await codeHost.compare(input.access, input.baseBranch, input.head) : null;
+  if (compared?.ok === false) {
+    deps.logger?.warn("the PR's branch couldn't be compared for its title", { taskId: input.taskId, repoId: input.repoId, code: compared.error.code });
+  }
+  return pullRequestTitle({ agentTitle: null, ticket: null, fallback: fallbackPullRequestTitle(compared?.ok === true ? compared.value : null, input.repoFullName) });
 };
 
 export const openPullRequests: OpenPullRequests = async (deps, input) => {
@@ -140,9 +155,12 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
   const drafts = deps.adapters.codeHost.capabilities.draftPullRequests;
   /** The PRs that were open before this run, for the checks pass below. */
   const existing: ExistingPullRequest[] = [];
+  /** The PRs ostra opened in an earlier run, which a later turn's new title from the agent renames (F-030/c2). */
+  const openBefore: { readonly repoId: RepoId; readonly number: number }[] = [];
   for (const taskRepo of taskRepos) {
     const repoId = repoIdSchema.parse(taskRepo.repoId);
     if (taskRepo.state === "pr_open" && taskRepo.prNumber !== null && taskRepo.prUrl !== null) {
+      openBefore.push({ repoId, number: taskRepo.prNumber });
       opened.push({ repoId, number: taskRepo.prNumber, url: taskRepo.prUrl, reused: true });
       existing.push({ taskRepoId: taskRepo.id, repoId, number: taskRepo.prNumber, url: taskRepo.prUrl, branchName: taskRepo.branchName, text: taskRepo.prBody ?? fallbackBody });
       continue;
@@ -178,14 +196,17 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
       // The body is the agent's text (untrusted, sent as data), and the footer is ostra's.
       const text = taskRepo.prBody ?? fallbackBody;
       const body = pullRequestBody(text, taskUrl, opened.map((other) => other.url), ticketText?.magicLine ?? null, checks, screenshots);
-      const created = await deps.adapters.codeHost.openPullRequest({
+      const title = await newPullRequestTitle(deps, {
         access,
-        head: taskRepo.branchName,
-        base: taskRepo.baseBranch,
-        title: ticketText?.title ?? pullRequestTitle(task.title),
-        body,
-        draft: draftByOstra,
+        taskId: task.id,
+        repoId,
+        repoFullName: repo.fullName,
+        agentTitle: taskRepo.prTitle,
+        ticket: ticketText?.ticket ?? null,
+        baseBranch: taskRepo.baseBranch,
+        head: taskRepo.headSha ?? taskRepo.branchName,
       });
+      const created = await deps.adapters.codeHost.openPullRequest({ access, head: taskRepo.branchName, base: taskRepo.baseBranch, title, body, draft: draftByOstra });
       if (!created.ok) {
         return { ok: false, error: "code-host-failed", message: `the code host refused the PR (${created.error.code})` };
       }
@@ -268,6 +289,22 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     opened.push({ repoId, number: pr.number, url: pr.url, reused });
   }
 
+  // F-030/c2: the agent set a new title in this turn for a PR that was open already: it's renamed,
+  // with a ticket task's key in front. A host that can't rename one leaves its title as it was.
+  const retitled = openBefore.length === 0 ? new Map<RepoId, string>() : await retitledReposInTx(db, task.id, input.eventSeq);
+  for (const pr of openBefore) {
+    const agentTitle = retitled.get(pr.repoId);
+    if (agentTitle === undefined) {
+      continue;
+    }
+    const title = pullRequestTitle({ agentTitle, ticket: ticketText?.ticket ?? null, fallback: "" });
+    const access = await repoAccessFor(db, deps.adapters.secretStore, organizationId, pr.repoId);
+    const renamed = access.ok ? await deps.adapters.codeHost.updatePullRequestTitle({ access: access.access, number: pr.number, title }) : null;
+    if (renamed?.ok !== true) {
+      deps.logger?.warn("a PR couldn't take the agent's new title", { taskId: task.id, repoId: pr.repoId, prNumber: pr.number, code: renamed === null ? "no-access" : renamed.error.code });
+    }
+  }
+
   // A PR opened before the task's later ones links them too, now that they all exist (F-030). Only
   // the PRs this run opened: their body is still ostra's, so nobody's edit is overwritten.
   for (const mine of openedHere) {
@@ -311,6 +348,11 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
   }
 
   // Every changed repo has its PR: the task is in review, waiting for a reviewer (spec section 4).
+  // After a save whose PRs were all open already, `recordWorkSaved` moved the task itself, and this
+  // run only edits them (the turn's checks, a new title): a turn that started since stays running.
+  const editsOnly =
+    openBefore.length === taskRepos.length &&
+    (await db.event.findUnique({ where: { taskId_seq: { taskId: task.id, seq: input.eventSeq } }, select: { kind: true } }))?.kind === "session.saved";
   await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT 1 FROM "task" WHERE "id" = ${task.id} FOR UPDATE`;
     const fresh = mapTask(await tx.task.findUniqueOrThrow({ where: { id: task.id } }));
@@ -320,7 +362,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
     const fixing = fresh.state === "in_review" && (fresh.subState === "fixing_ci" || fresh.subState === "fixing_findings");
     const moved =
       fresh.state === "running"
-        ? await moveTaskInTx(moveDeps, fresh, { type: "session_ended", withChanges: true, rounds })
+        ? !editsOnly && (await moveTaskInTx(moveDeps, fresh, { type: "session_ended", withChanges: true, rounds }))
         : fixing && opened.length > 0
           ? await moveTaskInTx(moveDeps, fresh, { type: "pushed" })
           : false;
