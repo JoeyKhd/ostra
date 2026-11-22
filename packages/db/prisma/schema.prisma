@@ -1076,6 +1076,11 @@ model Board {
   agentMode           Boolean    @default(false)
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
+  // ---- 2026-11-22 (F-097, Q31) ----
+  /// The project's setting "Make a ticket for every prompt task", on the board the tickets go to:
+  /// each code task a member starts from a prompt gets a ticket made here as it starts. Off by
+  /// default; at most one board per project has it, and detaching the board turns it off.
+  ticketsForPromptTasks Boolean  @default(false)
 
   tickets       Ticket[]
   ticketWrites  TicketWrite[]
@@ -1085,6 +1090,7 @@ model Board {
   @@unique([projectId, externalId])
   @@unique([id, projectId])
   @@unique([organizationId, connectionId, externalId], where: raw("\"agentMode\""), map: "board_one_agent_mode_board_per_team")
+  @@unique([projectId], where: raw("\"ticketsForPromptTasks\""), map: "board_one_prompt_ticket_board_per_project")
   @@map("board")
 }
 

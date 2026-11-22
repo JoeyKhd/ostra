@@ -178,7 +178,8 @@ export type DetachBoardDeps = Pick<Ports, "notices" | "audit" | "clock"> & { rea
 
 /**
  * Marks the board detached. It stops polling (core drops the schedule of a detached board) and
- * starts no new task; its cached tickets stay, and its tasks keep their links.
+ * starts no new task; its cached tickets stay, and its tasks keep their links. When it was the
+ * board the project's prompt tasks get their tickets on (F-097), that setting goes off with it.
  */
 export const detachBoard = async (deps: DetachBoardDeps, input: DetachBoardInput): Promise<DetachBoardResult> => {
   const { tx, scope } = deps;
@@ -195,7 +196,7 @@ export const detachBoard = async (deps: DetachBoardDeps, input: DetachBoardInput
   if (board.detachedAt !== null) {
     return refuse("already-detached", "That board is already detached");
   }
-  await tx.board.update({ where: { id: board.id }, data: { detachedAt: new Date(deps.clock.now()) } });
+  await tx.board.update({ where: { id: board.id }, data: { detachedAt: new Date(deps.clock.now()), ticketsForPromptTasks: false } });
   const projectId = projectIdSchema.parse(board.project.id);
   await deps.audit.recordInTx(tx, {
     organizationId,

@@ -145,6 +145,8 @@ export const auditActions = {
   "project.ticket-template-saved": "project",
   // Milestone 6 (F-100, ticket 28): a project's AI review switch.
   "project.ai-review-set": "project",
+  // 2026-11-22 (F-097, Q31): "Make a ticket for every prompt task", with the board it names, or off.
+  "project.prompt-tickets-set": "project",
   "project.repo-added": "project",
   "project.repo-removed": "project",
   "project.repos-reordered": "project",

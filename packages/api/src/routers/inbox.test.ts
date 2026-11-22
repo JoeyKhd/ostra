@@ -394,7 +394,7 @@ describe("F-010, F-097: starting a task from a ticket", () => {
 });
 
 describe("F-097: Create ticket", () => {
-  it("writes the create write for a prompt task, once, and links nothing until ticket sync has made the ticket", async () => {
+  it("F-097/c2: writes the create write for a prompt task, once, and links nothing until ticket sync has made the ticket", async () => {
     const promptTask = await (await member()).tasks.create({ projectId, prompt: "Please add pagination to the users table\nIt should keep the filters." });
     harness.fakes.jobs.clear();
     const made = await (await member()).tasks.createTicket({ taskId: promptTask.taskId, boardId });
@@ -428,5 +428,55 @@ describe("F-097: Create ticket", () => {
     await expect((await member()).tasks.createTicket({ taskId: fresh.taskId, boardId: otherBoard })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect((await harness.as(harness.fixture.b.admin)).tasks.createTicket({ taskId: fresh.taskId, boardId })).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(await harness.test.db.ticketWrite.count({ where: { taskId: fresh.taskId } })).toBe(0);
+  });
+});
+
+describe("F-097: the project's setting to make a ticket for every prompt task", () => {
+  it("F-097/c2: off by default; on, each code task a member starts from a prompt gets its ticket written on the board the setting names, as it starts; detached or off, none", async () => {
+    const project = (await seedProject(harness, world, "prompt-tickets")).projectId;
+    const first = await seedBoard(harness, { projectId: project, connectionId, externalId: "team-pt", key: "PT" });
+    const second = await seedBoard(harness, { projectId: project, connectionId, externalId: "team-pt2", key: "PTB" });
+    const writesOf = (taskId: string) => harness.test.db.ticketWrite.findMany({ where: { taskId }, select: { kind: true, boardId: true, payload: true } });
+    const settingNow = async () => (await (await member()).projects.get({ projectId: project })).promptTicketBoardId;
+
+    // Off by default: a prompt task makes no ticket, though the project has boards.
+    expect(await settingNow()).toBeNull();
+    const before = await (await member()).tasks.create({ projectId: project, prompt: "Before the setting" });
+    expect(await writesOf(before.taskId)).toEqual([]);
+
+    // A project admin turns it on with one of the project's boards; a project member can't, and another project's board is refused.
+    await expect((await member()).projects.setPromptTickets({ projectId: project, boardId: second })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect((await admin()).projects.setPromptTickets({ projectId: project, boardId })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(await settingNow()).toBeNull();
+    expect(await (await admin()).projects.setPromptTickets({ projectId: project, boardId: second })).toEqual({ boardId: second });
+    expect(await settingNow()).toBe(second);
+    expect(await harness.test.db.auditEntry.findMany({ where: { projectId: project, action: "project.prompt-tickets-set" }, select: { data: true } })).toEqual([{ data: { boardId: second } }]);
+
+    // On: a member's code task from a prompt has its ticket's create write on that board, with its sync job, from its start.
+    harness.fakes.jobs.clear();
+    const on = await (await member()).tasks.create({ projectId: project, prompt: "Add a CSV export\nOf the users table." });
+    expect(await writesOf(on.taskId)).toEqual([{ kind: "create", boardId: second, payload: { kind: "create", title: "Add a CSV export", description: "Add a CSV export\nOf the users table." } }]);
+    expect(harness.fakes.jobs.jobs.filter((job) => job.job === "ticket.sync")).toHaveLength(1);
+    // It's the task's one ticket: "Create ticket" is refused, and nothing doubles.
+    await expect((await member()).tasks.createTicket({ taskId: on.taskId, boardId: first })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await harness.test.db.ticketWrite.count({ where: { taskId: on.taskId } })).toBe(1);
+    // A refine task makes its ticket from its draft (F-099): none at its start.
+    const refine = await (await member()).tasks.create({ projectId: project, prompt: "Users want a CSV export", kind: "refine" });
+    expect(await writesOf(refine.taskId)).toEqual([]);
+
+    // Moved to the other board, one board holds it; detaching that board turns it off.
+    await (await admin()).projects.setPromptTickets({ projectId: project, boardId: first });
+    expect(await harness.test.db.board.findMany({ where: { projectId: project, ticketsForPromptTasks: true }, select: { id: true } })).toEqual([{ id: first }]);
+    await (await admin()).boards.detach({ boardId: first });
+    expect(await settingNow()).toBeNull();
+    const detached = await (await member()).tasks.create({ projectId: project, prompt: "After the board went" });
+    expect(await writesOf(detached.taskId)).toEqual([]);
+
+    // Turned off by an admin: none again.
+    await (await admin()).projects.setPromptTickets({ projectId: project, boardId: second });
+    expect(await (await admin()).projects.setPromptTickets({ projectId: project, boardId: null })).toEqual({ boardId: null });
+    expect(await settingNow()).toBeNull();
+    const off = await (await member()).tasks.create({ projectId: project, prompt: "After it was turned off" });
+    expect(await writesOf(off.taskId)).toEqual([]);
   });
 });

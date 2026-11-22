@@ -181,7 +181,11 @@ export const startOnboarding = async (deps: OnboardingDeps, scope: MemberScope, 
       if (open !== null) {
         return { ok: false, error: "already-running", message: "The project's onboarding task is still open" };
       }
-      const created = await createPromptTask({ tx, scope, jobs: deps.jobs, notices: deps.notices, audit: deps.audit, clock: deps.clock }, { projectId: input.projectId, prompt, title: ONBOARDING_TITLE });
+      // ostra's own task, not a member's prompt: the project's "Make a ticket for every prompt task" doesn't apply (F-097).
+      const created = await createPromptTask(
+        { tx, scope, jobs: deps.jobs, notices: deps.notices, audit: deps.audit, clock: deps.clock, ticketBySetting: false },
+        { projectId: input.projectId, prompt, title: ONBOARDING_TITLE },
+      );
       if (!created.ok) {
         return created;
       }

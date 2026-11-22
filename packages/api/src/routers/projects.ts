@@ -5,17 +5,20 @@ import {
   createProject,
   createProjectInputSchema,
   parseTicketTemplate,
+  promptTicketBoardInTx,
   renderTicketPrompt,
   setProjectAccess,
   setProjectDefaultProfile,
   setProjectMember,
+  setPromptTickets,
+  setPromptTicketsInputSchema,
   TICKET_TEMPLATE_MAX_CHARS,
   ticketTemplateFor,
   ticketTemplateVocabulary,
   visibleProjects,
 } from "@ostra/domain";
 import type { RepoChecked, TicketPromptContext } from "@ostra/domain";
-import { agentProfileIdSchema, environmentIdSchema, memberIdSchema, poolIdSchema, projectIdSchema, repoIdSchema, taskKindSchema, ticketIdSchema, ticketKeySchema } from "@ostra/protocol";
+import { agentProfileIdSchema, boardIdSchema, environmentIdSchema, memberIdSchema, poolIdSchema, projectIdSchema, repoIdSchema, taskKindSchema, ticketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -126,6 +129,11 @@ const projectDetailSchema = projectSummarySchema.extend({
   defaultProfiles: z.object({ refine: agentProfileViewSchema.nullable(), code: agentProfileViewSchema.nullable(), review: agentProfileViewSchema.nullable() }),
   /** Whether each repo's own skills reach the agent beside the profile's (F-021, 2026-11-21); a project admin's switch. */
   repoSkills: z.boolean(),
+  /**
+   * F-097 (Q31, 2026-11-22): "Make a ticket for every prompt task": the board each code task a
+   * member starts from a prompt gets its ticket on, or `null` while it's off (the default).
+   */
+  promptTicketBoardId: boardIdSchema.nullable(),
 });
 
 const createdSchema = z.object({
@@ -181,7 +189,7 @@ export const projectsRouter = router({
 
   /**
    * Creates a project on one or more repos the App's installations include (`repo` first, then
-   * `moreRepos`), with its environment drafted from the first repo.
+   * `moreRepos`), with its environment drafted from each repo's files (F-112).
    */
   create: adminProcedure
     .input(createProjectInputSchema)
@@ -285,7 +293,21 @@ export const projectsRouter = router({
           review: await loadAgentProfileView(db, organizationId, project.defaultReviewProfileId),
         },
         repoSkills: project.repoSkills,
+        promptTicketBoardId: await promptTicketBoardInTx(db, organizationId, input.projectId),
       };
+    }),
+
+  /**
+   * "Make a ticket for every prompt task" (F-097, Q31): on with one of the project's attached
+   * boards, or off with `null`. A project admin's, audited. While it's on, each code task a member
+   * starts from a prompt gets a ticket on that board as it starts, as "Create ticket" makes one.
+   */
+  setPromptTickets: projectProcedure("admin", setPromptTicketsInputSchema)
+    .output(z.object({ boardId: boardIdSchema.nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await setPromptTickets({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, input);
+      const set = unwrap(result, { forbidden: "FORBIDDEN", "not-found": "NOT_FOUND", "no-such-board": "BAD_REQUEST" });
+      return { boardId: set.boardId };
     }),
 
   /**

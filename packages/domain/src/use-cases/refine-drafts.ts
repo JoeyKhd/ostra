@@ -848,7 +848,7 @@ export const createTicketFromDraft: CreateTicketFromDraft = (deps, scope, input)
       return { ok: false, error: "not-found", message: "The draft can't be read" };
     }
     const made = await createTicketForTask(
-      { ...deps, tx, scope, publicUrl: input.publicUrl },
+      { ...deps, tx, scope },
       {
         taskId: found.task.id,
         boardId: input.boardId,

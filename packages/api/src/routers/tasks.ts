@@ -299,8 +299,8 @@ export const tasksRouter = router({
    * the ticket holds the task's link. Asking again while one is made or exists is refused.
    */
   createTicket: taskProcedure("read", createTicketForTaskInputSchema).mutation(async ({ ctx, input }) => {
-    const { db, ports, settings } = ctx.deps;
-    const result = await db.$transaction((tx) => createTicketForTask({ tx, scope: ctx.scope, publicUrl: settings.publicUrl, ...ports }, input));
+    const { db, ports } = ctx.deps;
+    const result = await db.$transaction((tx) => createTicketForTask({ tx, scope: ctx.scope, ...ports }, input));
     const made = unwrap(result, {
       "not-found": "NOT_FOUND",
       forbidden: "FORBIDDEN",

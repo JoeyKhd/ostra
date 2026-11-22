@@ -11,6 +11,8 @@ import type { MessageFilesDeps } from "../files/message-files.ts";
 import type { Ports } from "../ports.ts";
 import { startTask } from "../starts/start-task-body.ts";
 import type { UseCaseResult } from "./common.ts";
+import { promptTicketBoardInTx } from "./prompt-tickets.ts";
+import { createTicketForTask } from "./tickets.ts";
 
 export { BRANCH_ID_DIGITS, BRANCH_INDEX, branchNameFor, claimBranchNameInTx } from "./branch-claim.ts";
 
@@ -19,7 +21,8 @@ export { BRANCH_ID_DIGITS, BRANCH_INDEX, branchNameFor, claimBranchNameInTx } fr
 // notice and a `task.dispatch` job. The branch name is `ostra/<first 8 of the task ID>-<slug of the
 // title>` in every repo (spec section 11, item 10). Written by ticket 33. Milestone 6's ticket 11
 // moved the body onto the one start (`starts/start-task-body.ts`): this checks the member's access
-// and hands it over.
+// and hands it over. No ticket is made for it unless the project's setting says so (Q31,
+// `prompt-tickets.ts`), or a member uses "Create ticket" on it later.
 
 export const createPromptTaskInputSchema = z.strictObject({
   projectId: projectIdSchema,
@@ -66,9 +69,14 @@ export type CreatePromptTaskDeps = Pick<Ports, "jobs" | "notices" | "audit" | "c
   readonly branchNameFor?: (taskId: TaskId, title: string, digits: number) => string;
   /** Milestone 9 (F-148): the message files' limits and which agents take images. */
   readonly files?: MessageFilesDeps;
+  /**
+   * F-097: whether the project's "Make a ticket for every prompt task" applies, as it does to a
+   * member's prompt (the default). The onboarding task, ostra's own, turns it off.
+   */
+  readonly ticketBySetting?: boolean;
 };
 
-export type CreatePromptTask = (deps: CreatePromptTaskDeps, input: CreatePromptTaskInput) => Promise<CreatePromptTaskResult>;
+export type CreatePromptTask =(deps: CreatePromptTaskDeps, input: CreatePromptTaskInput) => Promise<CreatePromptTaskResult>;
 
 const refuse = (error: Exclude<CreatePromptTaskResult, { readonly ok: true }>["error"], message: string): CreatePromptTaskResult => ({
   ok: false,
@@ -126,6 +134,18 @@ export const createPromptTask: CreatePromptTask = async (deps, input) => {
     },
   );
   if (started.ok) {
+    // F-097 (Q31): with the project's "Make a ticket for every prompt task" on, a code task's ticket
+    // is written now, in the start's transaction, as "Create ticket" writes one. A refine task makes
+    // its ticket from its draft instead (F-099), so it gets none here.
+    const bySetting = (deps.ticketBySetting ?? true) && (input.kind ?? "code") === "code";
+    const board = bySetting ? await promptTicketBoardInTx(tx, organizationId, projectIdSchema.parse(project.id)) : null;
+    if (board !== null) {
+      const made = await createTicketForTask({ tx, scope, jobs: deps.jobs, notices: deps.notices, audit: deps.audit, clock: deps.clock }, { taskId: started.taskId, boardId: board });
+      if (!made.ok) {
+        // The board was found attached and active in this transaction, and the task was just made from a prompt.
+        throw new Error(`createPromptTask: the project's ticket for the prompt task was refused (${made.error})`);
+      }
+    }
     return { ok: true, taskId: started.taskId, sessionId: started.sessionId, branchName: started.branchName };
   }
   switch (started.error) {

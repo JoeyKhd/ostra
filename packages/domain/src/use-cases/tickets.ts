@@ -202,8 +202,11 @@ export type CreateTicketForTaskResult = UseCaseResult<
   "not-found" | "forbidden" | "already-has-ticket" | "not-a-prompt-task"
 >;
 
-/** Writes a `create` ticket write; `ticket.sync` makes the ticket and links the task to it. */
-export type CreateTicketForTask = (deps: StartTicketTaskDeps, input: CreateTicketForTaskInput) => Promise<CreateTicketForTaskResult>;
+/**
+ * Writes a `create` ticket write; `ticket.sync` makes the ticket and links the task to it. The
+ * panel's address isn't needed here: `ticket.sync` links the task when it applies the write.
+ */
+export type CreateTicketForTask = (deps: Omit<StartTicketTaskDeps, "publicUrl">, input: CreateTicketForTaskInput) => Promise<CreateTicketForTaskResult>;
 
 export const retryTicketWritesInputSchema = z.strictObject({ taskId: taskIdSchema });
 export type RetryTicketWritesInput = z.infer<typeof retryTicketWritesInputSchema>;
