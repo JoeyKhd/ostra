@@ -11,7 +11,7 @@ import type { ApiHarness } from "../testing/index.ts";
 // F-086/c1: an organization admin creates a project with its repos (linked through the GitHub App),
 // its boards (from Linear, or none), one environment, a default agent profile per task kind, and
 // the runner pools it may use. The project's repos come in order from the App's installation; its
-// board is a Linear team attached as New project does once the project exists, or none. Against
+// boards are Linear teams, the first attached as New project does once the project exists, or none. Against
 // the fake GitHub and the fake Linear server through the real Linear adapter.
 
 const APP_ID = "5821077";
@@ -83,21 +83,30 @@ describe("F-086: creating a project", () => {
     await expectProjectBasics(projectId);
   });
 
-  it("F-086/c1: an organization admin creates a project with a Linear team as its board, attached as New project does once the project exists", async () => {
+  it("F-086/c1: an organization admin creates a project with Linear teams as its boards, the first attached as New project does once the project exists", async () => {
     await seedLinearConnection(harness);
     const saved = harness.fakes.tracker.adapter;
     harness.fakes.tracker.adapter = new LinearAdapter({ auth: { kind: "api-key", token: fake.adminApiKey }, apiUrl: fake.apiUrl });
     try {
       const admin = await harness.as(harness.fixture.a.admin);
+      const ops = fake.addTeam("OPZ", "Ops");
       // New project offers the organization's Linear teams before the project exists.
-      const team = (await admin.boards.teams())?.find((candidate) => candidate.key === fake.team.key);
-      if (team === undefined) throw new Error("the fake Linear's team isn't offered");
+      const offered = (await admin.boards.teams()) ?? [];
+      const team = offered.find((candidate) => candidate.key === fake.team.key);
+      const second = offered.find((candidate) => candidate.key === ops.key);
+      if (team === undefined || second === undefined) throw new Error("the fake Linear's teams aren't offered");
       const created = await admin.projects.create({ name: "With Linear", slug: "with-linear", access: "open", repo: repoInput("ostra-test/web"), moreRepos: [repoInput("ostra-test/api")] });
       const attached = await admin.boards.attach({ projectId: created.projectId, teamExternalId: team.externalId });
-      // The project's one board is the Linear team, with the mapping drafted from its statuses.
+      // A second team, from the project's Boards page: a project has several boards.
+      const alsoAttached = await admin.boards.attach({ projectId: created.projectId, teamExternalId: second.externalId });
+      // The project's boards are the Linear teams, each with the mapping drafted from its statuses.
       const boards = (await (await harness.as(harness.fixture.a.member)).boards.get({ projectId: created.projectId })).boards;
-      expect(boards.map((board) => [board.id, board.key])).toEqual([[attached.boardId, fake.team.key]]);
+      expect(boards.map((board) => [board.id, board.key])).toEqual([
+        [attached.boardId, fake.team.key],
+        [alsoAttached.boardId, ops.key],
+      ]);
       expect(attached.mapping.started).toBe(fake.states(fake.team.id).find((state) => state.type === "started")?.id);
+      expect(alsoAttached.mapping.started).toBe(fake.states(ops.id).find((state) => state.type === "started")?.id);
       expect((await admin.projects.get({ projectId: created.projectId })).repos.map((held) => held.fullName)).toEqual(["ostra-test/web", "ostra-test/api"]);
       await expectProjectBasics(created.projectId);
       // A member can't make a project, nor attach a board to one.
