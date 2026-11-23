@@ -22,13 +22,13 @@ The task's thread starts with **What the agent got**: the description, the attac
 | One file | 10 MiB | `OSTRA_TICKET_FILE_MAX_MIB`, at most 25 |
 | One read's files together | 50 MiB | `OSTRA_TICKET_FILES_TOTAL_MIB`, at most 200 |
 
-Files are taken in the order the ticket shows them: the description's, then each comment's, oldest first, then the attachments. A file past a limit is left out, never a failure. The prompt names it and why, and **What the agent got** says so, such as "3 left out, and the agent was told which", each with its reason: "over the 10 MB a file can be", "past the 20 attachments a ticket can give". Linear doesn't say a file's size before it downloads, so each download is held to what's left of the limits, and a file that goes past them is left out as it arrives.
+Files are taken in the order the ticket shows them: the description's, then each comment's, oldest first, then the attachments. Jira's inline images are media nodes in its ADF, and its other files are the issue's attachments; ostra reads both. A file past a limit is left out, never a failure. The prompt names it and why, and **What the agent got** says so, such as "3 left out, and the agent was told which", each with its reason: "over the 10 MB a file can be", "past the 20 attachments a ticket can give". Jira gives each attachment's size, so a file over a limit is left out before ostra fetches it. Linear doesn't say a file's size before it downloads, so each download is held to what's left of the limits, and a file that goes past them is left out as it arrives.
 
 Each read of the ticket, the start's and each one [below](#the-tickets-changes), keeps to these limits on its own.
 
 ## A file that didn't load
 
-A file the tracker fails to give is named the same way, and the task starts without it: "2 attachments didn't load from Linear", with what Linear answered. The task's driver presses **Retry**, while the task runs or waits for someone, to fetch the failed files again. What loads goes to the agent with a message of ostra's, "The files of the ticket OST-12 that failed to download before were fetched again: they come with this message." A file that fails again can be retried again. Reopening the task tries the failed files again too.
+A file the tracker fails to give is named the same way, and the task starts without it: "2 attachments didn't load from Jira", with what Jira answered. The task's driver presses **Retry**, while the task runs or waits for someone, to fetch the failed files again. What loads goes to the agent with a message of ostra's, "The files of the ticket OST-12 that failed to download before were fetched again: they come with this message." A file that fails again can be retried again. Reopening the task tries the failed files again too.
 
 ## The ticket's changes
 
@@ -45,7 +45,7 @@ In a task's Linear agent session, a member's follow-up comment that holds a file
 
 ## A tracker that doesn't give files
 
-Each tracker adapter declares which of a ticket's files it reads: all of them, images only, or none. Linear reads all of them. A task from a tracker that reads none starts from the ticket's text alone. Its prompt says "ostra doesn't fetch this tracker's files: you have the ticket's text only.", and **What the agent got** says the ticket's files weren't fetched because the tracker doesn't offer them. For adapter authors, this is the `ticketFiles` capability ([The adapter guide](/docs/contributing/adapters#the-tracker-kind-a-tickets-files)).
+Each tracker adapter declares which of a ticket's files it reads: all of them, images only, or none. Linear and Jira read all of them. A task from a tracker that reads none starts from the ticket's text alone. Its prompt says "ostra doesn't fetch this tracker's files: you have the ticket's text only.", and **What the agent got** says the ticket's files weren't fetched because the tracker doesn't offer them. For adapter authors, this is the `ticketFiles` capability ([The adapter guide](/docs/contributing/adapters#the-tracker-kind-a-tickets-files)).
 
 ## The ticket template
 

@@ -17,7 +17,7 @@ A file's name, its content and its text never reach a log line, a shell command,
 
 ## A ticket's files
 
-Core fetches a ticket's files through the tracker's adapter, with the connection's credential. The credential goes only to the tracker's own file host, `https://uploads.linear.app` for Linear, and no redirect is followed, so a link in a ticket can't send the token anywhere else. A download is held to its limit and stops there. A link attachment is given to the agent as its title and URL, and ostra never opens it. The credential never reaches the box: the runner gets each file from core, as a blob.
+Core fetches a ticket's files through the tracker's adapter, with the connection's credential. The credential goes only to the tracker's own file host, `https://uploads.linear.app` for Linear and `api.atlassian.com` or the site itself for Jira, and no redirect is followed, so a link in a ticket can't send the token anywhere else. A download is held to its limit and stops there. A link attachment is given to the agent as its title and URL, and ostra never opens it. The credential never reaches the box: the runner gets each file from core, as a blob.
 
 ## In the box
 

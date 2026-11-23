@@ -1,0 +1,79 @@
+---
+title: "Jira"
+description: "Connect a Jira Cloud site through a service account, a scoped API token and an admin webhook."
+---
+
+With a Jira Cloud site connected, a ticket becomes a task, and ostra keeps the ticket's status in step by walking the workflow's own transitions, writes one comment on it, links the pull request back as a remote link, and hands the agent every file the ticket holds ([A ticket's files](/docs/using-ostra/ticket-files)). ostra signs in as a service account the client owns, so it writes as a bot and never holds a member's token. The token stays on your server in the secret store and never reaches an agent.
+
+You need to be an admin of the Jira site. Connecting takes three steps, on Organization › Trackers, **Connect a tracker**, **Continue with Jira**. Each step checks what it can before it moves on.
+
+## 1. The site
+
+Type the site: `globex`, `globex.atlassian.net` or the address in the browser's bar while you're in Jira. **Find the site** reads the site's public tenant info for its cloud ID, and the connection is named `Globex Jira` (an admin can rename it later).
+
+A Jira Data Center or Server address is refused, naming what it is: ostra connects to Jira Cloud only. A site another connection of the organization already holds is refused too, naming that connection, with **Open it** to its page.
+
+## 2. The service account and its token
+
+In `admin.atlassian.com › Directory › Service accounts`, create a service account for ostra and give it access to the Jira projects it should see. Then create a **scoped API token** for it, with these four scopes:
+
+| Scope | What ostra needs it for |
+|---|---|
+| `read:jira-work` | Tickets, comments and transitions |
+| `write:jira-work` | The status, the comment and the remote link |
+| `read:jira-user` | People, by account ID |
+| `read:workflow:jira` | The status mapping's check of each transition |
+
+Paste the service account's **email**, the token and its **expiry date** (Jira's API doesn't return the date, so ostra takes the one the admin was given), then **Check the token**. ostra reads back, with that token and nothing else stored:
+
+- **Who it is:** a service account, not a person's account. A person's token is refused, so ostra writes as a bot and drops the echoes of its own changes.
+- **Which projects it sees:** a token that sees none is refused.
+- **Which permissions it holds there:** browse, create, edit, transition and comment. A project missing one is named, with the permission to grant; the token still saves, with a warning.
+- **Whether it reads the projects' workflows:** without `read:workflow:jira` the token saves with a warning, and the status mapping can't warn about a missing transition in advance. ostra still finds one per ticket when it moves it.
+
+**Save and continue** saves the token to the secret store, where it's never shown again. The date is kept with it: 14 days before it, the connection, its page and Home say **Token expires** and the organization's admins get one needs-you item. On the day, the connection fails and its boards pause; Jira answering `401` with a saved token fails it at once. **Replace** saves a new token after the same read-back.
+
+## 3. The admin webhook
+
+In Jira, open `Settings › System › WebHooks` and press **Create a WebHook**. Paste these:
+
+- **URL:** `https://<your core address>/webhooks/jira/<connection id>`, shown on the page and copied with its button. Use the address Jira can reach: `OSTRA_CORE_PUBLIC_URL`.
+- **Secret:** one ostra makes (32 random bytes). The page shows it until the first delivery arrives; after that only **Rotate the secret** shows a new one, and the delivery that follows signs with it. The old secret's deliveries are then refused and counted.
+- **Events:** the six that matter here, `Issue created`, `Issue updated`, `Issue deleted`, `Comment created`, `Comment updated` and `Comment deleted`.
+- **Exclude body:** leave it **unticked**. ostra needs the body.
+- **JQL (optional):** a query that narrows what Jira sends, such as `project in (PROJ, SHOP)`. Each board's own rules still decide what starts a task; the JQL only narrows the deliveries.
+
+Change any ticket afterwards to send the first delivery: the first one signed with the secret connects the connection, and the page shows **Just connected**. A delivery with a signature that doesn't match turns the wait row red with **Make a new secret**.
+
+### Polling, without a public address
+
+An install without a public https address gets no webhook. Step 3 then shows **Events: polling** and **Finish**: ostra asks Jira for changes every 60 seconds (`OSTRA_TRACKER_POLL_SECONDS`) instead, and a ticket's change reaches ostra up to a minute late. `https://<site>.atlassian.net/_edge/tenant_info`, the site's own tenant info, is read at step 1 either way.
+
+To switch to webhooks later, set `OSTRA_CORE_PUBLIC_URL` to a public https address and restart core; a new Jira connection then asks for the webhook.
+
+## The status mapping
+
+A Jira board is one project. Its mapping gives each of ostra's steps a **target status**: the status a ticket should be in for `Open`, `Started`, `In review` and `Done`. ostra drafts the mapping from the project's workflow, and draws each step as `by <transition>, from <statuses>`.
+
+ostra never writes a status. It reads the ticket's available transitions and takes the one whose target is the mapped status, or the shortest route of at most three transitions through the workflow, skipping done and cancelled statuses. The task's ticket shows which transitions each move used, as **On Jira** rows.
+
+Two cases need a person:
+
+- **A status no transition reaches.** A ticket in a status the workflow gives no way out of stays where it is, and ostra's comment says so, naming the status and the step.
+- **A status no transition leaves towards In review.** The mapping warns about it when it's saved.
+
+**Done is moved by** chooses who moves the ticket at the end: **ostra**, which performs the transition when the last pull request merges, or **Jira automation**, which leaves it to a rule the site already runs. On a board set to Jira automation, ostra doesn't move the ticket and the board says a rule must.
+
+## What Jira doesn't do here
+
+- **No agent mode.** Agent mode is Linear's, gated on each connection's adapter. A Jira connection's page says `Agent mode – not in Jira`, and its tickets start tasks from the Inbox, an intake rule, a schedule or a prompt, as a Linear board without agent mode does.
+- **No Jira Data Center or Server.** Not planned: ostra connects to Jira Cloud only, and step 1 says so for a Data Center address.
+- **No Connect apps, Forge apps or OAuth 3LO.** ostra holds one service account's token, not a member's (ADR 0047).
+- **No Atlassian's Rovo agent connector.** Nothing of the kind is planned.
+- **Jira's Development Information API** (`/rest/devinfo`) is later, if Jira's GitHub integration isn't enough: the key in the branch and the PR's title link the PR, and ostra adds remote links.
+
+## Service accounts, and Atlassian Guard
+
+Whether service accounts need a paid plan is unverified (S-10): Atlassian's docs name Atlassian Guard Standard or Enterprise, and also list a free tier of five. If they do here, the fallback is a **dedicated bot user** with a scoped token, created for ostra (ADR 0047). It's still not a member's personal token, the three steps stay the same, and the bot user may cost a seat.
+
+Whether Atlassian's rule against collecting API tokens covers a self-hosted tool is unverified too (S-9). The token is the customer's own service account's, on the customer's own server, and ostra collects no member's token.

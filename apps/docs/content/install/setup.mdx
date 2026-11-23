@@ -4,7 +4,7 @@ description: "Add a model provider and the GitHub App, in the checklist's order.
 summary: "Sign in as demo, choose a password, then add a model provider and the GitHub App, in the checklist's order."
 ---
 
-After `docker compose up`, everything else happens in the panel. Home shows **Set up ostra**, a checklist with one row per step and how many are done. Each row's button opens the screen it needs, and the next open step's button is the highlighted one. Each row also links to its part of these docs (**Docs**), which follow the docs address the server is set to (`OSTRA_DOCS_URL`). Members who aren't admins see the checklist too, and can start the first task once an admin has done the rest. Once every step but Linear is done, the checklist is gone for good. If no runner is online later, Home says so at the top instead: new tasks wait in the queue until one connects.
+After `docker compose up`, everything else happens in the panel. Home shows **Set up ostra**, a checklist with one row per step and how many are done. Each row's button opens the screen it needs, and the next open step's button is the highlighted one. Each row also links to its part of these docs (**Docs**), which follow the docs address the server is set to (`OSTRA_DOCS_URL`). Members who aren't admins see the checklist too, and can start the first task once an admin has done the rest. Once every step but the tracker is done, the checklist is gone for good. If no runner is online later, Home says so at the top instead: new tasks wait in the queue until one connects.
 
 ## 1. Create the first admin
 
@@ -35,9 +35,9 @@ Then **Install on GitHub**, on the organization that holds your repos, for all r
 
 An install without a public address gets an App with no webhook. ostra then checks GitHub every 5 minutes (`OSTRA_RECONCILE_MINUTES`) for what the webhook would have sent: pull request merges, closes and reopens, new comments, reviews and line comments, so `@ostra` on a pull request and "changes requested" still reach the task, within 5 minutes instead of seconds. One thing needs the webhook: a comment edited after it was posted, since only the webhook says who edited it. For changes in seconds, set `OSTRA_CORE_PUBLIC_URL` to a public https address, then give the App its webhook in its settings on GitHub.
 
-## 4. Connect Linear, or skip it
+## 4. Connect a tracker, or skip it
 
-Optional. **Skip for now** sets it aside, and tasks start from prompts until you connect it; the row keeps a **Connect Linear** link. Connecting it takes a few minutes of its own: [Linear (optional)](/docs/install/linear).
+Optional. **Connect a tracker** picks Linear or Jira, and each client can bring its own workspace or site: [Trackers](/docs/install/trackers). **Skip for now** sets it aside, and tasks start from prompts until you connect one; the row keeps a **Connect a tracker** link. Connecting a tracker takes a few minutes of its own: [Jira](/docs/install/jira) or [Linear](/docs/install/linear).
 
 ## 5. Create a project
 
@@ -57,4 +57,4 @@ To add more: a server joins a pool with a join token ([Pools and join tokens](/d
 
 **New task**: pick the project, type a prompt, and start it. The task's page shows the agent's work as it happens. You can steer it with a message, answer its questions and approve what its rules hold back. When its checks pass, it pushes its branch and opens a pull request for each repo it changed, linked from the task.
 
-The checklist's last row ticks, and Home shows your projects, what needs you, and the runners. Linear doesn't hold setup back: once every other row is done, the checklist goes, whether Linear is connected, skipped or neither. Connect it later from Organization › Linear.
+The checklist's last row ticks, and Home shows your projects, what needs you, and the runners. The tracker doesn't hold setup back: once every other row is done, the checklist goes, whether a tracker is connected, skipped or neither. Connect one later from Organization › Trackers.

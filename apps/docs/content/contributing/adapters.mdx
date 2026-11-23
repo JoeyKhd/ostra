@@ -12,7 +12,7 @@ The base classes, the contract suites and the shared plumbing are in `@ostra/ada
 
 | Kind | Base class | Contract suite | Shipped adapters |
 |---|---|---|---|
-| Tracker | `TrackerAdapter` | `defineTrackerContractSuite` | Linear |
+| Tracker | `TrackerAdapter` | `defineTrackerContractSuite` | Linear, Jira |
 | Code host | `CodeHostAdapter` | `defineCodeHostContractSuite` | GitHub |
 | Agent | `AgentAdapter` | `runAgentSuite` | OpenCode |
 | Executor | `ExecutorAdapter` | `defineExecutorContractSuite` | `docker`, `host` |
@@ -173,7 +173,7 @@ The agent suite's question case runs when the fixture gives `questions` probes: 
 
 Each kind has one contract suite, in `@ostra/adapter-sdk/testing`, and every adapter's tests call it. A suite takes a name and a `create` function that builds the adapter and the fakes or fixtures it runs against, once per suite, with an optional `dispose`. Every suite starts with the cases all kinds share: a kebab-case name, the right kind, every capability declared with its type, and a healthy check. Then come the kind's own cases.
 
-The suites run against fakes in CI: a fake Linear, a fake GitHub for reviews and checks, a scripted ACP agent, stub model servers, an in-memory email server. Beside them, an adapter keeps live cases against the vendor itself, skipped when the vendor's credentials aren't in the environment.
+The suites run against fakes in CI: a fake Linear, a fake Jira (in memory, and over HTTP), a fake GitHub for reviews and checks, a scripted ACP agent, stub model servers, an in-memory email server. Beside them, an adapter keeps live cases against the vendor itself, skipped when the vendor's credentials aren't in the environment.
 
 Where a case depends on a capability, the suite reads your declaration and checks the path ostra takes without it, such as an `unsupported` answer. So declare what the adapter really does, and never edit a suite to pass it.
 

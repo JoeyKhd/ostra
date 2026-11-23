@@ -7,7 +7,7 @@ summary: "3000 for the panel, 8787 for core. Runners and boxes connect out, and 
 | Port | Process | Who connects | Setting |
 |---|---|---|---|
 | `3000` | The panel (`apps/web`) | Browsers | `OSTRA_WEB_PORT` |
-| `8787` | Core (`apps/core`) | Runners, box sidecars, and the GitHub and Linear webhooks | `OSTRA_CORE_PORT` |
+| `8787` | Core (`apps/core`) | Runners, box sidecars, and the GitHub, Linear and Jira webhooks | `OSTRA_CORE_PORT` |
 
 The compose file publishes both. A runner opens no port: it connects out to core.
 
@@ -17,7 +17,7 @@ Port `3000` serves the panel, the setup checklist and the device-code page runne
 
 ## Core
 
-Port `8787` serves the runner protocol under `/runner/v1/`, the webhooks, and the tunnel `ostra preview` opens. Runners, and each `docker` box's sidecar, reach it at `OSTRA_CORE_PUBLIC_URL` (`http://localhost:8787` by default), or `--box-server-url` when a box reaches it at another address. Webhooks from GitHub and Linear need it reachable from the internet; without that, ostra polls Linear (`OSTRA_TRACKER_POLL_SECONDS`) and checks GitHub on a schedule (`OSTRA_RECONCILE_MINUTES`): pull request states, comments, reviews and reopens.
+Port `8787` serves the runner protocol under `/runner/v1/`, the webhooks, and the tunnel `ostra preview` opens. Runners, and each `docker` box's sidecar, reach it at `OSTRA_CORE_PUBLIC_URL` (`http://localhost:8787` by default), or `--box-server-url` when a box reaches it at another address. Webhooks from GitHub and each tracker connection need it reachable from the internet: `/webhooks/github/<id>`, `/webhooks/linear/<id>` and `/webhooks/jira/<id>`. Without that, ostra polls each tracker connection (`OSTRA_TRACKER_POLL_SECONDS`) and checks GitHub on a schedule (`OSTRA_RECONCILE_MINUTES`): pull request states, comments, reviews and reopens.
 
 With `OSTRA_PREVIEW_DOMAIN` set, core also answers every host under the preview domain, on this same port, with its preview proxy and nothing else. The proxy in front of core routes them here ([The preview domain](/docs/install/preview-domain)).
 

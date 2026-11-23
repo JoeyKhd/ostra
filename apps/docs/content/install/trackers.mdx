@@ -1,0 +1,62 @@
+---
+title: "Trackers"
+description: "Connect each client's Linear workspace or Jira site, so its tickets become tasks."
+---
+
+A tracker connection is one tracker account the organization holds: one Linear workspace, or one Jira Cloud site, with its own credential and its own webhook. Organization › Trackers lists them. Tickets from a connected tracker become tasks, ostra keeps each ticket's status in step, writes one comment on it and links the pull request back. Trackers are optional: without one, tasks start from prompts.
+
+Each connection's credentials stay on your server in the secret store and never reach an agent. ostra reads a ticket's files with the connection's own credential and hands the agent the files ([A ticket's files](/docs/using-ostra/ticket-files)).
+
+## Several connections, one per client
+
+An organization holds any number of connections, of either kind. Each client can bring its own Linear workspace or Jira site, the way each project brings its own model keys.
+
+- **One connection is one site or workspace.** A second connection to the same Linear workspace or Jira site is refused, naming the connection that already holds it. Two clients that share a tracker share one connection, with a board for each of their projects.
+- **Nothing is shared between them.** Each connection keeps its own token, webhook secret, polling cursor and cached tickets. A client's tickets only ever move through its own connection: Globex's `PROJ-12` never passes through Acme's.
+- **Each has a name.** ostra fills it in from the kind and the site (`Globex Jira`, `Acme Linear`), and an admin can rename it. Boards, the Inbox and the task's ticket call the connection by that name.
+
+## What each kind does here
+
+The page draws a connection's own declaration, never marketing: the adapter says what it can do, and ostra takes the path it declares.
+
+| Feature | Linear | Jira Cloud |
+|---|---|---|
+| Moving a ticket | Sets its status directly | Walks the workflow's own transitions |
+| Boards | A team, mapped by status type | A project, mapped to target statuses |
+| Sub-issues | Sub-issues | Sub-tasks |
+| Agent mode | Yes, per connection | No |
+| The PR's magic word | Yes | No: Jira links the PR by the key in its branch and title |
+| Ticket text | Markdown | ADF, converted both ways |
+| A ticket's files | All of them | All of them |
+| The events' filter | None | Optional JQL on the admin webhook |
+| Change events | Webhooks, or polling | Webhooks, or polling |
+
+## Webhooks or polling
+
+With a public https address in `OSTRA_CORE_PUBLIC_URL`, the tracker sends each change to ostra as it happens, to `/webhooks/jira/<id>` for a Jira connection or `/webhooks/linear/<id>` for a Linear one. Without one, the tracker gets no webhook: ostra asks it for changes every 60 seconds (`OSTRA_TRACKER_POLL_SECONDS`). Either way a webhook that's missed is caught by a regular check, so nothing is lost. Each connection has its own mode.
+
+The address is the server's (`OSTRA_CORE_PUBLIC_URL`), and each connection's page says which mode it uses.
+
+## Boards from any connection
+
+A project's **Boards** attach a Linear team, a Jira project, or several of each, from any active connection. A board's mapping says which of ostra's steps (`Open`, `Started`, `In review`, `Done`) is which status, and its tickets, its polling cursor and its Inbox are its own. The Inbox shows the open tickets of every board a project attached.
+
+A board whose connection is pending, failed or disconnected is **paused**: it stays attached, its tickets and tasks stay readable, and nothing moves on the tracker until the connection is back.
+
+## Who sees what
+
+Organization admins connect, rename, check, rotate and disconnect connections. Members see the list, each connection's kind, name, site, state and boards, and a connection's page without its webhook URL, secret or token details. A project's members see the connection's kind and name on its boards and tickets.
+
+## Disconnecting, and connecting again
+
+**Disconnect** stops the connection's webhook handling and polling, deletes its secrets, ends Linear's agent sessions and sets it revoked. Its boards stay attached but paused, so a client's mapping and tickets survive a token rotation or a re-setup. ostra can't delete Jira's admin webhook for you: that takes a Jira admin's own credentials. Deliveries to a revoked connection's URL are answered `410 Gone` and stored nowhere.
+
+Connecting the same site or workspace again resumes them: once the new connection is active, the old connection's paused boards and their tickets move to it, each board keeping its mapping and its polling cursor. A board the new connection can't see stays paused, and its pause line says why.
+
+## Trello and Notion
+
+They appear in the picker as **Coming soon**, with no form and no link, until their adapters ship. Trello comes next after this milestone, once someone asks for it; Notion waits behind a spike on its property mapping and webhook verification.
+
+## Connect one
+
+**Connect a tracker** on Organization › Trackers, then pick the kind. [Jira](/docs/install/jira) walks through its three steps; [Linear](/docs/install/linear) through its app, its values and its consent. On the setup checklist, step 4 is the same choice, and **Skip for now** sets every tracker aside: tasks start from prompts until you connect one.

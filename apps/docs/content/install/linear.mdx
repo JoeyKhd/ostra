@@ -3,11 +3,11 @@ title: "Linear (optional)"
 description: "Connect a Linear workspace, so its tickets become tasks."
 ---
 
-With Linear connected, a ticket becomes a task, and ostra keeps the ticket's status in step, writes one comment on it, and links the pull request back. The organization uses its own Linear app, whose tokens stay on your server in the secret store and never reach an agent. ostra fetches a ticket's files with them from Linear's own file host, and hands the agent the files ([A ticket's files](/docs/using-ostra/ticket-files)). You need to be an admin of the Linear workspace.
+With a Linear connection, a ticket becomes a task, and ostra keeps the ticket's status in step, writes one comment on it, and links the pull request back. Each connection is one Linear workspace, through its own Linear app, with its own token and webhook; an organization can hold several ([Trackers](/docs/install/trackers)). The app's tokens stay on your server in the secret store and never reach an agent. ostra fetches a ticket's files with them from Linear's own file host, and hands the agent the files ([A ticket's files](/docs/using-ostra/ticket-files)). You need to be an admin of the Linear workspace and of the organization.
 
 ## 1. Create the app in Linear
 
-Organization › Linear, then **Create the app in Linear**. ostra fills in the app's name, its callback and its webhook; you press Create in Linear.
+Organization › Trackers, **Connect a tracker**, Linear, then **Create the app in Linear**. ostra fills in the app's name, its callback and its webhook; you press Create in Linear.
 
 ## 2. Paste the app's values
 
@@ -15,16 +15,20 @@ From the app's page in Linear: the **Client ID**, the **Client secret** and the 
 
 ## 3. Authorize
 
-**Authorize in Linear.** Linear asks you to install the app on the workspace, then sends you back to ostra, and the connection shows **Connected**.
+**Authorize in Linear.** Linear asks you to install the app on the workspace, then sends you back to ostra, and the connection shows **Connected**. A workspace another connection of the organization already holds is refused at this point, naming that connection.
 
 ## Webhooks or polling
 
-With a public https address in `OSTRA_CORE_PUBLIC_URL`, Linear sends each change to ostra as it happens. Without one, the app gets no webhook, and ostra asks Linear for changes every 60 seconds (`OSTRA_TRACKER_POLL_SECONDS`). Either way a webhook that's missed is caught by a regular check, so nothing is lost.
+With a public https address in `OSTRA_CORE_PUBLIC_URL`, Linear sends each change to ostra as it happens, to `/webhooks/linear/<id>`. Without one, the app gets no webhook, and ostra asks Linear for changes every 60 seconds (`OSTRA_TRACKER_POLL_SECONDS`). Either way a webhook that's missed is caught by a regular check, so nothing is lost.
 
 ## Choose the teams
 
-A project's **Boards** attach Linear teams to it. Its intake rules say which tickets start a task by themselves; any other ticket waits in the Inbox, where a member starts it.
+A project's **Boards** attach Linear teams to it. Its intake rules say which tickets start a task by themselves; any other ticket waits in the Inbox, where a member starts it. Attaching a team of a pending or failed connection pauses the board.
+
+## Agent mode is Linear's
+
+On a Linear connection, agent mode hands a delegation from Linear to ostra and shows the task's progress there as an agent session. It's Linear-only: a Jira connection declares no agent sessions, and its page says so ([Jira](/docs/install/jira)). Each connection turns agent mode on or off for itself.
 
 ## Skip it for now
 
-On the setup checklist, **Skip for now** sets Linear aside. Tasks start from prompts until you connect it, and the row keeps a **Connect Linear** link.
+On the setup checklist, **Skip for now** sets every tracker aside. Tasks start from prompts until you connect one, and the row keeps a **Connect a tracker** link.

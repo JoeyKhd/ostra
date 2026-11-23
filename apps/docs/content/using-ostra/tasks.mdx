@@ -1,7 +1,7 @@
 ---
 title: "Tasks"
 description: "A ticket or a prompt becomes a task, worked on its own branch."
-summary: "Create a project, type a prompt or pick a Linear ticket, read its thread, and review the pull request the agent opens."
+summary: "Create a project, type a prompt or pick a ticket from Linear or Jira, read its thread, and review the pull request the agent opens."
 ---
 
 A task is ostra's unit of work in one project. It starts from a ticket or from a prompt, runs an agent on its own branch, and opens one pull request for each repo it changes. It lives on after that: any member can [reopen](/docs/using-ostra/reopening) it, any number of times.
@@ -9,8 +9,8 @@ A task is ostra's unit of work in one project. It starts from a ticket or from a
 ## Start a task
 
 - **From a prompt:** press **New task** in a project, type what you want, and start it. Paste, drop or pick any files to go with it: see [Attaching files](/docs/using-ostra/files).
-- **From a ticket:** pick it in the project's **Inbox**, the open tickets of the project's boards. The agent gets the ticket's title, description, comments and labels, its parent and linked tickets, through the project's ticket template, and every file the ticket holds: see [A ticket's files](/docs/using-ostra/ticket-files).
-- **From Linear:** on an install Linear can reach, hand the ticket to ostra in Linear, and its progress shows there as an agent session.
+- **From a ticket:** pick it in the project's **Inbox**, the open tickets of the project's boards, from Linear or Jira. The agent gets the ticket's title, description, comments and labels, its parent and linked tickets, through the project's ticket template, and every file the ticket holds: see [A ticket's files](/docs/using-ostra/ticket-files).
+- **From Linear's agent mode:** on a Linear connection with agent mode on, hand the ticket to ostra in Linear, and its progress shows there as an agent session. Agent mode is Linear's ([Trackers](/docs/install/trackers)); a Jira ticket starts a task from the Inbox, a rule, a schedule or a prompt.
 - **By an [automation](/docs/using-ostra/automations):** an intake rule or a schedule starts it.
 
 Each task has a [kind](/docs/using-ostra/task-kinds) and an [agent profile](/docs/agents-and-models/agent-profiles). It waits in the queue until a runner in one of the project's pools, or your own personal runner, has room.
@@ -21,7 +21,7 @@ The task page reads like a conversation: what people said, what the agent said, 
 
 | What | Where it is |
 |---|---|
-| A member's message | A right-aligned bubble, with the member's name and the time over it. What came from GitHub or Linear is a bubble too, outlined. |
+| A member's message | A right-aligned bubble, with the member's name and the time over it. What came from GitHub or the tracker is a bubble too, outlined. |
 | The agent's text | Plain prose, the column's full width, with no avatar and no header |
 | The agent's steps | One quiet line per run of steps, which opens in place |
 | The step it's on, while a turn runs | The live step, rewritten in place |
@@ -31,7 +31,7 @@ The task page reads like a conversation: what people said, what the agent said, 
 
 A ticket task's thread starts with **What the agent got**, drawn as a bubble: the ticket's key and where it came from, its title, description, attachments and comments, and **Show it all**: see [A ticket's files](/docs/using-ostra/ticket-files).
 
-What ostra sends by itself, and what came from GitHub or Linear, keeps the same bubble with no fill and a thin edge, and a name over it: `ostra · automatic`, `{login} on GitHub`, `from a comment on OST-12`. Inside it, a quoted diff comment, PR comment or check has its own left line, so it never passes for something a person typed here.
+What ostra sends by itself, and what came from GitHub or the tracker, keeps the same bubble with no fill and a thin edge, and a name over it: `ostra · automatic`, `{login} on GitHub`, `from a comment on OST-12`. Inside it, a quoted diff comment, PR comment or check has its own left line, so it never passes for something a person typed here.
 
 One member drives the task at a time; everyone else watches, and anyone can **Take over**. See [Steering](/docs/using-ostra/steering).
 

@@ -1,12 +1,16 @@
 {
   "title": "Install",
   "icon": "download",
-  "description": "Docker Compose, the first sign-in, setup, Helm, the preview domain, upgrading, from source.",
+  "description": "Docker Compose, the first sign-in, setup, trackers, Helm, the preview domain, upgrading, from source.",
   "pages": [
     "docker-compose",
     "first-sign-in",
     "setup",
+    "---Trackers---",
+    "trackers",
+    "jira",
     "linear",
+    "---",
     "helm",
     "preview-domain",
     "upgrading",

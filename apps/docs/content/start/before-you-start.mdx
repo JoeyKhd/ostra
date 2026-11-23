@@ -20,6 +20,6 @@ ostra opens pull requests through a GitHub App, as the App's own bot, with the m
 
 Any provider with an API base URL and a bearer token: a hosted API, a gateway, or a model server on your own network. ostra detects whether the endpoint speaks the OpenAI-compatible or the Anthropic Messages format, lists its models and tests the connection. The token goes to the secret store and never reaches an agent.
 
-## Linear is optional
+## A tracker is optional
 
-With a Linear workspace, tickets become tasks and ostra keeps their status in step. Without one, tasks start from prompts. You can [connect it](/docs/install/linear) at any time, so skip it for the first run.
+With a tracker, tickets become tasks and ostra keeps their status in step. Linear and Jira Cloud both work, one connection per client's workspace or site ([Trackers](/docs/install/trackers)). Without one, tasks start from prompts. You can connect one at any time, so skip it for the first run. Jira needs an admin of its site and takes a service account, a scoped API token and an admin webhook, so it's a few minutes of its own: [Jira](/docs/install/jira).
