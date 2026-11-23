@@ -38,3 +38,5 @@ The docs describe the thread as it is built, in the panel's words (ticket 04's),
 - **Screenshots:** the docs site holds none of the panel, so there was no screenshot of the old thread to replace.
 - **For later tickets:** nothing here changes code. Ticket 19 sets F-151's ledger status and runs the demo; the pages describe what tickets 10 to 17 built as it is on `main`.
 
+
+- 2026-11-23, core: docs build and link check pass; committed locally as `4367e1c1` (`📝 document reading a task's thread`). Rebased onto `origin/main` after this note.
