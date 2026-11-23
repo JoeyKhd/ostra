@@ -137,7 +137,7 @@ export const FilesColumn = ({
     });
   };
   return (
-  <nav aria-label={t("changes.files")} className="h-full min-h-0 overflow-y-auto pr-2">
+  <nav aria-label={t("changes.files")} className="h-full max-h-[220px] min-h-0 overflow-y-auto pr-2 md:max-h-[calc(100dvh-54px)]">
     {repos.map((repo, index) => {
       const files = repo.state.kind === "ready" ? repo.state.files : [];
       const names = shortNames(files.map((file) => file.path));
@@ -400,14 +400,16 @@ export const ChangesBody = ({ load, comments, canComment, update, review, onSave
     return <p className="grid min-h-[240px] flex-1 place-items-center text-center text-sm text-muted">{t("changes.nothingPushed")}</p>;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-changes>
+    // `h-full`: the tab's box is a block, so the two columns fill the height under the tabs only
+    // through it; where that height isn't set (the page scrolls), each column caps its own.
+    <div className="flex h-full min-h-0 flex-1 flex-col" data-changes>
       {hideBehind ? null : (
         <div className="mt-3">
           <BehindLine repos={repos} lastPushAt={load.lastPushAt} update={update} />
         </div>
       )}
       <div className="mt-3 flex min-h-[320px] flex-1 flex-col gap-3 md:flex-row md:gap-0">
-        <div className="max-h-[220px] shrink-0 md:max-h-none md:w-[220px]">
+        <div className="shrink-0 md:w-[220px]">
           <FilesColumn
             tree={hideBehind}
             repos={repos}

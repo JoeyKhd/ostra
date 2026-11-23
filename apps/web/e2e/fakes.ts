@@ -86,25 +86,44 @@ export const startFakes = async (): Promise<E2eFakes> => {
           "README.md": "# test1\n",
         },
         // Milestone 3's ticket 46 (F-027, F-072): a task branch's two heads against main, two commits behind.
-        compares: [e2eChangesHeads.first, e2eChangesHeads.second].map((head, i) => ({
-          base: "main",
-          head,
-          aheadBy: i + 1,
-          behindBy: 2,
-          mergeBase: "b".repeat(40),
-          files: [
-            {
-              path: "src/calc.ts",
-              previousPath: "src/calculator.ts",
-              status: "renamed",
-              additions: 1,
-              deletions: 1,
-              patch: ["@@ -1,3 +1,3 @@", " export const add = (a: number, b: number): number => a + b;", '-export const name = "calculator";', '+export const name = "calc";', " export const version = 1;"].join("\n"),
-            },
-            { path: "assets/logo.png", status: "added", additions: 0, deletions: 0 },
-            { path: "README.md", status: "modified", additions: 2, deletions: 0, patch: ["@@ -1 +1,3 @@", " # test1", "+", i === 0 ? "+A calculator." : "+A small calculator, with a name."].join("\n") },
-          ],
-        })),
+        compares: [
+          ...[e2eChangesHeads.first, e2eChangesHeads.second].map((head, i) => ({
+            base: "main",
+            head,
+            aheadBy: i + 1,
+            behindBy: 2,
+            mergeBase: "b".repeat(40),
+            files: [
+              {
+                path: "src/calc.ts",
+                previousPath: "src/calculator.ts",
+                status: "renamed",
+                additions: 1,
+                deletions: 1,
+                patch: ["@@ -1,3 +1,3 @@", " export const add = (a: number, b: number): number => a + b;", '-export const name = "calculator";', '+export const name = "calc";', " export const version = 1;"].join("\n"),
+              },
+              { path: "assets/logo.png", status: "added", additions: 0, deletions: 0 },
+              { path: "README.md", status: "modified", additions: 2, deletions: 0, patch: ["@@ -1 +1,3 @@", " # test1", "+", i === 0 ? "+A calculator." : "+A small calculator, with a name."].join("\n") },
+            ],
+          })),
+          // A diff taller than its box: one added 300-line file.
+          {
+            base: "main",
+            head: e2eChangesHeads.long,
+            aheadBy: 1,
+            behindBy: 0,
+            mergeBase: "b".repeat(40),
+            files: [
+              {
+                path: "src/table.ts",
+                status: "added",
+                additions: 300,
+                deletions: 0,
+                patch: ["@@ -0,0 +1,300 @@", ...Array.from({ length: 300 }, (_, n) => `+export const row${String(n + 1)} = ${String(n + 1)};`)].join("\n"),
+              },
+            ],
+          },
+        ],
       },
       // F-098 (ticket 39): a second repo of the same installation, for a project with several repos.
       { id: 4_003, owner: e2eRepo.owner, name: "test2", defaultBranch: "main", branches: ["main"], files: { "README.md": "# test2\n" } },

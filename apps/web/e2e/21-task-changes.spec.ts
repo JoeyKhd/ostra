@@ -25,8 +25,8 @@ const seeder = async (input: Record<string, string>): Promise<unknown> => {
   return JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}");
 };
 
-/** A task with its branch pushed, in a project on test1 made through New project (once per run). */
-const seedTask = async (page: Page): Promise<z.infer<typeof seededSchema>> => {
+/** A task with its branch pushed at one of the fake's heads, in a project on test1 made through New project (once per run). */
+const seedTask = async (page: Page, head: "first" | "long" = "first"): Promise<z.infer<typeof seededSchema>> => {
   if (projectId === null) {
     await ensureGitHub(page);
     await page.goto("/projects/new");
@@ -36,8 +36,16 @@ const seedTask = async (page: Page): Promise<z.infer<typeof seededSchema>> => {
     await page.waitForURL(/\/projects\/[^/]+\/environment/);
     projectId = new URL(page.url()).pathname.split("/")[2] ?? "";
   }
-  return seededSchema.parse(await seeder({ action: "seed", projectId }));
+  return seededSchema.parse(await seeder({ action: "seed", projectId, head }));
 };
+
+/** How far the diff has scrolled, and every box around it up to the page itself. */
+const scrolled = (page: Page): Promise<{ readonly diff: number; readonly page: number }> =>
+  page.getByRole("grid", { name: "The diff" }).evaluate((grid) => {
+    let around = 0;
+    for (let box = grid.parentElement; box !== null; box = box.parentElement) around += box.scrollTop;
+    return { diff: grid.scrollTop, page: around };
+  });
 
 const intents = async (taskId: string): Promise<readonly string[]> => z.object({ intents: z.array(z.string()) }).parse(await seeder({ action: "messages", taskId })).intents;
 
@@ -63,7 +71,7 @@ test("F-027/c1: the Changes tab draws the branch's diff against its base from th
   await expect(page.locator("[data-file]", { hasText: "assets/logo.png" })).toBeVisible();
   await expect(page.getByText("Binary file, not shown").first()).toBeVisible();
   await expect(page.locator("[role='row']", { hasText: "A calculator." })).toBeVisible();
-  await expect(page.getByText(task.repo, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(task.repo, { exact: true }).filter({ visible: true }).first()).toBeVisible();
   await expectNoHorizontalScroll(page);
 });
 
@@ -114,4 +122,43 @@ test("F-070/c1: a branch behind its base shows Update branch, which sends the ag
   await expect(behind).toContainText(/asked .+ to merge it/, { timeout: 10_000 });
   await expect(behind.getByRole("button", { name: "Update branch" })).toHaveCount(0);
   expect(await intents(task.taskId)).toEqual(["message", "update-branch"]);
+});
+
+// The maintainer, 2026-11-23: the wheel did nothing over the diff. Its box grew to every row's
+// height, so it never scrolled, drew every row, and its `overscroll-contain` kept the wheel from the page.
+test("the wheel over a long diff scrolls it, drawing its rows as they come", async ({ page }) => {
+  await signIn(page);
+  const task = await seedTask(page, "long");
+  await page.goto(`/tasks/${task.taskId}?tab=changes`);
+  const grid = page.getByRole("grid", { name: "The diff" });
+  await expect(grid.locator("[role='row']", { hasText: "row1 = 1;" })).toBeVisible({ timeout: 30_000 });
+
+  // The box holds about a screenful of the 300 lines, never all of them.
+  expect(await grid.locator("[data-index]").count()).toBeLessThan(120);
+  await grid.locator("[role='row']", { hasText: "row2 = 2;" }).hover();
+  const before = await scrolled(page);
+  await page.mouse.wheel(0, 400);
+  await expect.poll(async () => (await scrolled(page)).diff).toBeGreaterThan(before.diff);
+
+  // On down to the last line, drawn once it scrolls in.
+  for (let i = 0; i < 16; i++) await page.mouse.wheel(0, 600);
+  await expect(grid.locator("[role='row']", { hasText: "row300 = 300;" })).toBeInViewport();
+});
+
+test("the wheel over a diff shorter than its box scrolls the page", async ({ page }) => {
+  // A short window, so the page has somewhere to scroll.
+  await page.setViewportSize({ width: page.viewportSize()?.width ?? 1440, height: 480 });
+  await signIn(page);
+  const task = await seedTask(page);
+  await page.goto(`/tasks/${task.taskId}?tab=changes`);
+  const calc = page.locator("[data-file]", { hasText: "src/calc.ts" });
+  await expect(calc).toBeVisible({ timeout: 30_000 });
+  // Folded, the first file leaves the diff a few rows, well inside its 320px box.
+  await calc.click();
+  await expect(calc).toHaveAttribute("aria-expanded", "false");
+  await calc.hover();
+  const before = await scrolled(page);
+  for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 200);
+  await expect.poll(async () => (await scrolled(page)).page).toBeGreaterThan(before.page);
+  expect((await scrolled(page)).diff).toBe(0);
 });

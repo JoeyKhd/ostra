@@ -461,9 +461,13 @@ export const DiffView = ({ rows, canComment, actions, scrollTo, onTopFile, initi
       aria-rowcount={rows.length}
       data-headers={headerIndexes.length}
       onKeyDown={onKeyDown}
-      className="h-full min-h-0 overflow-y-auto overscroll-contain"
+      // Its own scroll box, at most a screen under the top bar where the page scrolls around it, so
+      // the list stays virtual; at either end the wheel goes on to the page.
+      className="h-full max-h-[calc(100dvh-54px)] min-h-0 overflow-y-auto"
     >
-      <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+      {/* `overflow-clip`: on a touch screen the last line's 44px comment button would hang below the
+          list and make a short diff scroll; `clip`, not `hidden`, keeps the file header sticky. */}
+      <div className="relative w-full overflow-clip" style={{ height: virtualizer.getTotalSize() }}>
         {items.map((item) => {
           const row = rows[item.index];
           if (row === undefined) return null;

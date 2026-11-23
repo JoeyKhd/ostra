@@ -70,9 +70,10 @@ export const e2eRepo = { owner: "fake-org", name: "test1" } as const;
 /**
  * Milestone 3's ticket 46 (F-027, F-072): two heads of a task's branch on `test1` that the fake
  * GitHub compares with `main` (`fakes.ts`), for the Changes tab: the first with a rename, a binary
- * file and an edit; the second changes the edit's last line and nothing else.
+ * file and an edit; the second changes the edit's last line and nothing else. A third, `long`, adds
+ * one 300-line file: a diff taller than its box.
  */
-export const e2eChangesHeads = { first: "c4a9e2b7d1f0835a6e2c9b4d7f1a0e3c5b8d2f61", second: "d7b1f4c8e2a0937b5f3d1c6e8a2b4f0d9c7e3a52" } as const;
+export const e2eChangesHeads = { first: "c4a9e2b7d1f0835a6e2c9b4d7f1a0e3c5b8d2f61", second: "d7b1f4c8e2a0937b5f3d1c6e8a2b4f0d9c7e3a52", long: "e1c5a8f2b7d4093c6a1e8f5b2d7c4a0e9f3b6d18" } as const;
 /**
  * F-136: the fake GitHub's second account, `client-b`, with the App installed and waiting to be
  * linked, and one repo. A third, `client-c`, owns a second App (`stack.ts`), whose key the stack writes out.

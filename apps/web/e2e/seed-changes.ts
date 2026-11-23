@@ -6,7 +6,7 @@
 // only. Run as `node e2e/seed-changes.ts '<json>'`; prints one JSON line.
 //
 // Actions:
-// - `seed`: the task (`projectId` given).
+// - `seed`: the task (`projectId` given), at the scripted head `head` (`first` by default, or `long`).
 // - `new-head`: the agent pushed again: the task repo's head moves to the second scripted head (`taskId`).
 // - `messages`: the intents of the task's member messages, oldest first, and no text (`taskId`).
 
@@ -20,7 +20,7 @@ import { e2eChangesHeads } from "./settings.ts";
 
 const args = z
   .discriminatedUnion("action", [
-    z.strictObject({ action: z.literal("seed"), databaseUrl: z.string(), projectId: z.string() }),
+    z.strictObject({ action: z.literal("seed"), databaseUrl: z.string(), projectId: z.string(), head: z.enum(["first", "long"]).default("first") }),
     z.strictObject({ action: z.literal("new-head"), databaseUrl: z.string(), taskId: z.string() }),
     z.strictObject({ action: z.literal("messages"), databaseUrl: z.string(), taskId: z.string() }),
   ])
@@ -61,7 +61,7 @@ switch (args.action) {
         branchName: task.branchName,
         baseBranch: "main",
         state: "branch_pushed",
-        headSha: e2eChangesHeads.first,
+        headSha: e2eChangesHeads[args.head],
         ahead: true,
         behindBy: 2,
         behindCheckedAt: new Date(),
