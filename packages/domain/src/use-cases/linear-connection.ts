@@ -10,7 +10,7 @@ import { z } from "zod";
 import { requireOrganizationAdmin } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
-import { linearAppIdPlaceholders } from "../tickets/contracts.ts";
+import { isPendingAppId, linearAppIdPlaceholders } from "../tickets/contracts.ts";
 import type { UseCaseResult } from "./common.ts";
 
 // F-005: an organization connects its own Linear app (spec section 3, step 1; section 11, items 2
@@ -354,7 +354,7 @@ export const createLinearAuthorizeUrl = async (
   if (connection === null || connection.state === "revoked") {
     return { ok: false, error: "not-found", message: "No such Linear connection" };
   }
-  if (connection.clientSecretSecretRef === null || connection.appId === linearAppIdPlaceholders.pending || connection.appId === linearAppIdPlaceholders.apiKey) {
+  if (connection.clientSecretSecretRef === null || isPendingAppId(connection.appId) || connection.appId === linearAppIdPlaceholders.apiKey) {
     return { ok: false, error: "not-ready", message: "Save the app's client ID and secret first" };
   }
 

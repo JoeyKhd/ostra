@@ -53,11 +53,13 @@ const noneSchema = commonSchema.extend({
   lastRevoked: z.object({ workspaceKey: z.string().nullable(), at: z.number().int() }).nullable(),
 });
 
+const linearCredentialKinds = ["app_oauth", "app_client_credentials", "api_key"] as const;
+
 const connectionSchema = commonSchema.extend({
   state: z.enum(["pending", "active", "failed"]),
   connectionId: connectionIdSchema,
   /** `api_key` is the development seed: the page labels it `Personal API key (development)`. */
-  credentialKind: z.enum(["app_oauth", "app_client_credentials", "api_key"]),
+  credentialKind: z.enum(linearCredentialKinds),
   workspaceKey: z.string().nullable(),
   workspaceName: z.string().nullable(),
   appUserName: z.string().nullable(),
@@ -119,6 +121,12 @@ const connectionSchema = commonSchema.extend({
 
 export const linearStatusSchema = z.discriminatedUnion("state", [noneSchema, connectionSchema]);
 export type LinearStatusView = z.infer<typeof linearStatusSchema>;
+
+/**
+ * A Linear row's credential. Jira's service account token (milestone 11) is never a Linear row's:
+ * a row without a credential, or with one that isn't Linear's, reads as the app's OAuth.
+ */
+const linearCredentialOf = (kind: string | null): (typeof linearCredentialKinds)[number] => linearCredentialKinds.find((known) => known === kind) ?? "app_oauth";
 
 /** The mode an address would give, from the kit's pre-check: webhooks need an address Linear can reach. */
 const modeOf = (deps: ApiDeps) => {
@@ -195,7 +203,7 @@ const statusOf = async (deps: ApiDeps, organizationId: OrganizationId): Promise<
     // Polling says why: the address as it stands now. A connection that polls by choice has none.
     modeReason: row.webhookMode === "polling" ? mode.reason : null,
     ...common,
-    credentialKind: row.credentialKind ?? "app_oauth",
+    credentialKind: linearCredentialOf(row.credentialKind),
     workspaceKey: row.externalWorkspaceKey,
     workspaceName: row.externalWorkspaceName,
     appUserName: row.appUserName,

@@ -69,6 +69,9 @@ export const createConnectionTrackers = (deps: ConnectionTrackersDeps): Connecti
             },
             input.context,
           );
+        case "jira":
+          // Milestone 11's ticket 07 builds Jira's adapter here; until then a Jira row has none.
+          return null;
         case "github":
           return null;
         default:

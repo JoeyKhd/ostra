@@ -36,6 +36,7 @@ import type { DbEnum } from "@ostra/db";
 import { z } from "zod";
 
 import { taskProcedure, unwrap } from "../trpc/init.ts";
+import { taskPageTrackerOf } from "./task-extras.ts";
 
 // Milestone 9 (F-148, F-149, F-150, ADR 0070, ticket 14): a task's files and its ticket's context,
 // for any member who can open the task (`taskProcedure("read")`), and the driver's two presses.
@@ -198,8 +199,11 @@ export type TicketContextView = {
   /** `fetching` while the start's read hasn't happened; `read` once it has. */
   readonly state: "fetching" | "read";
   readonly ticketKey: string;
-  /** The tracker's kind, as `tasks.get`'s ticket says it (`linear`); `null` when the ticket is gone. */
-  readonly tracker: DbEnum.ConnectionKind | null;
+  /**
+   * The tracker's kind, as `tasks.get`'s ticket says it (`linear`); `null` when the ticket is gone,
+   * or is one the task page doesn't name yet (`taskPageTrackerOf`: Jira's, until milestone 11's ticket 16).
+   */
+  readonly tracker: ReturnType<typeof taskPageTrackerOf>;
   /** The ticket's limits (`OSTRA_TICKET_FILES_*`), for the left-out notes. */
   readonly limits: FileLimits;
   /** The rendered first prompt, for "Show the prompt": text, never HTML. `null` until rendered. */
@@ -375,7 +379,7 @@ export const ticketContextProcedure = taskProcedure("read", taskInput).query(asy
   return {
     state: rounds.length === 0 && task.prompt === null ? "fetching" : "read",
     ticketKey: ticket?.key ?? task.ticketKey ?? "",
-    tracker: ticket?.connection.kind ?? null,
+    tracker: ticket === null ? null : taskPageTrackerOf(ticket.connection.kind),
     limits: ticketFileLimits(settings.files),
     prompt: task.prompt,
     model,

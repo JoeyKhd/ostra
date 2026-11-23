@@ -93,6 +93,13 @@ export const retentionDaysInEffect = (setting: RetentionSetting | null, envDays:
  */
 export const linearAppIdPlaceholders = { pending: "pending", apiKey: "api-key" } as const;
 
+/**
+ * Whether a tracker row's `appId` is still the pending placeholder: `pending:<connectionId>` since
+ * milestone 11's migration, so several rows can be pending at once, or `pending` as written before
+ * it (ADR 0071). Both forms read as pending.
+ */
+export const isPendingAppId = (appId: string): boolean => appId === linearAppIdPlaceholders.pending || appId.startsWith(`${linearAppIdPlaceholders.pending}:`);
+
 export type ConnectionCredential = DbEnum.ConnectionCredential;
 
 /** The panel's label for the development seed's credential. */

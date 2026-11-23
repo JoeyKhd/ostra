@@ -1,3 +1,4 @@
+import type { DbEnum } from "@ostra/db";
 import { modelTokenPrices } from "@ostra/domain";
 import { blobIdSchema, boxSizeNameSchema, sessionIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 import type { SessionLimit } from "@ostra/protocol";
@@ -10,6 +11,25 @@ import type { ApiDeps } from "../trpc/context.ts";
 // sessions with where each came from, its box, its spend against the cap, and the limit that
 // stopped it. Everything is read from the task's own rows in its organization; a ticket's text is
 // untrusted and returned as data.
+
+/**
+ * The trackers the task page names (`task-ticket.tsx`'s `trackerName`, `from Linear`): Linear's and
+ * GitHub's. Milestone 11's migration added the `jira` kind (its ticket 01); the task page draws
+ * Jira's name and mark from its ticket 16 on (`ticket-chips.md`), and until then answers no
+ * tracker for a Jira ticket, so it shows no ticket card rather than another tracker's words. No
+ * Jira ticket is cached before milestone 11's ticket 07 brings them in.
+ */
+export const taskPageTrackerOf = (kind: DbEnum.ConnectionKind): "linear" | "github" | null => {
+  switch (kind) {
+    case "linear":
+    case "github":
+      return kind;
+    case "jira":
+      return null;
+    default:
+      return kind satisfies never;
+  }
+};
 
 type TaskRow = {
   readonly id: string;
@@ -161,9 +181,10 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
   /** At the cap (`spendCapReached`): a reopen is refused until the cap is raised. */
   const spend = { ...spendBase, reached: spendBase.spent >= spendBase.cap };
 
+  const tracker = ticket === null ? null : taskPageTrackerOf(ticket.connection.kind);
   return {
     ticket:
-      ticket === null
+      ticket === null || tracker === null
         ? null
         : {
             id: ticketIdSchema.parse(ticket.id),
@@ -173,7 +194,7 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
             status: { name: ticket.statusName, category: ticket.statusCategory },
             /** The board the ticket came in on, and its tracker's kind (task-ticket.md: `Board`, `from Linear`). */
             board: ticket.board.name,
-            tracker: ticket.connection.kind,
+            tracker,
             /** The strip's label chips and priority (task-ticket.md, "Ticket strip"); Linear's 1 urgent to 4 low. */
             labels: z.array(z.string()).catch([]).parse(ticket.labels),
             priority: ticket.priority,

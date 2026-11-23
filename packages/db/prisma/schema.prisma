@@ -349,9 +349,13 @@ model EmailSettings {
 model OrganizationSetting {
   organizationId          String       @id
   organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  /// Home's checklist: the Linear step was skipped for now (ticket 27), and by whom.
+  /// Home's checklist: the Linear step was skipped for now (ticket 27), and by whom. Milestone 11
+  /// still writes it beside `trackerSkippedAt`, until the release after it (ADR 0071).
   linearSkippedAt         DateTime?
   linearSkippedByMemberId String?
+  /// Home's checklist: the tracker step was skipped for now (F-076, F-152). The migration copied
+  /// it from `linearSkippedAt`.
+  trackerSkippedAt        DateTime?
   /// When every required step of Home's checklist was first done (F-076, 2026-11-21). From then on
   /// Home never shows the checklist again, even while no runner is online: it says so in a notice.
   setupCompletedAt        DateTime?
@@ -429,13 +433,14 @@ model ChangeNotice {
 // The organization
 // ===========================================================================
 
-/// The organization's own GitHub App or Linear app (Q102, F-005, F-006).
+/// The organization's own GitHub App, or one of its tracker connections: a Linear app or a Jira
+/// site's service account (Q102, F-005, F-006, F-008, F-152, ADR 0071).
 model Connection {
   id                     String         @id @default(uuid(7))
   organizationId         String
   organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   kind                   ConnectionKind
-  /// The App's ID on GitHub, or the app's client ID on Linear.
+  /// The App's ID on GitHub, the app's client ID on Linear, or the site's cloud ID on Jira.
   appId                  String
   slug                   String?
   /// The bot identity commits are authored by (F-078).
@@ -452,8 +457,9 @@ model Connection {
 
   // ---- milestone 2: the Linear app (F-005). Every column is nullable or has a default. ----
   /// GitHub rows are `active`. A Linear row starts `pending`, before the manifest link, so its
-  /// webhook URL can name it. Its `appId` is `pending` until the admin pastes the client ID, and
-  /// `api-key` on the development seed (the domain's `linearAppIdPlaceholders`).
+  /// webhook URL can name it. Its `appId` is `pending:<id>` (`pending` before milestone 11) until
+  /// the admin pastes the client ID, and `api-key` on the development seed (the domain's
+  /// `linearAppIdPlaceholders` and `isPendingAppId`).
   state                 ConnectionState       @default(active)
   /// `failed`: words and IDs only, never a token or a vendor's body.
   failedReason          String?
@@ -492,6 +498,30 @@ model Connection {
   scopes                String[]              @default([])
   /// When an admin turned on agent mode (the re-authorization with the agent scopes).
   agentModeAt           DateTime?
+  // ---- milestone 11: several tracker connections, and Jira (F-152, F-008, ADR 0071) ----
+  // A Jira row keeps the site's cloud ID in `appId` (`pending:<id>` before step 1) and
+  // `externalWorkspaceId`, the site's host in `externalWorkspaceKey`, its title in
+  // `externalWorkspaceName`, the service account in `appUserId` and `appUserName`, the scoped
+  // token in `accessTokenSecretRef` and the secret ostra made in `webhookSecretSecretRef`.
+  /// The name an admin gave the connection (`Globex Jira`, `Acme Linear`). The migration filled it
+  /// for every tracker row; the domain requires it for new ones. `null` on GitHub rows. No secret.
+  name                  String?
+  /// Jira: the service account's email, the user half of its token's Basic auth. Not a secret.
+  accountEmail          String?
+  /// Jira: the day the scoped token expires, as the admin gave it (Jira's API doesn't return it).
+  tokenExpiresOn        DateTime?             @db.Date
+  /// Jira: the token's last read-back, parsed by the domain's `trackerAccessCheckSchema`: per
+  /// project its key, ID, name and permissions, and whether workflows read. IDs and names only,
+  /// never the token or Jira's body.
+  accessCheck           Json?
+  accessCheckedAt       DateTime?
+  /// The first delivery with a valid signature: the webhook secret is shown until then.
+  firstDeliveryAt       DateTime?
+  /// The last delivery refused for its signature (step 3's red row). A time, no header or body.
+  badSignatureAt        DateTime?
+  /// A revoked connection's successor: the connection of the same site that took its paused
+  /// boards (ADR 0071). No foreign key, as `createdByMemberId`: connections are revoked, never deleted.
+  resumedIntoId         String?
 
   repos             Repo[]
   installations     CodeHostInstallation[]
@@ -503,8 +533,9 @@ model Connection {
 
   @@unique([organizationId, kind, appId])
   @@unique([id, organizationId])
-  /// One Linear connection per organization that isn't revoked (spec section 11, item 2).
-  @@unique([organizationId], where: raw("kind = 'linear' AND state <> 'revoked'"), map: "connection_one_linear_per_organization")
+  /// One tracker connection per site or workspace in an organization, among those not revoked
+  /// (ADR 0071). It replaced milestone 2's one Linear per organization.
+  @@unique([organizationId, kind, externalWorkspaceId], where: raw("kind <> 'github' AND state <> 'revoked' AND \"externalWorkspaceId\" IS NOT NULL"), map: "connection_one_site_per_organization")
   @@map("connection")
 }
 
@@ -1091,7 +1122,10 @@ model Board {
   tasks         Task[]
   agentSessions AgentSession[]
 
-  @@unique([projectId, externalId])
+  /// One board per team or project of a connection in a project: two connections' boards may share
+  /// an external ID (two Jira sites each have a project `10000`). It replaced `(projectId,
+  /// externalId)` in milestone 11 (ADR 0071).
+  @@unique([projectId, connectionId, externalId], map: "board_one_per_connection_board_per_project")
   @@unique([id, projectId])
   @@unique([organizationId, connectionId, externalId], where: raw("\"agentMode\""), map: "board_one_agent_mode_board_per_team")
   @@unique([projectId], where: raw("\"ticketsForPromptTasks\""), map: "board_one_prompt_ticket_board_per_project")
@@ -1189,6 +1223,10 @@ model TicketWrite {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   doneAt         DateTime?
+  // ---- milestone 11 (F-008) ----
+  /// A move's transitions, in order (`[{ id, name }]`), for the task's "On Jira" rows; `[]` for a
+  /// tracker that writes statuses directly, `null` before the move is done. IDs and names only.
+  via            Json?
 
   @@index([taskId])
   @@index([state, createdAt])
@@ -2818,6 +2856,7 @@ enum AuditActorKind {
 enum ConnectionKind {
   github
   linear
+  jira
 }
 
 enum ApiFormat {
@@ -3277,6 +3316,8 @@ enum ConnectionCredential {
   app_oauth
   app_client_credentials
   api_key
+  /// Jira: a service account's scoped API token (ADR 0047).
+  service_account_token
 }
 
 enum TicketStatusCategory {

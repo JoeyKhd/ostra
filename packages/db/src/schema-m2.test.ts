@@ -188,18 +188,8 @@ describe("one active code task per ticket per project", () => {
   });
 });
 
-describe("one Linear connection per organization", () => {
-  it("refuses a second Linear connection unless the first is revoked", async () => {
-    const organization = await test.db.organization.create({
-      data: { id: randomUUID(), name: "solo", slug: `solo-${randomUUID().slice(0, 8)}`, createdAt: new Date() },
-    });
-    const data = { organizationId: organization.id, kind: "linear" as const, state: "pending" as const, credentialKind: "app_oauth" as const };
-    const first = await test.db.connection.create({ data: { ...data, appId: "pending" } });
-    await expect(test.db.connection.create({ data: { ...data, appId: "client-2" } })).rejects.toThrow();
-    await test.db.connection.update({ where: { id: first.id }, data: { state: "revoked" } });
-    await test.db.connection.create({ data: { ...data, appId: "client-2" } });
-  });
-});
+// Milestone 2's one Linear connection per organization became one per workspace in milestone 11
+// (ADR 0071): `schema-m11.test.ts` holds its rule.
 
 describe("the new rows' mappers", () => {
   it("parse every new model's IDs into their branded types", async () => {
