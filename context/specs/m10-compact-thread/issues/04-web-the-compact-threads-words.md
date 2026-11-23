@@ -62,3 +62,10 @@ Every word milestone 10 adds or changes, in one commit, so the part tickets (09 
     - **16:** `footerFacts(meta, kind, t)` (each fact with its `tip`), `eventLogLinkWords(t)`, `tooltipRows(meta, kind, t)`, `ciRow`, `checksRow`.
     - **17:** the old keys stay, as the ticket says: milestone 1's `task.tool.*`, the top-level `doing.*`, `task.system.*`, `task.driverChanged` and the rest the new namespaces replace.
 - 2026-11-23, web: pushed to `main` as `20d2e10f` (`📝 add the compact thread's words`).
+- 2026-11-23, web (the review's fixes, `🐛 fix the compact thread's words`):
+  - **`reviewSettings.ciNote`** now reads `ostra counts each job and commit status GitHub reports on a pull request's head as a CI job, leaving out its own.` A check run is ostra's word (the glossary), so the c6 file test no longer lets `check run` through. **CI job**'s glossary entry names GitHub's "check run" only as its API's word.
+  - **The departures from the spec and the targets** are now in spec section 5.4's amendment of 2026-11-23, not only here: one/other pairs, no `›` in a key, `task.failure.*` and `task.notice.*`, the session's limit.
+  - **`subagents {tokens} tokens`** is Q347 in `context/open-questions.md`, and ticket 16 has a note that its footer is built without it.
+  - **`Rebuilt from the template · {reason}` is built after all.** `session.restored` has carried `fallbackReason` since minor 2, so `dividerWords` reads it (`task.divider.rebuiltBecause`) and drops the reason when an older runner gave none. Its test is `F-151/c1`.
+  - **The review screen's CI row** is `prCiRow` in `review-words.ts`, tested for `F-151/c6` (`Passed · 3 jobs`, a failure's failing jobs).
+  - **An edit the agent sent no counts for** shows no size, never `+0`. `stepDuration` rounds before it picks its unit (9.95 s is `10 s`, 59.6 s is `1 min`).

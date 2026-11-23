@@ -6,13 +6,14 @@ Blocked by: 08, 09
 Features: F-151
 Packages: `apps/web` (`src/task/thread/turn-numbers.tsx` with `RunFooter` and `TurnTime`, `src/components/tasks/task-properties.tsx`, `src/components/tasks/task-properties.test.tsx`), new `apps/web/e2e/27-thread-numbers.spec.ts`
 Spec: `../spec.md`, sections 5.2 and 5.5
-Targets: `context/brand/app-targets/m10-thread/parts.md` part 6 ("The footer"), part 9 and part 15 ("The panel's `Session` group"), `s2.md` (the tooltip, the panel), `s1.md`, `s3.md` and `s5.md` (each scene's Properties), `states-steps.md` (cells 5 and 6: subagents' tokens, the clamp)
+Targets: `context/brand/app-targets/m10-thread/parts.md` part 6 ("The footer"), part 9 and part 15 ("The panel's `Session` group"), `s2.md` (the tooltip, the panel), `s1.md`, `s3.md` and `s5.md` (each scene's Properties), `states-steps.md` (cells 5 and 6: subagents' tokens, which wait on Q347, and the clamp)
 
 ## What to build
 
 Built to the approved targets, at their sizes, in both themes. A turn's numbers live here and nowhere in the column (choice 1).
 
 - **`RunFooter`** (part 6), the opened run's last row: `footerFacts` mono `--faint`, each fact kept whole when it wraps, and at its right `Event log ›` to `?tab=events&seq={the turn's first seq}`; every run of a turn shows the same footer; a review or refine task shows no saved fact; the clamp's fact carries its sentence as a tooltip.
+  - *Note 2026-11-23 (ticket 04's review; spec section 5.4's amendment):* part 6's fifth fact, `subagents {tokens} tokens` (states-steps cell 5's `subagents 31.4k tokens`), waits on Q347. Nothing counts a subagent's tokens apart from its turn's, and `en.json` has no key for it. Until Q347 is settled, a turn with subagents shows the turn's tokens, its subagents' included, and cell 5's footer is compared without that fact. Cell 6, the clamp, is built as drawn.
 - **`TurnTime`** (part 9, choice 2): the turn's time on its first line, focusable, with a dotted underline on hover and focus; its tooltip (268px, `--raise`, above it, flipping below when there's no room) shows after 300 ms of hover and at once on focus, Escape closes it; `tooltipRows`' head and rows. On a phone it isn't a button and has no tooltip: the footer is the way in.
 - **The properties panel** (part 15), as each scene's table draws it: `Properties` (status, driver, agent, model, effort, runner; a review task's kind, `Reviews`, `Round`), `Usage` (tokens, reasoning, spend against the cap, time), `Code` (repo, branch, PR, and `Checks` and `CI` in their own words from ticket 04 and 08's jobs), `Session` (`Box` from `box`, `Saved work` from the last turn's `saved`, `Turns`), the plan and ticket groups as their milestones built them, `Attachments` (milestone 9's); a review task's `Result` (`Blocking`, `Nits`, `Open the review`) and no `Code` or `Session` saved work.
 - **The same numbers:** a turn's footer, its tooltip and `tasks.get`'s `usage.turns` for it agree; the panel's totals are the task's.

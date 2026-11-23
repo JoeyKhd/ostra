@@ -102,12 +102,18 @@ const counted = (tr: Translate, n: number, one: MessageKey, other: MessageKey, p
 /** As `counted`, with `two` for 2 (`searched the code twice`). */
 const countedTwice = (tr: Translate, n: number, one: MessageKey, two: MessageKey, other: MessageKey): string => tr(n === 1 ? one : n === 2 ? two : other, { n });
 
-/** A step's duration: `0.3 s`, `4.1 s`, `38 s`, `2 min 5 s`, `3 min`, `1 h 4 min`. */
+/**
+ * A step's duration: `0.3 s`, `4.1 s`, `38 s`, `2 min 5 s`, `3 min`, `1 h 4 min`. It rounds before
+ * it picks the unit, so 9.95 s reads `10 s` and 59.6 s `1 min`, never `10.0 s` or `60 s`.
+ */
 export const stepDuration = (ms: number, tr: Translate): string => {
-  if (ms < 60_000) return tr("units.secondsSpaced", { n: (ms / 1000).toFixed(ms < 10_000 ? 1 : 0) });
-  const minutes = Math.floor(ms / 60_000);
+  const tenths = Math.round(ms / 100);
+  if (tenths < 100) return tr("units.secondsSpaced", { n: (tenths / 10).toFixed(1) });
+  const total = Math.round(ms / 1000);
+  if (total < 60) return tr("units.secondsSpaced", { n: total });
+  const minutes = Math.floor(total / 60);
   if (minutes >= 60) return tr("units.hoursMinutes", { h: Math.floor(minutes / 60), m: minutes % 60 });
-  const seconds = Math.floor((ms % 60_000) / 1000);
+  const seconds = total % 60;
   return seconds === 0 ? tr("units.minutes", { n: minutes }) : tr("units.minutesSecondsSpaced", { m: minutes, s: seconds });
 };
 
@@ -336,8 +342,9 @@ export const stepWords = (step: RunStep, tr: Translate, nameOf: NameOf, options:
     case "read":
       return words(tr("task.step.read"), [code(step.paths.join(", "))], orSettled(running(step) ? [] : [seg(counted(tr, step.paths.length, "task.step.files.one", "task.step.files.other"), "faint")]), null);
     case "edit": {
+      // The fold gives 0 and 0 when the agent sent no counts: that edit shows no size, never `+0`.
       const size: Segment[] = [];
-      if (step.added > 0 || step.removed === 0) pushSegment(size, code(tr("task.step.added", { n: step.added }), "green"));
+      if (step.added > 0) pushSegment(size, code(tr("task.step.added", { n: step.added }), "green"));
       if (step.removed > 0) {
         if (size.length > 0) pushSegment(size, seg(" "));
         pushSegment(size, code(tr("task.step.removed", { n: step.removed }), "red"));
@@ -982,7 +989,8 @@ const restoredWords = (event: Restored, runner: string | null, tr: Translate): s
       case "resumed":
         return tr("task.divider.resumed");
       case "rebuilt":
-        return tr("task.divider.rebuilt");
+        // Minor 2's `fallbackReason`: why the restore fell back, in the runner's words (never content).
+        return event.fallbackReason === undefined ? tr("task.divider.rebuilt") : tr("task.divider.rebuiltBecause", { reason: event.fallbackReason });
       case undefined:
         return tr("task.divider.restoredHere");
       default:

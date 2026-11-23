@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q346). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q347). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -542,6 +542,10 @@ Ticket 19 of that spec asks the maintainer to look at the lead's calls; any the 
 | Q346 Is a `host` worktree kept between sessions an allowed difference? | ADR 0029 (amended, the fifth allowed difference), ADR 0039, F-096/c9, the maintainer's word ("yes to all", 2026-11-22): option (a). A `host` worktree stays, stopped, at its idle stop until its release, and a reopen on the runner that kept it resumes the agent's session in place, with its ignored files and no setup run again, for fast reopens on personal runners. `docker` and `kubernetes` restore from the archive on a fresh box since Q343, as `host` does for a reopen anywhere else. The docs' Executors page lists it |
 
 ## Open
+
+### Raised by milestone 10 (2026-11-23)
+
+**Q347 👤 Does a turn's footer count its subagents' tokens apart?** (F-151/c3, F-138, F-084, milestone 10's tickets 04 and 16; found by ticket 04's review, 2026-11-23). The approved targets draw `subagents 31.4k tokens` as the opened run's fifth footer fact (`brand/app-targets/m10-thread/parts.md` part 6, `states-steps.md` cell 5), and the spec's section 5.4 names its key. Nothing counts that number. No usage per subagent crosses ACP. The key proxy meters every call, but can't tell whose call it is. A turn's tokens already include its subagents' (`research/opencode-subagents.md`, findings 5 and 6, and section 4's item 4). *Options:* (a) leave the fact out: the footer's tokens are the turn's, subagents' included, and the subagents window shows no tokens, as today. (b) The runner tells a subagent's calls apart: every one opens with OpenCode's `You are a subagent spawned by another session.`, so the key proxy could match it in memory, without logging it, and report each subagent's tokens. That needs a protocol minor, an ADR and a contract test against the pinned OpenCode. *Recommendation:* (a) for milestone 10, since (b) rests on an inferred detail of OpenCode's prompt that an upgrade can change, and nothing at launch needs the split. Then (b) after v1, with its ADR. Until this is settled, ticket 16 builds the footer without the fact, and `en.json` has no key for it.
 
 ### Raised by milestone 5 (2026-11-20)
 

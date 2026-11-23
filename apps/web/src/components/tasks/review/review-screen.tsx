@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
-import { plural, t } from "@/lib/messages";
+import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import { safeHref } from "@/task/renderers";
 
@@ -26,7 +26,7 @@ import { ChangesTab } from "../task-changes/changes-tab";
 import { middleTruncate } from "../task-changes/task-changes";
 import type { DiffFindingView } from "../task-changes/diff-words";
 import { FindingBlock } from "./finding-block";
-import { aiReviewWords, ciWords, findingsSummary, reviewerStateWords, reviewRunningText, subStateWords, viewerReview } from "./review-words";
+import { aiReviewWords, ciWords, findingsSummary, prCiRow, reviewerStateWords, reviewRunningText, subStateWords, viewerReview } from "./review-words";
 import type { ReviewFinding, ReviewPr, ReviewScreen as Screen } from "./review-words";
 
 // The review screen (app-targets/m6/review-screen.md; F-102, F-100, F-111, ticket 35): a tab per
@@ -152,24 +152,15 @@ const ReviewerRows = ({ pr, meId }: { readonly pr: ReviewPr; readonly meId: stri
 
 const PrGroup = ({ pr, screen, driver }: { readonly pr: ReviewPr; readonly screen: Screen; readonly driver: string | null }) => {
   const href = pr.prUrl === null ? null : safeHref(pr.prUrl);
-  const failing = pr.ci?.checks.filter((check) => check.conclusion !== null && !["success", "neutral", "skipped"].includes(check.conclusion)) ?? [];
+  const ci = prCiRow(pr.ci);
   return (
     <PropGroup title={t("review.panel.thisPr")}>
       <PropRow label={t("review.panel.driver")}><span className="truncate">{driver ?? "–"}</span></PropRow>
       <PropRow label={t("review.panel.branch")}><span className="truncate font-mono text-sm" title={pr.branch}>{middleTruncate(pr.branch, 26)}</span></PropRow>
       <PropRow label={t("review.panel.head")}><span className="font-mono text-sm">{pr.headSha?.slice(0, 7) ?? "–"}</span></PropRow>
       <PropRow label={t("review.panel.ci")}>
-        {pr.ci === null ? (
-          <span className="text-faint">{t("review.ci.none")}</span>
-        ) : pr.ci.state === "passed" ? (
-          <><CheckIcon aria-hidden className="text-green" /><span>{plural(pr.ci.checks.length, "review.panel.ciPassed.one", "review.panel.ciPassed.other")}</span></>
-        ) : pr.ci.state === "failed" ? (
-          <><XIcon aria-hidden className="text-red" /><span className="truncate">{t("review.panel.ciFailed", { jobs: failing.map((check) => check.name).join(", ") })}</span></>
-        ) : pr.ci.state === "pending" ? (
-          <><LoaderCircleIcon aria-hidden className="animate-spin" /><span>{t("review.ci.running")}</span></>
-        ) : (
-          <span className="text-faint">{ciWords(pr.ci.state)}</span>
-        )}
+        {ci.mark === "passed" ? <CheckIcon aria-hidden className="text-green" /> : ci.mark === "failed" ? <XIcon aria-hidden className="text-red" /> : ci.mark === "running" ? <LoaderCircleIcon aria-hidden className="animate-spin" /> : null}
+        <span className={cn(ci.mark === "failed" && "truncate", ci.mark === "quiet" && "text-faint")}>{ci.words}</span>
       </PropRow>
       <PropRow label={t("review.panel.aiReview")}><span className="truncate" data-testid="review-ai-summary">{findingsSummary(screen.aiReview, pr.findings)}</span></PropRow>
       <PropRow label={t("review.panel.pr")}>

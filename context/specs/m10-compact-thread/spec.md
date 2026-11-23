@@ -211,6 +211,8 @@ Every string the targets name, in `apps/web/messages/en.json`, with ICU plurals,
 - `task.receipt.*`, `task.divider.*`, `task.needs.*` (`Something else…`, the pill's `Needs you · {what}`), `task.status.box.*` (`box idle, stops in {n} min`, `box stopped`, `box released`);
 - **changed strings:** the review screen's `Passed · {n} checks` → `Passed · {n} jobs`, the CI round's `CI failed: {n} checks` → `CI failed: {n} jobs`, milestone 6's stage words and Home's board sub-state where they count CI. Milestone 1's `task.tool.showOutput` and kin stay until ticket 17 removes what nothing reads.
 
+*Amended 2026-11-23 (ticket 04, as built and as its review fixed; its `## Comments` say why):* plurals are the panel's `one`/`other` key pairs, with `two` for `twice`, not ICU, since `t` fills `{name}` and nothing more. A link's `›` is parts.md part 6's `chevron-right` icon, which the part draws, so no key holds one (`output`, `hide output`, `Event log`, `Show the plan`). A failure's red line and a notice's quiet line have their own namespaces, `task.failure.*` and `task.notice.*`. A time limit reads `Stopped at the session's {n}-minute limit.`, not the target's `turn's`, since core's `session.max-duration` counts from the session's start. `Rebuilt from the template · {reason}` takes its reason from `session.restored`'s `fallbackReason` (minor 2), and reads `Rebuilt from the template` when the runner gave none. **`subagents {tokens} tokens` has no key:** nothing counts a subagent's tokens apart from its turn's, so the footer's fifth fact waits on Q347, and ticket 16 builds the footer without it.
+
 ### 5.5 The API (ticket 08)
 
 - **`questions.answer`** takes `other: string[]` (default `[]`) beside `answers`.

@@ -331,7 +331,7 @@ A command the environment names that ostra runs after every turn with changes, b
 _Avoid_: test, CI (for ostra's checks), job (a job is the code host's)
 
 **CI job**:
-One of the code host's own checks on a PR's head: a GitHub check run or commit status, which ostra reads after a push and never runs. The panel counts the code host's CI in jobs, never in checks: `CI on GitHub: running, 2 of 4 jobs done`, `Passed · 3 jobs`. A check is ostra's, in the box, before the push; a CI job is the code host's, on the PR, after it.
+One result the code host reports on a PR's head: a job or a commit status (GitHub's API calls a job a "check run"), which ostra reads after a push and never runs. The panel counts the code host's CI in jobs, never in checks: `CI on GitHub: running, 2 of 4 jobs done`, `Passed · 3 jobs`. A check is ostra's, in the box, before the push; a CI job is the code host's, on the PR, after it.
 _Avoid_: check, check run (each is ostra's), build
 
 **Environment proposal**:

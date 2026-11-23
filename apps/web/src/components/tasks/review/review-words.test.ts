@@ -1,7 +1,7 @@
 import { gitShaSchema, memberIdSchema, repoIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { aiReviewWords, capBody, capOf, findingStateWords, findingsSentWords, findingsSummary, reviewRunningText, stagesOf, viewerReview } from "./review-words";
+import { aiReviewWords, capBody, capOf, findingStateWords, findingsSentWords, findingsSummary, prCiRow, reviewRunningText, stagesOf, viewerReview } from "./review-words";
 
 // F-035, F-101, F-102 (ticket 35): the review loop's words, each on its own. The stage line marks a
 // stage done only when it happened in this pass, the round line's dot speaks to a reviewer still to
@@ -66,5 +66,19 @@ describe("the review loop's words (ticket 35)", () => {
     expect(capOf([{ kind: "findings", state: "capped", cappedReason: "automatic-turns" }])).toBe("turns");
     expect(capOf([{ kind: "ci", state: "started", cappedReason: null }])).toBeNull();
     expect(capBody("ci", { agent: "OpenCode", limits, failing: "test", blocking: 0 })).toBe("CI failed after 2 rounds, so ostra stopped sending it back to OpenCode. test still fails.");
+  });
+
+  it("F-151/c6: the review screen's CI row counts the code host's CI in jobs, and a failure names its failing jobs", () => {
+    const job = (name: string, conclusion: string | null) => ({ name, conclusion });
+    const passed = { state: "passed" as const, checks: [job("build", "success"), job("lint", "success"), job("e2e", "skipped")], completedAt: 1 };
+    expect(prCiRow(passed)).toEqual({ mark: "passed", words: "Passed · 3 jobs" });
+    expect(prCiRow({ ...passed, checks: [job("build", "success")] }).words).toBe("Passed · 1 job");
+    expect(prCiRow({ state: "failed", checks: [job("build", "success"), job("e2e", "failure"), job("lint", "timed_out"), job("docs", null)], completedAt: 1 })).toEqual({ mark: "failed", words: "Failed · e2e, lint" });
+    expect(prCiRow({ state: "pending", checks: [job("build", null)], completedAt: null })).toEqual({ mark: "running", words: "CI running" });
+    expect([prCiRow(null), prCiRow({ state: "none", checks: [], completedAt: null }), prCiRow({ state: "timed_out", checks: [], completedAt: null })]).toEqual([
+      { mark: "quiet", words: "No CI" },
+      { mark: "quiet", words: "No CI" },
+      { mark: "quiet", words: "CI timed out" },
+    ]);
   });
 });

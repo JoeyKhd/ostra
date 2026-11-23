@@ -12,7 +12,7 @@ import type { MemberId, TurnId } from "@ostra/protocol";
 import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 
-import { boxStatusWords, checksLine, checksRow, ciJobsWords, ciLine, ciRow, footerFacts, liveStepWords, resultWords, runLineWords, segmentsText, stepWords, tooltipRows } from "./words";
+import { boxStatusWords, checksLine, checksRow, ciJobsWords, ciLine, ciRow, dividerWords, footerFacts, liveStepWords, resultWords, runLineWords, segmentsText, stepDuration, stepWords, tooltipRows } from "./words";
 import type { HeadCi, Segment } from "./words";
 
 // Milestone 10, ticket 04 (F-151): the compact thread's words over ticket 03's items, from the
@@ -102,6 +102,14 @@ describe("an opened run's steps", () => {
     const link = stepWords(withPatch, t, nameOf, { open: false, now }).link;
     expect([link?.label, link?.name]).toEqual(["diff", "Show the diff of src/history/store.ts"]);
     expect(stepWords(withPatch, t, nameOf, { open: true, now }).link?.label).toBe("hide diff");
+  });
+
+  it("F-151/c3: an edit the agent sent no counts for shows no size, never +0, and a duration rounds before it picks its unit", () => {
+    const edit = stepsOfS4().find((step) => step.kind === "edit") ?? fail("an edit");
+    const sized = (added: number, removed: number): string => segmentsText(stepWords({ ...edit, added, removed }, t, nameOf, { open: false, now }).result);
+    expect([sized(0, 0), sized(0, 6), sized(48, 0)]).toEqual(["", "−6", "+48"]);
+    const durations = [300, 4_140, 9_949, 9_950, 38_000, 59_499, 59_600, 125_000, 180_000, 3_840_000];
+    expect(durations.map((ms) => stepDuration(ms, t))).toEqual(["0.3 s", "4.1 s", "9.9 s", "10 s", "38 s", "59 s", "1 min", "2 min 5 s", "3 min", "1 h 4 min"]);
   });
 
   it("F-151/c3: a command's link names its step, and reads hide while its output is open", () => {
@@ -233,8 +241,8 @@ describe("checks and CI", () => {
     };
     // A string speaks of CI when its words name it, or its key does (`ciPassed`, `fixCi`, `task.ci.*`).
     const speaksOfCi = ([key, text]: [string, string]): boolean => /\bCI\b/.test(text) || key.split(".").some((part) => /^ci(?:[A-Z]|$)|Ci(?:[A-Z]|$)/.test(part));
-    // Placeholders aren't words, and a "check run" is GitHub's name for one CI job.
-    const saysChecks = (text: string): boolean => /\bchecks?\b/i.test(text.replace(/\{\w+\}/g, "").replace(/\bcheck runs?\b/gi, ""));
+    // Placeholders aren't words; every other "check", GitHub's "check run" too, is.
+    const saysChecks = (text: string): boolean => /\bchecks?\b/i.test(text.replace(/\{\w+\}/g, ""));
     const all = strings(file, "");
     expect(all.filter(speaksOfCi).length).toBeGreaterThan(40);
     expect(all.filter(speaksOfCi).filter(([, text]) => saysChecks(text)).map(([key]) => key)).toEqual([]);
@@ -242,6 +250,27 @@ describe("checks and CI", () => {
     expect(t("review.panel.ciPassed.other", { n: 3 })).toBe("Passed · 3 jobs");
     expect(t("task.agentMessage.fixCi.other", { n: 2 })).toBe("CI failed: 2 jobs");
     expect(t("review.round.noFailing")).toBe("The failing CI jobs weren't recorded.");
+  });
+});
+
+describe("a divider between turns", () => {
+  const cell = stateCells.messages[5];
+  /** The restore's event, as the fold hands it to the thread. */
+  const restoreOf = (scene: Scene) =>
+    fold(scene).flatMap((message) => message.parts).flatMap((part) => (part.type === "data-system" && part.data.event.kind === "session.restored" ? [part.data.event] : []))[0] ?? fail(`a restore in ${scene.name}`);
+  const restoredText = (scene: Scene): string => dividerWords({ kind: "restored", event: restoreOf(scene), runner: "alex-desktop" }, t, { nameOf, agent: "OpenCode", now: cell.now }).text;
+
+  it("F-151/c1: how a session came back: restored on its runner, or rebuilt from the template with the runner's reason", () => {
+    expect(restoredText(cell)).toBe("Restored from the session archive on alex-desktop · unfinished work restored");
+    const rebuilt = (fallbackReason: string | null): Scene => ({
+      ...cell,
+      events: cell.events.map((stored): Scene["events"][number] =>
+        stored.event.kind === "session.restored" ? { ...stored, event: { ...stored.event, origin: "rebuilt", hiddenRef: "none", ...(fallbackReason === null ? {} : { fallbackReason }) } } : stored,
+      ),
+    });
+    expect(restoredText(rebuilt("the spec names no session archive"))).toBe("Rebuilt from the template · the spec names no session archive");
+    // A minor-1 runner gives no reason.
+    expect(restoredText(rebuilt(null))).toBe("Rebuilt from the template");
   });
 });
 

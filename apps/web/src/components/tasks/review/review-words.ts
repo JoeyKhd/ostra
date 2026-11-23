@@ -107,6 +107,35 @@ export const ciWords = (state: CiState | null): string | null => {
   }
 };
 
+/** The review screen's CI row: its mark and its words. `quiet` rows are `--faint`, with no mark. */
+export type PrCiRow = { readonly mark: "passed" | "failed" | "running" | "quiet"; readonly words: string };
+
+const passingConclusions: readonly string[] = ["success", "neutral", "skipped"];
+
+/**
+ * The PR group's CI row (F-102, F-151/c6): the code host's CI on the PR's head, counted in jobs
+ * (`Passed · 3 jobs`), a failure naming its failing jobs (`Failed · e2e, lint`).
+ */
+export const prCiRow = (ci: ReviewPr["ci"]): PrCiRow => {
+  if (ci === null) return { mark: "quiet", words: t("review.ci.none") };
+  switch (ci.state) {
+    case "passed":
+      return { mark: "passed", words: plural(ci.checks.length, "review.panel.ciPassed.one", "review.panel.ciPassed.other") };
+    case "failed": {
+      const failing = ci.checks.filter((job) => job.conclusion !== null && !passingConclusions.includes(job.conclusion));
+      return { mark: "failed", words: t("review.panel.ciFailed", { jobs: failing.map((job) => job.name).join(", ") }) };
+    }
+    case "pending":
+      return { mark: "running", words: t("review.ci.running") };
+    case "none":
+      return { mark: "quiet", words: t("review.ci.none") };
+    case "timed_out":
+      return { mark: "quiet", words: t("review.ci.timedOut") };
+    default:
+      return ci.state satisfies never;
+  }
+};
+
 /** The AI review's part of the round line: off, running, or the newest round's result. */
 export const aiReviewWords = (aiReview: boolean, runs: readonly Pick<ReviewRun, "round" | "state" | "blocking">[]): string | null => {
   if (!aiReview) return t("review.ai.off");
