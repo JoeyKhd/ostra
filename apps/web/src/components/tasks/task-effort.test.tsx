@@ -67,7 +67,7 @@ describe("the task's effort in the properties panel", () => {
   });
 
   it("F-137/c11: the Reasoning row sums the turns' reasoning tokens, or a dash", () => {
-    expect(renderToStaticMarkup(<ReasoningRow tokens={19_000} />)).toContain("19k tokens");
+    expect(renderToStaticMarkup(<ReasoningRow tokens={19_000} />)).toContain(">19k<");
     expect(renderToStaticMarkup(<ReasoningRow tokens={0} />)).toContain("—");
   });
 });

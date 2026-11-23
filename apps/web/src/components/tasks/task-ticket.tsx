@@ -39,7 +39,6 @@ const releaseReasonKey: Readonly<Record<string, MessageKey>> = {
   session_ended: "taskPage.box.reason.session_ended",
 };
 
-/** The box's state in words: `Idle · stops in 11 min`, `Released · the PRs closed`. */
 /** The tracker a ticket came from, by name (task-ticket.md: `CALC-174 · from Linear`). */
 export const trackerName = (kind: NonNullable<TaskDetail["ticket"]>["tracker"]): string => {
   switch (kind) {
@@ -52,44 +51,35 @@ export const trackerName = (kind: NonNullable<TaskDetail["ticket"]>["tracker"]):
   }
 };
 
-/** The Session row (task-reopen.md): how many sessions the task had, and how the newest began. */
-export const sessionText = (sessions: TaskDetail["sessions"]): string => {
-  const newest = sessions.at(-1);
-  const n = sessions.length;
-  if (newest === undefined || n === 1) return String(n);
-  switch (newest.origin) {
-    case "new":
-      return String(n);
-    case "resumed":
-      return t("taskPage.session.resumed", { n });
-    case "restored":
-      return t("taskPage.session.restored", { n });
-    case "rebuilt":
-      return t("taskPage.session.rebuilt", { n });
-    default:
-      return newest.origin satisfies never;
-  }
-};
-
-export const boxText = (box: Box, now: number): string => {
+/**
+ * The box's state and what follows it (milestone 10's Session group, parts.md part 15): `Idle` and
+ * `stops in 11 min`, `Released` and `the PRs closed`; `null` when nothing follows.
+ */
+export const boxParts = (box: Box, now: number): { readonly state: string; readonly detail: string | null } => {
   switch (box.state) {
     case "starting":
-      return t("taskPage.box.starting");
+      return { state: t("taskPage.box.starting"), detail: null };
     case "running":
-      return t("taskPage.box.running");
+      return { state: t("taskPage.box.running"), detail: null };
     case "idle":
-      return box.idleStopDueAt === null ? t("taskPage.box.idle") : t("taskPage.box.idleStops", { left: left(box.idleStopDueAt, now) });
+      return { state: t("taskPage.box.idle"), detail: box.idleStopDueAt === null ? null : t("taskPage.box.stopsIn", { left: left(box.idleStopDueAt, now) }) };
     case "stopped":
-      return t("taskPage.box.stopped");
+      return { state: t("taskPage.box.stopped"), detail: null };
     case "released": {
       const key = box.releaseReason === null ? undefined : releaseReasonKey[box.releaseReason];
-      return key === undefined ? t("taskPage.box.released") : t("taskPage.box.releasedWhy", { reason: t(key) });
+      return { state: t("taskPage.box.released"), detail: key === undefined ? null : t(key) };
     }
     case "failed":
-      return t("taskPage.box.failed");
+      return { state: t("taskPage.box.failed"), detail: null };
     default:
       return box.state satisfies never;
   }
+};
+
+/** The box's state in words: `Idle · stops in 11 min`, `Released · the PRs closed`. */
+export const boxText = (box: Box, now: number): string => {
+  const { state, detail } = boxParts(box, now);
+  return detail === null ? state : `${state} · ${detail}`;
 };
 
 /** The header's idle line: `Idle, the box stops in 11 min`, or nothing when the box isn't idle. */
@@ -111,7 +101,7 @@ export const SpendValue = ({ spend }: { readonly spend: Spend }) => {
   const [, rest = ""] = spendText(spend).split(spent);
   return (
     <>
-      {spent}
+      <span className="font-mono">{spent}</span>
       <span className="text-muted">{rest}</span>
     </>
   );

@@ -164,7 +164,7 @@ export const ReasoningRow = ({ tokens }: { readonly tokens: number }) => (
   <PropRow label={t("tasks.effort.reasoning")}>
     <Tooltip content={t("tasks.effort.reasoningTip")}>
       <span className="truncate font-mono text-ui" data-testid="task-reasoning" title={t("tasks.effort.reasoningTip")}>
-        {tokens === 0 ? "—" : t("tasks.effort.reasoningTokens", { n: formatTokens(tokens) })}
+        {tokens === 0 ? "—" : formatTokens(tokens)}
       </span>
     </Tooltip>
   </PropRow>

@@ -49,6 +49,7 @@ import type { TaskEffort } from "./task-effort";
 import { Properties } from "./task-properties";
 import { headingOf, openTabOf, reviewedOf, statusDoingOf, tabsOf } from "./task-heading";
 import type { TaskTab } from "./task-heading";
+import { panelTurnsOf } from "./task-properties-words";
 import { TaskStatusLine } from "./task-status-line";
 import { TaskTopBar } from "./task-top-bar";
 import type { SidePaneChoice } from "./task-top-bar";
@@ -141,6 +142,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const repos = task.data?.repos;
   const checkoutDirs = useMemo(() => (repos ?? []).map((repo) => repo.checkoutDir), [repos]);
   const ciOf = useCallback((repoId: string) => repos?.find((repo) => repo.repoId === repoId)?.ci ?? null, [repos]);
+  // Ticket 16: the panel's Session group, its turns and the newest saved work, numbered as the thread numbers them.
+  const panelTurns = useMemo(() => panelTurnsOf(log.state.events, usageTurns, view.turnRunning), [log.state.events, usageTurns, view.turnRunning]);
   const [stopping, setStopping] = useState(false);
   const now = useNow();
   const router = useRouter();
@@ -437,7 +440,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       context={data.source === "ticket" ? <TicketContextRows taskId={taskId} agent={agentName} /> : null}
       retry={{ run: () => { retrySync.mutate({ taskId }); }, pending: retrySync.isPending }}
       createTicket={
-        data.source === "prompt" && firstBoard !== undefined && !isRefine
+        // A review or refine task has no ticket of its own to create (the README's choice 10).
+        data.source === "prompt" && firstBoard !== undefined && data.kind === "code"
           ? { run: () => { createTicket.mutate({ taskId, boardId: firstBoard.id }); }, pending: createTicket.isPending, error: errorText(createTicket.error) }
           : null
       }
@@ -551,6 +555,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const properties = (
     <Properties
       task={data}
+      meId={me.data?.memberId ?? null}
       checks={checksPropertyOf(checksMarker.data)}
       tokens={view.tokens}
       reasoningTokens={view.reasoningTokens}
@@ -558,7 +563,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       now={now}
       takingOver={takeOver.isPending}
       onTakeOver={() => { takeOver.mutate({ taskId }); }}
-      ticket={<>{roundsGroup}{ticketGroups}{draftGroups}</>}
+      ticket={<>{ticketGroups}{draftGroups}</>}
+      rounds={roundsGroup}
+      turns={panelTurns}
       effort={
         <TaskEffortRow
           effort={effort}

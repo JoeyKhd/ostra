@@ -1,12 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { blobIdSchema, sessionIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { blobIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 
 import { t } from "@/lib/messages";
 import { formatSize, restoredDetail, savedDetail } from "@/task/marker-words";
 
-import { AgentGot, LimitBlock, RestoreConflict, TicketLine, TicketProperties, boxText, composerMode, idleHeader, reopenBlockedText, sessionText, SpendCapComposer, spendText, trackerName } from "./task-ticket";
+import { AgentGot, LimitBlock, RestoreConflict, TicketLine, TicketProperties, boxText, composerMode, idleHeader, reopenBlockedText, SpendCapComposer, spendText, trackerName } from "./task-ticket";
 import type { ComposerInput, LimitState, TaskDetail } from "./task-ticket";
 
 // F-064, F-031, F-032, F-033, F-047, F-068, F-097: the task page for tickets, reopening and limits
@@ -113,10 +113,7 @@ describe("the sync steps", () => {
   });
 });
 
-describe("the ticket and the sessions (task-ticket.md, task-reopen.md)", () => {
-  const session = (origin: TaskDetail["sessions"][number]["origin"]): TaskDetail["sessions"][number] =>
-    ({ id: sessionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), origin, state: "ended", outcome: null, startedAt: now, endedAt: now, limit: null, previousBox: null });
-
+describe("the ticket (task-ticket.md)", () => {
   it("names the tracker a ticket came from, and the board", () => {
     expect(trackerName("linear")).toBe("Linear");
     const ticket: TaskDetail["ticket"] = { id: ticketIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), key: "CALC-174", title: "Keep a history", url: "https://linear.app/x", status: { name: "In Review", category: "started" }, board: "Calculator", tracker: "linear", labels: ["frontend"], priority: 2, cachedAt: now, removed: false };
@@ -126,12 +123,6 @@ describe("the ticket and the sessions (task-ticket.md, task-reopen.md)", () => {
     const strip = renderToStaticMarkup(<TicketLine ticket={ticket} />);
     expect(strip).toContain("frontend");
     expect(strip).toContain("High priority");
-  });
-
-  it("counts the sessions and says how the newest began", () => {
-    expect(sessionText([session("new")])).toBe("1");
-    expect(sessionText([session("new"), session("resumed"), session("rebuilt")])).toBe("3 · rebuilt from the template");
-    expect(sessionText([session("new"), session("restored")])).toBe("2 · restored from the archive");
   });
 });
 

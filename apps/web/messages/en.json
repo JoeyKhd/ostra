@@ -335,7 +335,6 @@
     "chipReview": "review",
     "kind": "Kind",
     "kindRefine": "Refine",
-    "kindReview": "Review",
     "builtIn": "built-in",
     "pushes": "Pushes",
     "pushesNone": "None: read-only",
@@ -3227,7 +3226,6 @@
       "takeOver": "Take over to change",
       "failed": "The effort didn't change. {reason}",
       "reasoning": "Reasoning",
-      "reasoningTokens": "{n} tokens",
       "reasoningTip": "Counted inside out. Priced as output.",
       "ranAt": "Ran at {level}: this model has no {asked}.",
       "ranAtDefault": "Ran at the default: this model takes no effort level.",
@@ -3507,11 +3505,11 @@
       "starting": "Starting",
       "running": "Running",
       "idle": "Idle",
-      "idleStops": "Idle · stops in {left}",
+      "stopsIn": "stops in {left}",
+      "waitsOnYou": "waits on you",
       "idleHeader": "Idle, the box stops in {left}",
       "stopped": "Stopped",
       "released": "Released",
-      "releasedWhy": "Released · {reason}",
       "failed": "Failed",
       "reason": {
         "prs_closed": "the PRs closed",
@@ -3529,10 +3527,28 @@
     "ticketBoard": "Board",
     "priority": "{level} priority",
     "session": {
-      "label": "Session",
-      "resumed": "{n} · resumed",
-      "restored": "{n} · restored from the archive",
-      "rebuilt": "{n} · rebuilt from the template"
+      "label": "Session"
+    },
+    "panel": {
+      "usage": "Usage",
+      "result": "Result",
+      "aiReview": "AI review",
+      "reviews": "Reviews",
+      "round": "Round",
+      "roundOf": "of {limit}",
+      "blocking": "Blocking",
+      "nits": "Nits",
+      "none": "None",
+      "review": "Review",
+      "openReview": "Open the review",
+      "savedWork": "Saved work",
+      "afterTurn": "After turn {n}",
+      "afterATurn": "After a turn",
+      "notYetOpen": "Not yet: the turn is open",
+      "noneYet": "None yet",
+      "noArchive": "no archive",
+      "turns": "Turns",
+      "you": "you"
     },
     "synced": "Synced",
     "createTicket": "Create ticket",
@@ -4710,9 +4726,7 @@
     },
     "property": {
       "label": "Checks",
-      "running": "Running",
-      "allPassed": "All {n} passed",
-      "andPassed": " · {n} passed"
+      "running": "Running"
     },
     "summary": {
       "failed": "{n} failed",

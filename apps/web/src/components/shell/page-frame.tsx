@@ -3,7 +3,7 @@
 import { ArrowRightIcon, ChevronRightIcon, PanelLeftOpenIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fragment, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useRef, useState } from "react";
 import type { PointerEvent, ReactNode } from "react";
 
 import { Dot } from "@/components/ui/status";
@@ -265,20 +265,35 @@ export const SectionLink = ({ href, children }: { readonly href: string; readonl
   </Link>
 );
 
-/** One key/value row of a properties panel. `labelWidth` widens the key column (storage: 150px). */
-export const PropRow = ({ label, children, labelWidth, labelClassName, className }: { readonly label: string; readonly children: ReactNode; readonly labelWidth?: number; readonly labelClassName?: string; readonly className?: string }) => (
-  <div
-    className={cn("grid min-h-8 grid-cols-[92px_minmax(0,1fr)] items-center gap-2 text-ui", className)}
-    {...(labelWidth === undefined ? {} : { style: { gridTemplateColumns: `${String(labelWidth)}px minmax(0,1fr)` } })}
-  >
-    <span className={cn("min-w-0 truncate text-muted", labelClassName)}>{label}</span>
-    <span className="flex min-w-0 items-center gap-[7px] text-text [&_svg]:size-[14px] [&_svg]:text-muted">{children}</span>
-  </div>
-);
+/**
+ * How dense a properties panel's rows are: `default` (32px rows, a 92px key), or `compact`, the
+ * task page's (milestone 10, parts.md part 15: 28px rows, values at 104px, groups 16px apart).
+ */
+const PropDensityContext = createContext<"default" | "compact">("default");
 
-export const PropGroup = ({ title, children }: { readonly title: ReactNode; readonly children: ReactNode }) => (
-  <div className="mb-3.5 border-b border-line pb-3.5 last:border-b-0">
-    <h3 className="mb-2 text-xs font-medium text-faint">{title}</h3>
-    {children}
-  </div>
-);
+/** Sets the density of every `PropRow` and `PropGroup` inside it. */
+export const PropDensity = PropDensityContext.Provider;
+
+/** One key/value row of a properties panel. `labelWidth` widens the key column (storage: 150px). */
+export const PropRow = ({ label, children, labelWidth, labelClassName, className }: { readonly label: string; readonly children: ReactNode; readonly labelWidth?: number; readonly labelClassName?: string; readonly className?: string }) => {
+  const compact = useContext(PropDensityContext) === "compact";
+  return (
+    <div
+      className={cn("grid items-center gap-2 text-ui", compact ? "min-h-7 grid-cols-[96px_minmax(0,1fr)]" : "min-h-8 grid-cols-[92px_minmax(0,1fr)]", className)}
+      {...(labelWidth === undefined ? {} : { style: { gridTemplateColumns: `${String(labelWidth)}px minmax(0,1fr)` } })}
+    >
+      <span className={cn("min-w-0 truncate text-muted", labelClassName)}>{label}</span>
+      <span className="flex min-w-0 items-center gap-[7px] text-text [&_svg]:size-[14px] [&_svg]:text-muted">{children}</span>
+    </div>
+  );
+};
+
+export const PropGroup = ({ title, children }: { readonly title: ReactNode; readonly children: ReactNode }) => {
+  const compact = useContext(PropDensityContext) === "compact";
+  return (
+    <div className={cn("border-b border-line last:border-b-0", compact ? "mb-4 pb-4" : "mb-3.5 pb-3.5")}>
+      <h3 className={cn("text-xs font-medium text-faint", compact ? "mb-1.5 leading-[15px]" : "mb-2")}>{title}</h3>
+      {children}
+    </div>
+  );
+};

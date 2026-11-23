@@ -1293,8 +1293,12 @@ export const footerFacts = (turn: TurnNumbers, kind: TaskKind, tr: Translate): F
 /** The footer's link to the turn's first event. */
 export const eventLogLinkWords = (tr: Translate): string => tr("task.footer.eventLog");
 
-/** One row of the time's tooltip: its key (`--faint`) and its value. */
-export type TooltipRow = { readonly key: string; readonly value: string };
+/**
+ * One row of the time's tooltip: its key (`--faint`) and its value, with the figure inside the
+ * value that the tooltip sets in mono `--text-2` (all of `22.4k in · 3.8k out`, the `193 kB` of
+ * `archive 193 kB`); `null` for words alone (`High`, `not yet`).
+ */
+export type TooltipRow = { readonly key: string; readonly value: string; readonly figure: string | null };
 
 /** The time's tooltip: its head and its rows. */
 export type TooltipWords = { readonly head: string; readonly rows: readonly TooltipRow[] };
@@ -1316,20 +1320,25 @@ export const tooltipRows = (turn: TurnNumbers, kind: TaskKind, tr: Translate): T
         : tr("task.tooltip.head", { n: turn.ordinal, span });
   const rows: TooltipRow[] = [];
   const level = levelFact(turn, tr);
-  if (level !== null) rows.push({ key: tr("task.tooltip.effort"), value: level.text });
+  if (level !== null) rows.push({ key: tr("task.tooltip.effort"), value: level.text, figure: null });
   const usage = turn.usage;
   if (usage !== undefined && usage.inputTokens + usage.outputTokens > 0) {
-    rows.push({ key: tr("task.tooltip.tokens"), value: estimated(tr("task.tooltip.tokensValue", { in: formatTokens(usage.inputTokens), out: formatTokens(usage.outputTokens) }), usage.estimated, tr) });
-    if (usage.reasoningTokens !== undefined && usage.reasoningTokens > 0) rows.push({ key: tr("task.tooltip.reasoning"), value: formatTokens(usage.reasoningTokens) });
+    const tokens = estimated(tr("task.tooltip.tokensValue", { in: formatTokens(usage.inputTokens), out: formatTokens(usage.outputTokens) }), usage.estimated, tr);
+    rows.push({ key: tr("task.tooltip.tokens"), value: tokens, figure: tokens });
+    if (usage.reasoningTokens !== undefined && usage.reasoningTokens > 0) {
+      const reasoning = formatTokens(usage.reasoningTokens);
+      rows.push({ key: tr("task.tooltip.reasoning"), value: reasoning, figure: reasoning });
+    }
   }
   const spend = spendWords(turn, tr);
-  if (spend !== null) rows.push({ key: tr("task.tooltip.spend"), value: spend });
+  if (spend !== null && turn.spend !== undefined) rows.push({ key: tr("task.tooltip.spend"), value: spend, figure: estimated(usd(turn.spend.microUsd), turn.spend.estimated, tr) });
   if (keepsWork(kind)) {
+    const size = turn.saved === undefined || turn.saved.archiveBytes === null ? null : formatSize(turn.saved.archiveBytes);
     const saved =
       turn.saved === undefined
         ? open(turn) ? [tr("task.tooltip.notYet")] : []
-        : [turn.saved.archiveBytes === null ? tr("task.footer.noArchive") : tr("task.tooltip.archive", { size: formatSize(turn.saved.archiveBytes) }), ...(turn.saved.unsaved > 0 ? [tr("task.footer.unsaved")] : [])];
-    if (saved.length > 0) rows.push({ key: tr("task.tooltip.saved"), value: saved.join(", ") });
+        : [size === null ? tr("task.footer.noArchive") : tr("task.tooltip.archive", { size }), ...(turn.saved.unsaved > 0 ? [tr("task.footer.unsaved")] : [])];
+    if (saved.length > 0) rows.push({ key: tr("task.tooltip.saved"), value: saved.join(", "), figure: size });
   }
   return { head, rows };
 };
