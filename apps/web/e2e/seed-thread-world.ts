@@ -25,7 +25,7 @@ import { postgresChangeNotices, seedMember } from "@ostra/domain";
 import { APP_SCREENSHOT_CONTENT_TYPE, organizationIdSchema, projectIdSchema, storedEventSchema, taskIdSchema } from "@ostra/protocol";
 import type { StoredEvent } from "@ostra/protocol";
 import { eventFixtures } from "@ostra/protocol/testing";
-import { calc192, calc192Spend, review483Spend, s1, s1Working, s2, s3, s5Approved, s5Plan, sceneMembers, sceneWorld, stateCells, twoApprovalsPending } from "@ostra/task-view/testing";
+import { calc192, calc192Spend, review483, review483Spend, s1, s1Working, s2, s3, s5Approved, s5Plan, sceneMembers, sceneWorld, stateCells, twoApprovalsPending } from "@ostra/task-view/testing";
 import type { Scene } from "@ostra/task-view/testing";
 import { z } from "zod";
 
@@ -496,6 +496,13 @@ const s2Task = await seedScene(s2, {
 });
 await seedChecksAndCompare(s2Task, s2);
 const s3Task = await seedScene(s3, { title: "Review of PR #483", branch: "pending", key: null, kind: "review", state: "done", reviewOf: s2Task, spend: byTurn(review483Spend), session: "ended" });
+// Ticket 15: S3's round 2 of PR #483, handed in and posted with one nit; its box went with its session (`box released`).
+// S2's page is at 14:47, before this review ran, so the run hangs on S1's `CALC-192` (never in review)
+// rather than S2, whose thread would otherwise end with the review's result.
+await db.reviewRun.create({
+  data: { ...place, codeTaskId: s1Task, reviewTaskId: s3Task, round: 2, state: "posted", blocking: 0, nits: 1, postedAt: new Date(s3.now - 20 * 60_000), heads: [{ repoId: repo.id, prNumber: calc192.pr.number, baseSha: review483.baseSha, headSha: review483.headSha }] },
+});
+await db.box.updateMany({ where: { taskId: s3Task, state: "stopped" }, data: { state: "released", releasedAt: new Date(s3.now - 60_000), releaseReason: "session_ended" } });
 const s5PlanTask = await seedScene(s5Plan, { title: "Add keyboard shortcuts to the keypad", branch: "ostra/calc-196-keypad-shortcuts-1", key: "CALC-196", kind: "code", state: "needs_you", needsYouReason: "plan", spend: new Map(), session: "waiting" });
 const s5ApprovedTask = await seedScene(s5Approved, { title: "Add keyboard shortcuts to the keypad", branch: "ostra/calc-196-keypad-shortcuts-2", key: "CALC-196", kind: "code", state: "running", spend: new Map(), session: "running" });
 

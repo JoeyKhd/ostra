@@ -46,7 +46,7 @@ const render = (node: ReactNode): string => {
 
 const high: TaskEffort = { level: "high", levels: ["default", "low", "medium", "high", "max"], runningTurn: null };
 const menu = <NextTurnMenu model="Claude Sonnet 5.5" effort={high} canChange onChange={() => undefined} pending={false} />;
-const running: ComposerSituation = { agent: "OpenCode", running: true, interrupt: true, steers: true, waits: null, refine: false };
+const running: ComposerSituation = { agent: "OpenCode", running: true, interrupt: true, steers: true, waits: null, refine: false, review: false };
 const sendMode = (over: Partial<ComposerInput> = {}) => {
   const mode = composerMode({ state: "running", send: true, reopen: false, boxState: "running", ...over });
   if (mode.kind !== "send" && mode.kind !== "reopen") throw new Error("not a box that sends");

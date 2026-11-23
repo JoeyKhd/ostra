@@ -227,7 +227,8 @@ const PrSection = ({ repos }: { readonly repos: readonly Repo[] }) => (
 /**
  * The phone's sections above the thread, in the target's order: Ticket (a ticket task), Sync on
  * Linear (once something was written), Pull requests (once the task has a repo). A prompt task has
- * only Pull requests; a refine task writes nothing it shows here (its draft is its own tab).
+ * only Pull requests; a refine task writes nothing it shows here (its draft is its own tab), and a
+ * review task makes no PR of its own (milestone 10, ticket 15: the PR it reviews is in the top bar).
  * `details` is the properties panel, which the `Details` row opens: the Ticket section's last row,
  * or, with no ticket, a row of its own under the sections.
  */
@@ -245,7 +246,7 @@ export const PhoneTaskSections = ({ task, retry, details, agentGotInThread = fal
       {task.ticket === null || refine || task.sync.length === 0 ? null : (
         <SyncSection tracker={trackerName(task.ticket.tracker)} sync={task.sync} retry={task.canRetry ? retry : null} />
       )}
-      {refine || task.repos.length === 0 ? null : <PrSection repos={task.repos} />}
+      {task.kind !== "code" || task.repos.length === 0 ? null : <PrSection repos={task.repos} />}
       {task.ticket === null ? (
         <ul className="mt-4 border-t border-line">
           <DetailsRow details={details} />

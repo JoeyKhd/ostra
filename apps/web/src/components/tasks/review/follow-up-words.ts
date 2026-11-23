@@ -10,7 +10,6 @@ import { aiReviewWords } from "./review-words";
 // how its AI review is doing. Every word from `messages/en.json`.
 
 type Task = RouterOutputs["tasks"]["get"];
-export type ReviewOf = NonNullable<Task["reviewOf"]>;
 export type AiReview = NonNullable<Task["aiReview"]>;
 
 /**
@@ -64,12 +63,6 @@ export const followUpWaitWords = (reason: Reason, context: WaitContext): string 
       return reason satisfies never;
   }
 };
-
-/** The PR a review reads, as its line names it: `PR #14`. */
-export const reviewedPrText = (pr: ReviewOf["prs"][number]): string => t("review.followUp.pr", { number: pr.number });
-
-/** A review run's result once it has one (`AI review round 2: nothing blocking`); `null` while it runs. */
-export const reviewResultText = (run: ReviewOf["run"]): string | null => (run === null || run.state === "running" ? null : aiReviewWords(true, [run]));
 
 /**
  * The AI review's state on its code task's page: waiting for a runner, running, waiting for its

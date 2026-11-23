@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import { dispatchWaitSchema } from "@ostra/domain";
 import { poolIdSchema, taskIdSchema } from "@ostra/protocol";
 
+import { t } from "@/lib/messages";
+import { reviewStatusWords } from "@/task/thread/words";
+
+import { headingOf, reviewedOf } from "../task-heading";
 import type { Reason, WaitContext } from "../task-waiting-words";
-import { aiReviewLine, followUpWaitWords, reviewedPrText, reviewResultText } from "./follow-up-words";
+import { aiReviewLine, followUpWaitWords } from "./follow-up-words";
 import type { AiReview } from "./follow-up-words";
 
 // F-100/c6 (2026-11-21, ADR 0059 amended): what a waiting review says, and how its code task's
@@ -33,11 +37,15 @@ describe("a follow-up's words (F-100/c6)", () => {
   });
 
   it("F-100/c6: a review names its PR, and its round's result once it has one", () => {
-    expect(reviewedPrText({ repo: "fake-org/test1", number: 14, url: "https://github.com/fake-org/test1/pull/14" })).toBe("PR #14");
-    expect(reviewResultText(null)).toBeNull();
-    expect(reviewResultText({ round: 1, state: "running", blocking: 0, nits: 0 })).toBeNull();
-    expect(reviewResultText({ round: 2, state: "posted", blocking: 0, nits: 3 })).toBe("AI review round 2: nothing blocking");
-    expect(reviewResultText({ round: 1, state: "posted", blocking: 2, nits: 0 })).toBe("AI review round 1: 2 blocking");
+    // Milestone 10 (ticket 15, F-151/c7): in its key line, title and top bar, and on its status line.
+    const codeTaskId = taskIdSchema.parse("01a1f173-8696-70be-a85a-8522396470ab");
+    const pr = { repo: "fake-org/test1", number: 14, url: "https://github.com/fake-org/test1/pull/14" };
+    const waiting = { kind: "review" as const, key: "396470aa", title: "Review: Add a simple index.html", source: "prompt" as const, ticket: null, review: null, reviewOf: { taskId: codeTaskId, key: "396470ab", title: "Add a simple index.html", prs: [pr], run: null } };
+    expect(headingOf(waiting)).toEqual({ key: "396470ab", source: "AI review", title: "Review of PR #14", crumb: "Review of PR #14" });
+    expect(reviewedOf(waiting)).toEqual({ codeTask: { id: codeTaskId, key: "396470ab", title: "Add a simple index.html" }, prNumber: 14, prs: [{ number: 14, href: pr.url, repo: "fake-org/test1" }] });
+    expect(reviewStatusWords({ round: 1, limit: 3, state: "running", blocking: 0, nits: 0 }, t)).toBe("round 1 of 3");
+    expect(reviewStatusWords({ round: 2, limit: 3, state: "posted", blocking: 0, nits: 3 }, t)).toBe("round 2 of 3: nothing blocking, 3 nits");
+    expect(reviewStatusWords({ round: 1, limit: 3, state: "posted", blocking: 2, nits: 0 }, t)).toBe("round 1 of 3: 2 blocking, no nits");
   });
 
   it("F-100/c6: the code task's page says its AI review is waiting for a runner, running, or how its round went", () => {

@@ -14,8 +14,8 @@ import type { ReactNode } from "react";
 import { clientMessageIdSchema } from "@ostra/protocol";
 import type { SessionId, TaskId, TaskKind } from "@ostra/protocol";
 import type { MemberId } from "@ostra/protocol";
-import { foldTaskEvents, turnOrdinalsOf, turnSpendOf, visibleLiveText } from "@ostra/task-view";
-import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
+import { foldTaskEvents, liveStepOf, turnOrdinalsOf, turnSpendOf, visibleLiveText } from "@ostra/task-view";
+import type { LiveDoing, OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 
 import { AttachmentsProvider, useAttachments as useThreadAttachments } from "@/components/tasks/attachments/attachments-context";
 import { ThreadTicketContext } from "@/components/tasks/attachments/ticket-context-thread";
@@ -174,6 +174,8 @@ export type TaskThreadProps = {
   readonly title?: string;
   /** Milestone 10 (ticket 14): what the results read beyond the CI (the PRs, the AI review, the links); the thread adds CI on older heads from the log. */
   readonly results?: Omit<ThreadResults, "ciOnHead">;
+  /** Ticket 15: what the agent does now, from the running turn's live step, for the status line; `null` when no step runs. */
+  readonly onLiveDoing?: (doing: LiveDoing | null) => void;
 };
 
 /** The first message of each day after the first (the day divider's place, milestone 2's rule), with its time. */
@@ -194,7 +196,7 @@ const NO_TURNS: readonly UsageTurn[] = [];
 const NO_NAMES: readonly string[] = [];
 const noCi = (): HeadCi | null => null;
 
-export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi, runnerName = null, title, results }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi, runnerName = null, title, results, onLiveDoing }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -359,6 +361,13 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
     () => ({ taskKind, workspace: { taskId, checkoutDirs, mcpServers }, project: projectName ?? "", capMicroUsd, ciOf, answers, runnerOf, ...(title === undefined ? {} : { taskTitle: title }), ...(threadResults === undefined ? {} : { results: threadResults }) }),
     [taskKind, taskId, checkoutDirs, mcpServers, projectName, capMicroUsd, ciOf, answers, runnerOf, title, threadResults],
   );
+  // Ticket 15 (parts.md part 15): what the agent does now, for the page's status line, from the same
+  // live step the thread draws.
+  const liveDoing = useMemo(() => {
+    const last = messages.findLast((message) => message.role !== "user");
+    return last === undefined ? null : (liveStepOf(last, threadParts.workspace)?.doing ?? null);
+  }, [messages, threadParts.workspace]);
+  useEffect(() => { onLiveDoing?.(liveDoing); }, [liveDoing, onLiveDoing]);
 
   // F-138: the member's message the turn answered, for the main agent's pane of the window.
   const askedOf = (messageId: string): { readonly name: string; readonly text: string } | null => {

@@ -120,11 +120,15 @@ test("F-100/c6, F-147/c8: a review waiting for a runner says what it reviews, wh
   });
   const followUp = followUpSchema.parse(JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}"));
 
-  // The review's page: the task and PR it reviews, and why it waits, with the way out.
+  // The review's page: the task and PR it reviews (milestone 10, ticket 15: its key line, its title and
+  // its top bar's `Open the code task` and `PR #14`), and why it waits, with the way out.
   await page.goto(`/tasks/${followUp.reviewTaskId}`);
-  const reviews = page.getByTestId("review-of");
-  await expect(reviews.locator('[data-link="code-task"]')).toContainText(title);
-  await expect(reviews).toContainText("PR #14");
+  await expect(page.getByTestId("task-key-line")).toContainText("· AI review");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Review of PR #14");
+  const codeTask = page.locator("header [data-action='open-code-task']");
+  await expect(codeTask).toHaveAttribute("href", `/tasks/${followUp.codeTaskId}`);
+  await expect(codeTask).toHaveAttribute("title", new RegExp(`${title}$`));
+  await expect(page.locator("header").getByRole("link", { name: "PR #14" })).toHaveCount(1);
   const waiting = page.getByTestId("follow-up-waiting");
   await expect(waiting).toContainText("Waiting for a runner.");
   await expect(waiting).toContainText(`AI review runs on ${followUp.runner}, the runner its code task ran on, or on one of`);

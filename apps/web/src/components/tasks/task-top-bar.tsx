@@ -1,6 +1,6 @@
 "use client";
 
-import { AppWindowIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, LinkIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
+import { AppWindowIcon, ArrowUpRightIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, LinkIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -17,16 +17,22 @@ import { safeHref } from "@/task/renderers";
 
 import { TakeItLocal } from "./take-it-local";
 import type { LocalLoad } from "./take-it-local";
+import type { Reviewed } from "./task-heading";
 import { prIsDraft } from "./task-properties";
 
-// Owner: ticket 15 (milestone 10, F-151: a review task's top bar, parts.md part 15). Ticket 09 moved
-// the task page's top-bar actions here from `task-view.tsx` unchanged, so ticket 15 can change them
-// on its own.
+// Owner: ticket 15 (milestone 10, F-151/c7: a review task's top bar, the README's choice 10). Ticket
+// 09 moved the task page's top-bar actions here from `task-view.tsx`. A code task's as each scene
+// draws it (`Preview | Properties`, copy link, `PR #483`, `Take it local`, `Stop`); a review task's
+// says only what a review does (`s3.md`: copy link, `Properties`, `Open the code task`, `PR #483`);
+// a refine task has nothing to take local.
 
 type Task = RouterOutputs["tasks"]["get"];
 
 /** The task page's side pane (task-preview.md): the preview, or the properties. */
 export type SidePaneChoice = "preview" | "properties";
+
+/** A top-bar button's size (milestone 8's `.btn.sm`): 28px, 10px in, 13px. */
+const barButton = "h-7 px-2.5 text-[13px]";
 
 /** The ghost icon button left of the PR: copies the task's address. */
 const CopyLink = () => {
@@ -36,6 +42,7 @@ const CopyLink = () => {
     <Button
       variant="ghost"
       size="icon"
+      className="size-7"
       aria-label={label}
       title={label}
       data-action="copy-link"
@@ -75,7 +82,7 @@ const PrStateIcon = ({ state }: { readonly state: BarPr["state"] }) => {
  */
 const PrButtons = ({ prs }: { readonly prs: readonly BarPr[] }) => {
   const button = (pr: BarPr, className?: string) => (
-    <a key={`${pr.repo}#${String(pr.number)}`} href={pr.href} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants(), className)}>
+    <a key={`${pr.repo}#${String(pr.number)}`} href={pr.href} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants(), barButton, className)}>
       {pr.draft ? <GitPullRequestDraftIcon /> : <GitPullRequestIcon />} {t("taskPage.prButton", { n: pr.number })}
     </a>
   );
@@ -85,7 +92,7 @@ const PrButtons = ({ prs }: { readonly prs: readonly BarPr[] }) => {
       {prs.map((pr) => button(pr, "max-sm:hidden"))}
       <Sheet>
         <SheetTrigger asChild>
-          <Button className="sm:hidden" data-action="task-prs">
+          <Button className={cn(barButton, "sm:hidden")} data-action="task-prs">
             <GitPullRequestIcon aria-hidden /> {t("taskPage.prsButton", { n: prs.length })}
           </Button>
         </SheetTrigger>
@@ -107,12 +114,27 @@ const PrButtons = ({ prs }: { readonly prs: readonly BarPr[] }) => {
   );
 };
 
+/** A review task's `Properties` (`s3.md`): one toggle, pressed while the panel shows, since there's no app to preview. */
+const PropertiesToggle = ({ on, onToggle }: { readonly on: boolean; readonly onToggle: () => void }) => (
+  <Button
+    aria-pressed={on}
+    onClick={onToggle}
+    data-action="properties-toggle"
+    className={cn(barButton, "aria-pressed:bg-sel max-lg:hidden [&_svg]:stroke-[1.75]")}
+  >
+    <PanelRightIcon aria-hidden /> <span className="max-md:hidden">{t("task.preview.sideProperties")}</span>
+  </Button>
+);
+
 /**
- * The task page's top-bar actions (task.md; task-preview.md): with the preview expanded, the `esc`
- * hint, Collapse and Stop; otherwise a code task's `Preview | Properties` toggle, the copy link,
- * `Take it local`, the review screen's button while a PR is open, the PR buttons and Stop.
+ * The task page's top-bar actions (task.md; task-preview.md; parts.md part 15): with the preview
+ * expanded, the `esc` hint, Collapse and Stop. Otherwise a code task's `Preview | Properties`
+ * toggle, the copy link, the review screen's button while a PR is open (milestone 6), the PR
+ * buttons, `Take it local` and Stop; a review task's copy link, `Properties`, `Open the code task`,
+ * the PR it reviews and Stop; a refine task's copy link and Stop. Stop shows while a session is
+ * live (`capabilities.stop`), never once the task stopped.
  */
-export const TaskTopBar = ({ task, expanded, side, onSide, onCollapse, stop, local }: {
+export const TaskTopBar = ({ task, expanded, side, onSide, onCollapse, stop, local, reviewed = null, properties = null }: {
   readonly task: Task;
   /** The preview fills the page (`&view=full`). */
   readonly expanded: boolean;
@@ -124,6 +146,10 @@ export const TaskTopBar = ({ task, expanded, side, onSide, onCollapse, stop, loc
   readonly stop: { readonly stopping: boolean; readonly pending: boolean; readonly run: () => void };
   /** `Take it local`: what it shows once opened, and its opening. */
   readonly local: { readonly load: LocalLoad; readonly onOpen: () => void };
+  /** A review task's code task and the PR it reviews (`reviewedOf`); `null` on any other kind. */
+  readonly reviewed?: Reviewed | null;
+  /** A review task's `Properties` toggle: whether the panel shows, and its press; `null` without one. */
+  readonly properties?: { readonly on: boolean; readonly onToggle: () => void } | null;
 }) => {
   const taskId: TaskId = task.id;
   const stopped = task.state === "stopped";
@@ -149,7 +175,7 @@ export const TaskTopBar = ({ task, expanded, side, onSide, onCollapse, stop, loc
     </ToggleGroup>
   );
   const stopButton = task.capabilities.stop && !stopped ? (
-    <Button data-action="stop" onClick={stop.run} disabled={stop.stopping || stop.pending} aria-label={stop.stopping ? t("taskPage.stopping") : t("taskPage.stop")}>
+    <Button className={barButton} data-action="stop" onClick={stop.run} disabled={stop.stopping || stop.pending} aria-label={stop.stopping ? t("taskPage.stopping") : t("taskPage.stop")}>
       <SquareIcon aria-hidden /> <span className="max-sm:hidden">{stop.stopping ? t("taskPage.stopping") : t("taskPage.stop")}</span>
     </Button>
   ) : null;
@@ -162,17 +188,35 @@ export const TaskTopBar = ({ task, expanded, side, onSide, onCollapse, stop, loc
       </Button>
       {stopButton}
     </>
+  ) : task.kind === "review" ? (
+    <>
+      <CopyLink />
+      {properties === null ? null : <PropertiesToggle on={properties.on} onToggle={properties.onToggle} />}
+      {reviewed === null ? null : (
+        <Link
+          href={`/tasks/${reviewed.codeTask.id}`}
+          className={cn(buttonVariants(), barButton)}
+          aria-label={t("review.followUp.openCodeTask")}
+          title={t("taskPage.codeTaskTitle", { key: reviewed.codeTask.key, title: reviewed.codeTask.title })}
+          data-action="open-code-task"
+        >
+          <ArrowUpRightIcon aria-hidden /> <span className="max-sm:hidden">{t("review.followUp.openCodeTask")}</span>
+        </Link>
+      )}
+      <PrButtons prs={(reviewed?.prs ?? []).map((pr): BarPr => ({ ...pr, state: "open", draft: false }))} />
+      {stopButton}
+    </>
   ) : (
     <>
       {sideToggle}
       <CopyLink />
-      <TakeItLocal pushed={task.repos.some((repo) => repo.headSha !== null)} load={local.load} onOpen={local.onOpen} />
       {task.kind === "code" && task.repos.some((repo) => repo.pr?.state === "open") ? (
-        <Link href={`/tasks/${taskId}/review`} className={buttonVariants()} aria-label={t("review.button")} data-action="open-review">
+        <Link href={`/tasks/${taskId}/review`} className={cn(buttonVariants(), barButton)} aria-label={t("review.button")} data-action="open-review">
           <ScanSearchIcon aria-hidden /> <span className="max-sm:hidden">{t("review.button")}</span>
         </Link>
       ) : null}
       <PrButtons prs={prs} />
+      {task.kind === "code" ? <TakeItLocal pushed={task.repos.some((repo) => repo.headSha !== null)} load={local.load} onOpen={local.onOpen} /> : null}
       {stopButton}
     </>
   );

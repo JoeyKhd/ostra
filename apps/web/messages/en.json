@@ -314,9 +314,6 @@
       "driverDecides": "{driver} decides. Take over to decide."
     },
     "followUp": {
-      "reviews": "Reviews",
-      "pr": "PR #{number}",
-      "openReview": "Open the review",
       "openCodeTask": "Open the code task",
       "openReviewTask": "Open the review task",
       "connectRunner": "Connect a runner",
@@ -2575,6 +2572,8 @@
       "hintQueues": "Send queues.",
       "hintAfterAnswer": "Send reaches {agent} after your answer.",
       "hintPlan": "Send asks {agent} for another plan. To start the work, approve the plan.",
+      "reopenReviewPlaceholder": "Message {agent} to reopen the review…",
+      "hintReopenReview": "Send reopens the review on a fresh box.",
       "nextTurn": "The next turn's model and effort",
       "attach": {
         "label": "Attach files",
@@ -3116,7 +3115,9 @@
         "idleStops": "box idle, stops in {n} min",
         "stopped": "box stopped",
         "released": "box released"
-      }
+      },
+      "round": "round {n} of {limit}",
+      "roundVerdict": "round {n} of {limit}: {verdict}"
     }
   },
   "taskState": {
@@ -3447,6 +3448,9 @@
     "fromPrompt": "from a prompt",
     "fromTicket": "from a ticket",
     "fromTracker": "from {tracker}",
+    "aiReview": "AI review",
+    "reviewTitle": "Review of PR #{n}",
+    "codeTaskTitle": "{key} {title}",
     "tracker": {
       "linear": "Linear",
       "github": "GitHub"

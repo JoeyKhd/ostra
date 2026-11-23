@@ -28,6 +28,8 @@ export type ComposerSituation = {
   readonly waits: "question" | "plan" | "reply" | null;
   /** A refine task: the message asks for changes to the draft. */
   readonly refine: boolean;
+  /** Ticket 15: a review task, whose message reopens the review on a fresh box (`s3.md`). */
+  readonly review: boolean;
 };
 
 /** `Interrupt and send` shows only while a turn runs and the driver may interrupt it (`capabilities.interrupt`). */
@@ -45,15 +47,17 @@ const sendHint = (situation: ComposerSituation): string => {
  * The words of a box that sends or reopens (`composerMode`): `s1-working`'s `Message OpenCode…` and
  * `Send reaches OpenCode at its next step. Interrupt and send stops the turn first.`; `s1`'s
  * `Reply to OpenCode…` and `Send reaches OpenCode after your answer.`; `s5-plan`'s `Ask for changes
- * to the plan…`; `s2`'s idle box, `The box is idle. Send starts the next turn in it.`
+ * to the plan…`; `s2`'s idle box, `The box is idle. Send starts the next turn in it.`; `s3`'s
+ * review, `Message OpenCode to reopen the review…` and `Send reopens the review on a fresh box.`
  */
 export const composerWordsOf = (mode: Extract<ComposerMode, { readonly kind: "send" | "reopen" }>, situation: ComposerSituation): ComposerWords => {
   const { agent } = situation;
   const message = t("task.composer.placeholderAgent", { agent });
   const draft = situation.refine ? t("draft.composerHint") : null;
   if (mode.kind === "reopen") {
-    return mode.inBox
-      ? { placeholder: message, hint: draft ?? mode.hint, send: t("task.composer.send") }
+    if (mode.inBox) return { placeholder: message, hint: draft ?? mode.hint, send: t("task.composer.send") };
+    return situation.review
+      ? { placeholder: t("task.composer.reopenReviewPlaceholder", { agent }), hint: t("task.composer.hintReopenReview"), send: t("taskPage.composer.reopen") }
       : { placeholder: t("taskPage.composer.reopenPlaceholder"), hint: draft ?? mode.hint, send: t("taskPage.composer.reopen") };
   }
   const send = t("task.composer.send");

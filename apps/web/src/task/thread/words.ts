@@ -1361,6 +1361,27 @@ export const boxStatusWords = (box: BoxStatus, now: number, tr: Translate): stri
   }
 };
 
+/** A review task's round as `tasks.get` gives it (ticket 08). */
+export type ReviewStatus = Pick<NonNullable<RouterOutputs["tasks"]["get"]["review"]>, "round" | "limit" | "state" | "blocking" | "nits">;
+
+/**
+ * A review task's round on its status line (ticket 15, `s3.md`): `round 2 of 3: nothing blocking,
+ * 1 nit` once it's handed in, its verdict in the result line's words; `round 2 of 3` before that,
+ * or when it failed.
+ */
+export const reviewStatusWords = (review: ReviewStatus, tr: Translate): string => {
+  switch (review.state) {
+    case "submitted":
+    case "posted":
+      return tr("task.status.roundVerdict", { n: review.round, limit: review.limit, verdict: verdictWords(review.blocking, review.nits, tr) });
+    case "running":
+    case "failed":
+      return tr("task.status.round", { n: review.round, limit: review.limit });
+    default:
+      return review.state satisfies never;
+  }
+};
+
 // ---- what waits on a member (parts.md part 11) ----------------------------------------------
 
 /** What an open block asks for, as the pill names it. */

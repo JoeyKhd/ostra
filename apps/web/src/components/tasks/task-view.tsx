@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { approvalIdSchema, clientMessageIdSchema, questionIdSchema } from "@ostra/protocol";
 import type { TaskId } from "@ostra/protocol";
 import { deriveTaskState } from "@ostra/task-view";
+import type { LiveDoing } from "@ostra/task-view";
 
 import { servicesWaitText } from "@/components/projects/environment-services-words";
 import { useProvideTaskScope } from "@/components/shell/actions/use-scope";
@@ -32,8 +33,8 @@ import { TaskPrs } from "./task-prs";
 import { HeldNoKey, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
 import type { NoKey } from "./no-key";
-import { AgentGot, MergedHint, TicketLine, TicketProperties, composerInputOf, composerMode, idleHeader, limitStateOf, SpendCapComposer, trackerName } from "./task-ticket";
-import { headerActivity, stateTone, taskStateLine } from "./task-words";
+import { AgentGot, MergedHint, TicketLine, TicketProperties, composerInputOf, composerMode, idleHeader, limitStateOf, SpendCapComposer } from "./task-ticket";
+import { headerActivity, stateTone } from "./task-words";
 import { ApprovalCard, PlanBlock, QuestionCard, WatcherBar, approvalReceipt } from "./task-answers";
 import { NeedsYouCards, NeedsYouLive } from "./needs-you-cards";
 import { needsOf, questionRepeatsMessage, replyHint } from "./needs-you-card-words";
@@ -46,6 +47,8 @@ import { ChecksTabMarker } from "./task-checks/task-checks";
 import { NextTurnMenu, TaskEffortRow } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
 import { Properties } from "./task-properties";
+import { headingOf, openTabOf, reviewedOf, statusDoingOf, tabsOf } from "./task-heading";
+import type { TaskTab } from "./task-heading";
 import { TaskStatusLine } from "./task-status-line";
 import { TaskTopBar } from "./task-top-bar";
 import type { SidePaneChoice } from "./task-top-bar";
@@ -60,16 +63,14 @@ import { Chip } from "@/components/ui/status";
 import { DraftView } from "./draft/draft-view";
 import { DraftProperties } from "./draft/draft-properties";
 import { capOf, runningCiJobs } from "./review/review-words";
-import { RoundsGroup, RoundsInThread, StageLine } from "./review/task-rounds";
-import { AiReviewLine, FollowUpWaiting, ReviewOfLine } from "./review/follow-up";
+import { RoundsGroup, RoundsInThread, StageLine, statusWithSubState } from "./review/task-rounds";
+import { AiReviewLine, FollowUpWaiting } from "./review/follow-up";
 import { followUpWaitWords } from "./review/follow-up-words";
 import { formatClock } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // Milestone 10 (ticket 09): the properties panel lives in `task-properties.tsx`; its tests still import it from here.
 export { Properties } from "./task-properties";
-
-type TaskTab = "activity" | "changes" | "checks" | "events" | "draft";
 
 /** No turns priced yet, and an agent with no MCP servers: one value each, so the thread's memos hold. */
 const noTurns: readonly [] = [];
@@ -150,12 +151,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const draft = useQuery(trpc.drafts.get.queryOptions(refine ? { taskId, version: null } : skipToken));
   const ticketContext = useQuery(trpc.tasks.ticketContext.queryOptions(task.data?.source === "ticket" ? { taskId } : skipToken));
   const hasDraft = draft.data?.draft !== null && draft.data?.draft !== undefined;
-  const tab: TaskTab =
-    tabParam === "changes" || tabParam === "checks" || tabParam === "events"
-      ? tabParam
-      : tabParam === "draft" || (tabParam === null && refine && hasDraft)
-        ? "draft"
-        : "activity";
+  // Ticket 15 (F-151/c7): each kind its own tabs; a `?tab=` the kind hasn't opens Activity.
+  const tab: TaskTab = openTabOf(task.data?.kind ?? "code", tabParam, hasDraft);
   const seqParam = Number.parseInt(params.get("seq") ?? "", 10);
   const selectTab = useCallback((next: TaskTab) => {
     const query = new URLSearchParams(params.toString());
@@ -164,6 +161,12 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     const search = query.toString();
     router.replace(search === "" ? `/tasks/${taskId}` : `/tasks/${taskId}?${search}`, { scroll: false });
   }, [params, router, taskId, refine]);
+  // Ticket 15 (parts.md part 15): what the agent does now, from the thread's live step, for the status
+  // line; kept while it says the same, so a new event that changes nothing renders nothing more.
+  const [liveDoing, setLiveDoing] = useState<LiveDoing | null>(null);
+  const onLiveDoing = useCallback((next: LiveDoing | null) => {
+    setLiveDoing((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
+  }, []);
   const [localOpened, setLocalOpened] = useState(false);
   const local = useQuery(trpc.tasks.local.queryOptions(localOpened ? { taskId } : skipToken));
   const checksMarker = useQuery({ ...trpc.tasks.checks.queryOptions({ taskId }), refetchInterval: 15_000 });
@@ -364,7 +367,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const running = view.turnRunning || data.state === "running" || data.state === "preparing";
   // F-137: the level from the newest `effort.changed` on the stream, else `tasks.get`'s.
   const effort: TaskEffort = { level: view.effort ?? data.effort.level, levels: data.effort.levels.map((one) => one.level), runningTurn: view.runningEffort };
-  const stateText = stopping && !stopped ? t("taskPage.stopping") : taskStateLine(data.state, data.reason, data.limit);
+  // Ticket 15: milestone 6's sub-state with the state, as the panel's Status row says it (`In review · CI running`).
+  const stateText = stopping && !stopped ? t("taskPage.stopping") : statusWithSubState(data);
   // A limit or a crash ended the session: the line says when it stopped (task-limits.md, "Status").
   const stoppedAt = data.state === "needs_you" && (data.limit !== null || data.reason === "crashed") ? (data.sessions.at(-1)?.endedAt ?? null) : null;
   const organizationAdmin = me.data?.organization?.role === "admin";
@@ -413,6 +417,14 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       : { kind: "loading" };
   const firstBoard = boards.data?.boards[0];
   const isRefine = data.kind === "refine";
+  // Ticket 15 (F-151/c7, s3.md): a review task's key line, title and crumb name what it reviews, and
+  // its top bar links to its code task and PR; its `Properties` toggle hides the panel (`?pane=none`),
+  // at 1024px and wider, where the toggle shows.
+  const heading = headingOf(data);
+  const reviewed = reviewedOf(data);
+  const propertiesShown = data.kind !== "review" || paneParam !== "none" || narrowScreen;
+  // The sub-state's place (parts.md part 15): the PR the review loop is at (`PR #483`).
+  const loopPrs = data.state === "in_review" ? data.repos.flatMap((repo) => (repo.pr?.state === "open" ? [t("taskPage.prButton", { n: repo.pr.number })] : [])) : [];
   // Ticket 34: the board's ready status by name, from the board's statuses.
   const draftBoard = boards.data?.boards.find((board) => board.id === draft.data?.board?.boardId);
   const readyStatusName =
@@ -487,7 +499,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     );
 
   const previewing = side === "preview";
-  const eventsMarker = eventRows.data === undefined || eventRows.data.rows === 0 ? null : <span className="text-faint" data-testid="event-log-count">{eventRows.data.rows}</span>;
+  // A tab's count (milestone 8's `.tab .n`): Plex Mono 12px `--faint`.
+  const eventsMarker = eventRows.data === undefined || eventRows.data.rows === 0 ? null : <span className="font-mono text-xs text-faint" data-testid="event-log-count">{eventRows.data.rows}</span>;
   const previewPane = previewing ? (
     <PreviewPane
       task={{
@@ -567,10 +580,10 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       crumbs={[
         { label: project.data?.name ?? "", href: `/projects/${data.projectId}` },
         { label: t("shell.tasks"), href: `/projects/${data.projectId}` },
-        { label: data.key },
+        { label: heading.crumb },
       ]}
       // A phone's top bar: the title over `CALC-192 · ● Running` (app-shell.md, "Phone").
-      phoneTitle={{ title: data.title, line: <>{data.key} · <Status tone={stateTone(data.state)} className="min-w-0 gap-1.5"><span className="truncate">{stateText}</span></Status></> }}
+      phoneTitle={{ title: heading.title, line: <>{heading.key} · <Status tone={stateTone(data.state)} className="min-w-0 gap-1.5"><span className="truncate">{stateText}</span></Status></> }}
       actions={
         <TaskTopBar
           task={data}
@@ -580,6 +593,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           onCollapse={() => { setExpanded(false); }}
           stop={{ stopping, pending: stop.isPending, run: () => { stop.mutate({ taskId }); } }}
           local={{ load: localLoad, onOpen: () => { setLocalOpened(true); } }}
+          reviewed={reviewed}
+          properties={data.kind === "review" ? { on: propertiesShown, onToggle: () => { setQuery({ pane: propertiesShown ? "none" : null }); } } : null}
         />
       }
       {...(previewPane === null
@@ -603,32 +618,36 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
               ),
             },
           })}
-      properties={properties}
+      {...(propertiesShown ? { properties } : {})}
       // Under 640px they don't stack under the thread: the Details row opens them (m2's `phone-task`).
       phoneProperties="sheet"
     >
       {/* Milestone 9 (ticket 15): the chat column is where files dropped on the page go (`data-chat-column`). */}
       <div data-chat-column className={cn("relative flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-9 sm:pb-4 sm:pt-[26px] xl:h-full")}>
         <div className="shrink-0">
-          <div className="flex items-center gap-2.5 font-mono text-sm leading-[17px] text-faint">
-            <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : data.ticket === null ? t("taskPage.fromTicket") : t("taskPage.fromTracker", { tracker: trackerName(data.ticket.tracker) })}</span>
+          <div className="flex items-center gap-2.5 font-mono text-sm leading-[17px] text-faint" data-testid="task-key-line">
+            <span>{heading.key} · {heading.source}</span>
             {waitingTask?.startedBy.kind === "outside" ? <span className="font-sans text-ui">· <StartedInLinear task={waitingTask} /></span> : null}
-            {data.kind === "code" ? null : <Chip className="font-mono text-muted">{data.kind === "refine" ? t("draft.chipRefine") : t("draft.chipReview")}</Chip>}
+            {data.kind === "refine" ? <Chip className="font-mono text-muted">{t("draft.chipRefine")}</Chip> : null}
           </div>
-          <h1 className={cn("page-title mb-1.5 mt-1 break-words", previewing && "lg:text-[24px]")}>{data.title}</h1>
+          <h1 className={cn("page-title mb-1.5 mt-1 break-words", previewing && "lg:text-[24px]")}>{heading.title}</h1>
           <TaskStatusLine
             task={data}
             label={noKey === null ? stateText : t("noKey.queued")}
-            activity={activity}
+            running={running}
+            doing={statusDoingOf(liveDoing)}
+            place={loopPrs.length === 0 ? null : loopPrs.join(", ")}
+            review={data.review}
             stoppedAt={stoppedAt}
-            now={now}
             reconnecting={log.state.connection === "reconnecting"}
           />
           {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} ciJobs={runningCiJobs(data.repos)} /> : null}
-          {data.reviewOf === null ? null : <ReviewOfLine reviewOf={data.reviewOf} />}
-          <div className="max-sm:hidden">
-            <TaskPrs repos={data.repos} />
-          </div>
+          {/* A review or refine task makes no PR of its own: no PR line (the README's choice 10). */}
+          {data.kind === "code" ? (
+            <div className="max-sm:hidden">
+              <TaskPrs repos={data.repos} />
+            </div>
+          ) : null}
           <TaskAppSupportLine taskId={taskId} />
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
@@ -687,22 +706,24 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             idPrefix="task-tab"
             selected={tab}
             onSelect={selectTab}
-            tabs={
-              isRefine
-                ? [
-                    { id: "activity", label: t("taskAnswers.tabs.activity") },
-                    // A refine task changes nothing: no Changes or Checks tab (refine-draft.md).
-                    { id: "draft", label: t("draft.tab"), extra: draft.data?.draft === null || draft.data?.draft === undefined ? null : <span className="font-mono text-faint">{t("draft.versionShort", { n: draft.data.draft.version })}</span> },
-                    { id: "events", label: t("taskAnswers.tabs.events"), extra: eventsMarker },
-                  ]
-                : [
-                    { id: "activity", label: t("taskAnswers.tabs.activity") },
-                    { id: "changes", label: t("taskAnswers.tabs.changes"), extra: changedFiles === 0 ? null : <span className="text-faint">{changedFiles}</span> },
-                    // Milestone 10 (F-151/c6): the marker follows ostra's checks and the code host's CI alike.
-                    { id: "checks", label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={markerWithCi(checksMarkerOf(checksMarker.data), data.repos.flatMap((repo) => (repo.ci === null ? [] : [repo.ci])))} /> },
-                    { id: "events", label: t("taskAnswers.tabs.events"), extra: eventsMarker },
-                  ]
-            }
+            // A refine or review task changes nothing: no Changes or Checks tab (refine-draft.md; the README's choice 10).
+            tabs={tabsOf(data.kind).map((id) => {
+              switch (id) {
+                case "activity":
+                  return { id, label: t("taskAnswers.tabs.activity") };
+                case "changes":
+                  return { id, label: t("taskAnswers.tabs.changes"), extra: changedFiles === 0 ? null : <span className="font-mono text-xs text-faint">{changedFiles}</span> };
+                case "checks":
+                  // Milestone 10 (F-151/c6): the marker follows ostra's checks and the code host's CI alike.
+                  return { id, label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={markerWithCi(checksMarkerOf(checksMarker.data), data.repos.flatMap((repo) => (repo.ci === null ? [] : [repo.ci])))} /> };
+                case "draft":
+                  return { id, label: t("draft.tab"), extra: draft.data?.draft === null || draft.data?.draft === undefined ? null : <span className="font-mono text-faint">{t("draft.versionShort", { n: draft.data.draft.version })}</span> };
+                case "events":
+                  return { id, label: t("taskAnswers.tabs.events"), extra: eventsMarker };
+                default:
+                  return id satisfies never;
+              }
+            })}
           />
         </div>
         {log.error === null ? null : <p role="alert" className="mt-3 text-red">{log.error}</p>}
@@ -750,6 +771,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
                   steers: data.capabilities.steersMidTurn,
                   waits: needs.some((need) => need.kind === "question") ? "question" : needs.some((need) => need.kind === "plan") ? "plan" : replyHint(needs, agentName) === null ? null : "reply",
                   refine: isRefine,
+                  review: data.kind === "review",
                 })
               : null
           }
@@ -827,6 +849,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           runnerName={data.runner?.name ?? null}
           title={data.title}
           {...(threadResults === undefined ? {} : { results: threadResults })}
+          onLiveDoing={onLiveDoing}
         />
         )}
       </div>
