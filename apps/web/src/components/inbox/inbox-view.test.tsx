@@ -17,7 +17,7 @@ import { SafeMarkdown, countImages } from "./safe-markdown";
 const now = Date.UTC(2026, 10, 19, 12);
 const esc = (text: string): string => text.replaceAll("'", "&#x27;");
 const projectId = projectIdSchema.parse("01900000-0000-7000-8000-000000000010");
-const board = { id: boardIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), name: "Calculator", key: "CALC" };
+const board = { id: boardIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), name: "Calculator", key: "CALC", connection: null, paused: false };
 
 const ticket: InboxTicket = {
   id: ticketIdSchema.parse("01900000-0000-7000-8000-0000000000d1"),
@@ -37,7 +37,9 @@ const ticket: InboxTicket = {
 
 const source: InboxSource = {
   boards: [{ ...board, lastPolledAt: now - 8000 }],
-  connection: { connectionId: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), workspaceName: "acme", state: "active", mode: "webhooks", pollSeconds: 60 },
+  connections: [{ id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), kind: "linear", name: "Acme Linear", state: "active", mode: "webhooks" }],
+  connected: true,
+  pollSeconds: 60,
   cacheUpdatedAt: now - 8000,
   stale: false,
 };

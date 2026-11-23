@@ -69,6 +69,7 @@ const context = (first: TicketRoundView | null, over: Partial<TicketContextView>
   state: first === null ? "fetching" : "read",
   ticketKey: "CALC-170",
   tracker: "linear",
+  connection: null,
   limits,
   prompt: "You're working on CALC-170.",
   model: { name: "Claude Sonnet 5.5", imageInput: "yes" },

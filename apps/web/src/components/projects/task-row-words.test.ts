@@ -8,6 +8,7 @@ const row = (overrides: Partial<TaskRow>): TaskRow => ({
   id: taskIdSchema.parse("01a1f173-8696-70be-a85a-85223964702f"),
   key: "3964702f",
   title: "Add a history panel",
+  connection: null,
   kind: "code",
   reviewOf: null,
   state: "running",

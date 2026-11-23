@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { repoIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { connectionIdSchema, repoIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 
 import { t } from "@/lib/messages";
 
@@ -22,6 +22,8 @@ const ticket: NonNullable<TaskDetail["ticket"]> = {
   status: { name: "In Review", category: "started" },
   board: "Calculator",
   tracker: "linear",
+  connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), kind: "linear", name: "Ostra Linear" },
+  subIssues: { count: 0, done: 0 },
   labels: ["frontend", "history"],
   priority: 2,
   cachedAt: now,
@@ -34,6 +36,7 @@ const write = (n: number, kind: TaskDetail["sync"][number]["kind"], state: TaskD
   state,
   attempts: state === "failed" ? 3 : 1,
   error: state === "failed" ? "linear: rate limited" : null,
+  move: null,
   createdAt: now - 30 * 60_000,
   doneAt: state === "done" ? now - 29 * 60_000 : null,
 });

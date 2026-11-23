@@ -24,7 +24,7 @@ const ticket = (n: number, over: Partial<InboxTicket> = {}): InboxTicket => ({
   key: `CALC-${String(n)}`,
   title: `Ticket ${String(n)}`,
   url: `https://linear.app/acme/issue/CALC-${String(n)}`,
-  board: { id: boardIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), name: "Calculator", key: "CALC" },
+  board: { id: boardIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), name: "Calculator", key: "CALC", connection: null, paused: false },
   status: { id: "s-todo", name: "Todo", category: "open" },
   priority: null,
   labels: [],

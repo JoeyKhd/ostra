@@ -239,7 +239,7 @@ export const InboxLede = ({ source, now }: { readonly source: InboxSource; reado
           {t("inbox.updated", { age })}
         </>
       )}
-      {source.connection?.mode === "polling" && !source.stale ? ` · ${t("inbox.polling", { seconds: source.connection.pollSeconds })}` : null}
+      {source.connections.some((connection) => connection.mode === "polling") && !source.stale ? ` · ${t("inbox.polling", { seconds: source.pollSeconds })}` : null}
     </>
   );
 };
@@ -649,7 +649,7 @@ export const InboxView = ({ projectId, admin }: { readonly projectId: ProjectId;
     ...(options.data?.statuses ?? []).map((status) => ({ value: status.id, label: status.name })),
   ];
   const empty: "no-connection" | "no-boards" | "nothing-open" | null =
-    source === undefined ? null : source.connection === null ? "no-connection" : source.boards.length === 0 ? "no-boards" : tickets.length === 0 && !filtered(filters) ? "nothing-open" : null;
+    source === undefined ? null : source.connections.length === 0 ? "no-connection" : source.boards.length === 0 ? "no-boards" : tickets.length === 0 && !filtered(filters) ? "nothing-open" : null;
   const parentOf = (ticket: { readonly subIssues: number; readonly codeStart: { readonly tasks: number; readonly overLimit: boolean }; readonly id: string }) =>
     ticket.subIssues > 0 && ticket.codeStart.tasks > 0 && !ticket.codeStart.overLimit ? { tasks: ticket.codeStart.tasks, href: `/projects/${projectId}/tickets/${ticket.id}` } : null;
   const panel = selecting ? (

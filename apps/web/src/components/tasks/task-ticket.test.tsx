@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { blobIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { blobIdSchema, connectionIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 
 import { t } from "@/lib/messages";
 import { formatSize, restoredDetail, savedDetail } from "@/task/marker-words";
@@ -97,8 +97,8 @@ describe("the composer: send or reopen", () => {
 
 describe("the sync steps", () => {
   const writes: TaskDetail["sync"] = [
-    { id: ticketWriteIdSchema.parse("01900000-0000-7000-8000-0000000000a1"), kind: "move", state: "done", attempts: 1, error: null, createdAt: now - 60_000, doneAt: now - 59_000 },
-    { id: ticketWriteIdSchema.parse("01900000-0000-7000-8000-0000000000a2"), kind: "link_pr", state: "failed", attempts: 5, error: "Linear refused the link", createdAt: now - 30_000, doneAt: null },
+    { id: ticketWriteIdSchema.parse("01900000-0000-7000-8000-0000000000a1"), kind: "move", state: "done", attempts: 1, error: null, move: null, createdAt: now - 60_000, doneAt: now - 59_000 },
+    { id: ticketWriteIdSchema.parse("01900000-0000-7000-8000-0000000000a2"), kind: "link_pr", state: "failed", attempts: 5, error: "Linear refused the link", move: null, createdAt: now - 30_000, doneAt: null },
   ];
 
   it("F-031: one line per step with its state, and Retry sync when one failed", () => {
@@ -116,7 +116,7 @@ describe("the sync steps", () => {
 describe("the ticket (task-ticket.md)", () => {
   it("names the tracker a ticket came from, and the board", () => {
     expect(trackerName("linear")).toBe("Linear");
-    const ticket: TaskDetail["ticket"] = { id: ticketIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), key: "CALC-174", title: "Keep a history", url: "https://linear.app/x", status: { name: "In Review", category: "started" }, board: "Calculator", tracker: "linear", labels: ["frontend"], priority: 2, cachedAt: now, removed: false };
+    const ticket: TaskDetail["ticket"] = { id: ticketIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), key: "CALC-174", title: "Keep a history", url: "https://linear.app/x", status: { name: "In Review", category: "started" }, board: "Calculator", tracker: "linear", connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), kind: "linear", name: "Ostra Linear" }, subIssues: { count: 0, done: 0 }, labels: ["frontend"], priority: 2, cachedAt: now, removed: false };
     const html = renderToStaticMarkup(<TicketProperties task={{ ticket, sync: [], canRetry: false }} now={now} retry={idle} createTicket={null} />);
     expect(html).toContain(t("taskPage.ticketBoard"));
     expect(html).toContain("Calculator");

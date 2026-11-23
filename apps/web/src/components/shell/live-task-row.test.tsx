@@ -77,6 +77,7 @@ describe("a live task's row (F-147, app-shell.md \"A live task row\")", () => {
       id: taskIdSchema.parse("01a1f173-8696-70be-a85a-85223964702f"),
       key: "3964702f",
       title: "Add a history panel",
+      connection: null,
       kind: "code",
       reviewOf: null,
       state: "running",
@@ -126,6 +127,7 @@ const otherId = taskIdSchema.parse("01a1f173-8696-70be-a85a-8522396470bb");
 const listRow = (over: Partial<ListRow> & Pick<ListRow, "id" | "state">): ListRow => ({
   key: over.id.slice(-8),
   title: "add a simple index.html file that i can preview",
+  connection: null,
   kind: "code",
   reviewOf: null,
   subState: null,
@@ -205,6 +207,7 @@ describe("a follow-up in the live lists (F-147/c8)", () => {
       taskId: reviewId,
       key: null,
       title: "Review: add a simple index.html file that i can preview",
+      connection: null,
       kind: "review",
       reviewOf: { taskId: codeId, key: null, title: "add a simple index.html file that i can preview" },
       state: "running",
