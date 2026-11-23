@@ -374,7 +374,14 @@ const agentMode = async () => {
   await outside("Retry failed invoice exports", "Casey Moore", 30);
   await outside("Invoice PDF shows the wrong locale", "Dana Ortiz", 20);
   await outside("Add VAT to the CSV export", "Casey Moore", 10);
-  // Home shows needs-you only once setup is done (F-076): run alone, finish what the setup specs would have.
+  // Home shows needs-you only once setup is done (F-076): run alone, finish what the setup specs
+  // would have. The model provider is the one step this world didn't seed; the runner stays online
+  // (its last contact is far ahead of core's presence sweep).
+  if ((await db.modelProvider.count({ where: { organizationId } })) === 0) {
+    await db.modelProvider.create({
+      data: { organizationId, name: "Agent mode seed", baseUrl: "https://agent-mode-seed.invalid/v1", apiFormat: "anthropic_messages", authScheme: "x_api_key", tokenSecretRef: "seed:none" },
+    });
+  }
   if ((await db.runner.count({ where: { organizationId, state: "online" } })) === 0) {
     await db.runner.create({
       data: { organizationId, kind: "personal", ownerMemberId: admin.id, name: "e2e-agent-runner", publicKey: `e2e-agent-${randomBytes(8).toString("hex")}`, executor: "host", capacity: 1, version: "0.0.0", state: "online", lastSeenAt: new Date("2099-01-01T00:00:00Z") },
