@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
-import { trackerName } from "@/components/tasks/task-ticket";
+import { trackerName } from "@/components/trackers/tracker-mark";
 import { Button } from "@/components/ui/button";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
@@ -60,7 +60,7 @@ export const NotificationSettingsView = () => {
       properties={
         <NotificationPanel
           email={data?.emailAddress ?? null}
-          facts={data === undefined ? undefined : { mailOn: data.emailOn, tracker: data.tracker === null ? null : { name: trackerName(data.tracker.kind) }, delaySeconds: data.emailDelaySeconds, savedAt: data.lastSavedAt, instanceAdmin: data.isInstanceAdmin }}
+          facts={data === undefined ? undefined : { mailOn: data.emailOn, tracker: data.tracker === null ? null : { name: trackerName[data.tracker.kind] }, delaySeconds: data.emailDelaySeconds, savedAt: data.lastSavedAt, instanceAdmin: data.isInstanceAdmin }}
         />
       }
     >

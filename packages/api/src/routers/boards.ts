@@ -102,9 +102,16 @@ const groupStatuses = (statuses: readonly TrackerStatus[]) =>
     }))
     .filter((group) => group.statuses.length > 0);
 
+/**
+ * The organization's first Linear connection that isn't revoked, as Boards read it until ticket 10
+ * gives every procedure the board's own connection (milestone 11, ADR 0071): a bridge, not a rule.
+ */
+const firstLinearOf = async (deps: ApiDeps, organizationId: OrganizationId): Promise<ConnectionId | null> =>
+  (await deps.trackers.connectionsOf(organizationId)).find((connection) => connection.kind === "linear")?.id ?? null;
+
 /** The organization's usable Linear tracker, or the tRPC error that says what to do first. */
 const requireTracker = async (deps: ApiDeps, organizationId: OrganizationId): Promise<Extract<TrackerLookup, { readonly ok: true }>["tracker"]> => {
-  const connectionId = await deps.trackers.linearConnectionOf(organizationId);
+  const connectionId = await firstLinearOf(deps, organizationId);
   if (connectionId === null) {
     throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect Linear first: an organization admin does it under Linear" });
   }
@@ -132,7 +139,7 @@ export const boardsRouter = router({
     .output(z.array(z.object({ externalId: z.string(), key: z.string(), name: z.string() })).nullable())
     .query(async ({ ctx }) => {
       const organizationId = organizationIdSchema.parse(ctx.scope.organizationId);
-      if ((await ctx.deps.trackers.linearConnectionOf(organizationId)) === null) return null;
+      if ((await firstLinearOf(ctx.deps, organizationId)) === null) return null;
       const tracker = await requireTracker(ctx.deps, organizationId);
       const listed = await tracker.tracker.listBoards();
       if (!listed.ok) {
@@ -182,7 +189,7 @@ export const boardsRouter = router({
       const { db, settings } = ctx.deps;
       const organizationId = ctx.scope.organizationId;
       const rows = await db.board.findMany({ where: { organizationId, projectId: input.projectId, detachedAt: null }, orderBy: { createdAt: "asc" } });
-      const connectionId = await ctx.deps.trackers.linearConnectionOf(organizationId);
+      const connectionId = await firstLinearOf(ctx.deps, organizationId);
       const connection = connectionId === null ? null : await db.connection.findFirst({ where: { id: connectionId, organizationId } });
       const canEdit = ctx.project.role === "admin";
       if (connection === null) {

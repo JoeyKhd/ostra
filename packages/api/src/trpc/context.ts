@@ -1,6 +1,6 @@
 import type { Db } from "@ostra/db";
 import type { Logger } from "@ostra/adapter-sdk";
-import type { LinearAppKit, MemberScope, MessageFilesDeps, PanelPreviewTokens, Ports, PreviewDomainProbe, ServerSettings } from "@ostra/domain";
+import type { JiraConnectKit, LinearAppKit, MemberScope, MessageFilesDeps, PanelPreviewTokens, Ports, PreviewDomainProbe, ServerSettings } from "@ostra/domain";
 
 import type { OstraAuth } from "../auth/create-auth.ts";
 import { loadMemberContext, resolveSession } from "../auth/scope.ts";
@@ -112,10 +112,12 @@ export type ApiDeps = {
   readonly agentEffort: AgentEffort;
   /** The blob store's name and health, for the storage page (F-114, ticket 31). */
   readonly blobStore: BlobStoreView;
-  /** The organization's tracker connection as an adapter (tickets 27 to 29). */
+  /** The organization's tracker connections, of any kind, each as an adapter (tickets 27 to 29; milestone 11, ADR 0071). */
   readonly trackers: TrackerDirectory;
   /** The calls the Linear connection flow makes to Linear (ticket 27). */
   readonly linear: LinearAppKit;
+  /** Milestone 11 (F-008, ticket 09): the calls Jira's connect steps make to Jira, on `OSTRA_JIRA_API_URL`. */
+  readonly jira: JiraConnectKit;
   /** The adapters that send mail for the install's email, by provider (ticket 37); the test mail goes through one. */
   readonly email: EmailDirectory;
   /**

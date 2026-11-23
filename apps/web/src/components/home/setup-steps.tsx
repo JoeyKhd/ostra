@@ -27,7 +27,8 @@ const copy: Readonly<Record<SetupStepId, StepCopy>> = {
   admin: { title: "checklist.admin.title", body: "checklist.admin.body", href: "/", action: "checklist.admin.action" },
   "model-provider": { title: "checklist.model.title", body: "checklist.model.body", href: "/organization/models", action: "checklist.model.action" },
   github: { title: "checklist.github.title", body: "checklist.github.body", href: "/organization/github", action: "checklist.github.action" },
-  linear: { title: "checklist.linear.title", body: "checklist.linear.body", href: "/organization/linear", action: "checklist.linear.action" },
+  // Milestone 11: the step is `tracker`; its words and place stay Linear's until ticket 16 draws "Connect a tracker".
+  tracker: { title: "checklist.linear.title", body: "checklist.linear.body", href: "/organization/linear", action: "checklist.linear.action" },
   project: { title: "checklist.project.title", body: "checklist.project.body", href: "/projects/new", action: "checklist.project.action" },
   runner: { title: "checklist.runner.title", body: "checklist.runner.body", href: "/organization/runners", action: "checklist.runner.action" },
   "first-task": { title: "checklist.task.title", body: "checklist.task.body", href: "/tasks/new", action: "checklist.task.action" },
@@ -41,7 +42,7 @@ const tickLook = (state: SetupStepState, next: boolean): StepLook =>
 
 /** The step's body: the Linear step says where its connection stands. */
 const bodyOf = (step: SetupStep): MessageKey => {
-  if (step.id !== "linear") return copy[step.id].body;
+  if (step.id !== "tracker") return copy[step.id].body;
   switch (step.state) {
     case "pending":
       return "checklist.linear.pending";
@@ -51,20 +52,20 @@ const bodyOf = (step: SetupStep): MessageKey => {
       return "checklist.linear.skipped";
     case "done":
     case "open":
-      return copy.linear.body;
+      return copy.tracker.body;
     default:
       return step.state satisfies never;
   }
 };
 
 const actionOf = (step: SetupStep): MessageKey =>
-  step.id !== "linear" ? copy[step.id].action : step.state === "pending" ? "checklist.linear.continue" : step.state === "failed" ? "checklist.linear.authorizeAgain" : copy.linear.action;
+  step.id !== "tracker" ? copy[step.id].action : step.state === "pending" ? "checklist.linear.continue" : step.state === "failed" ? "checklist.linear.authorizeAgain" : copy.tracker.action;
 
 export type SetupStepsProps = {
   readonly steps: readonly SetupStep[];
   readonly next: SetupStepId | null;
   readonly admin: boolean;
-  /** `setup.skip({ step: "linear" })`. */
+  /** `setup.skip({ step: "tracker" })`. */
   readonly skip: { readonly run: () => void; readonly pending: boolean };
 };
 
@@ -76,7 +77,7 @@ export const SetupSteps = ({ steps, next, admin, skip }: SetupStepsProps) => (
       const isNext = next === step.id;
       const settled = step.state === "done" || step.state === "skipped";
       const canAct = admin || step.id === "first-task";
-      const failed = step.id === "linear" && step.state === "failed";
+      const failed = step.id === "tracker" && step.state === "failed";
       return (
         <li
           key={step.id}
@@ -113,7 +114,7 @@ export const SetupSteps = ({ steps, next, admin, skip }: SetupStepsProps) => (
             </Link>
           ) : (
             <div className="ml-[40px] flex shrink-0 flex-row-reverse items-center gap-4 sm:ml-0 sm:flex-row">
-              {step.id === "linear" && step.state === "open" ? (
+              {step.id === "tracker" && step.state === "open" ? (
                 <Button variant="link" className="h-auto px-0 text-ui" disabled={skip.pending} onClick={skip.run}>
                   {skip.pending ? t("checklist.linear.skipping") : t("checklist.linear.skip")}
                 </Button>

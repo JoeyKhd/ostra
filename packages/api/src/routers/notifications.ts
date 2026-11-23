@@ -5,12 +5,15 @@ import {
   budgetPercent,
   choosableNotificationKinds,
   defaultChoice,
+  defaultConnectionName,
+  isTrackerKind,
   markNotificationRead,
   monthSpendInTx,
   notificationChannels,
   notificationKinds,
   previewSharesOfMember,
   saveNotificationPreferences,
+  trackerKinds,
 } from "@ostra/domain";
 import type { Prisma } from "@ostra/db";
 import { notificationIdSchema, projectIdSchema } from "@ostra/protocol";
@@ -39,15 +42,23 @@ const preferencesRouter = router({
   get: memberProcedure.query(async ({ ctx }) => {
     const { db, settings } = ctx.deps;
     const organizationId = ctx.scope.organizationId;
-    const [saved, row, tracker, instance, account, lastSaved] = await Promise.all([
+    const [saved, row, connections, instance, account, lastSaved] = await Promise.all([
       db.notificationPreference.findMany({ where: { memberId: ctx.scope.memberId, organizationId } }),
       loadEmailRow(db),
-      db.connection.findFirst({ where: { organizationId, kind: "linear", state: "active" }, select: { externalWorkspaceName: true } }),
+      db.connection.findMany({
+        where: { organizationId, kind: { in: [...trackerKinds] }, state: "active" },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { kind: true, name: true, externalWorkspaceName: true },
+      }),
       db.instanceSetting.findUnique({ where: { id: "instance" }, select: { emailDelaySeconds: true } }),
       db.user.findUniqueOrThrow({ where: { id: ctx.user.userId }, select: { email: true } }),
       db.notificationPreference.aggregate({ where: { memberId: ctx.scope.memberId, organizationId }, _max: { updatedAt: true } }),
     ]);
     const email = viewEmail(settings.email, row);
+    // Milestone 11 (ADR 0071): each active connection by its kind and its name, never "the Linear".
+    const trackers = connections.flatMap((connection) =>
+      isTrackerKind(connection.kind) ? [{ kind: connection.kind, name: connection.name ?? defaultConnectionName(connection.kind, connection.externalWorkspaceName) }] : [],
+    );
     return {
       choices: choosableNotificationKinds.flatMap((kind) =>
         notificationChannels.map((channel) => {
@@ -68,8 +79,13 @@ const preferencesRouter = router({
       emailOn: email.provider !== "off" && email.ready,
       /** The member's own address, where mail would go. */
       emailAddress: account.email,
-      /** The connected tracker by its kind, which the panel words (F-083), or `null`: the ticket column then has nothing to comment on. */
-      tracker: tracker === null ? null : { kind: "linear" as const, workspace: tracker.externalWorkspaceName },
+      /**
+       * The first connected tracker by its kind, which the panel words (F-083), and its name, or
+       * `null`: the ticket column then has nothing to comment on. `trackers` lists every one.
+       */
+      tracker: trackers[0] ?? null,
+      /** Milestone 11: every active tracker connection, by kind and name: a ticket's comment goes to its own. */
+      trackers,
       /** How long a needs-you mail waits, in seconds: the instance's saved delay, or the setting's. */
       emailDelaySeconds: instance?.emailDelaySeconds ?? settings.emailDelaySeconds,
       /** When the member last saved a choice, or `null` when they never have. */

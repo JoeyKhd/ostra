@@ -1,6 +1,6 @@
-import { recordSetupComplete, setupStepMarks, setupTimeline, skipSetupStep, skipSetupStepInputSchema } from "@ostra/domain";
+import { defaultConnectionName, isTrackerKind, recordSetupComplete, setupStepMarks, setupTimeline, skipSetupStep, skipSetupStepInputSchema, trackerKinds, trackerSetupStepInTx } from "@ostra/domain";
 import type { AuditAction } from "@ostra/domain";
-import { organizationIdSchema } from "@ostra/protocol";
+import { connectionIdSchema, organizationIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -14,14 +14,16 @@ import { setupTimelineInputSchema, setupTimelineOutputSchema } from "./setup-tim
 // `timeline` says when each step was done, for the 30-minute measure. 2026-11-21 (the maintainer's
 // "all yes"): once every required step was done, setup stays `complete` for good, kept as
 // `setupCompletedAt`, so the checklist never comes back when every runner goes offline later;
-// `runnerOnline` lets Home say so instead.
+// `runnerOnline` lets Home say so instead. Milestone 11 (F-152/c7, ADR 0071; ticket 09): the step
+// `tracker` ("Connect a tracker") replaced `linear`, for a connection of either kind, and names the
+// connection it stands on.
 
 /** The setup checklist's steps, in the order the panel shows them (spec section 3). */
-export const setupStepIds = ["admin", "model-provider", "github", "linear", "project", "runner", "first-task"] as const;
+export const setupStepIds = ["admin", "model-provider", "github", "tracker", "project", "runner", "first-task"] as const;
 export type SetupStepId = (typeof setupStepIds)[number];
 
-/** Linear is optional (F-076): shown, skippable, ticked once connected, never counted against `complete`. */
-const optionalSetupSteps: ReadonlySet<SetupStepId> = new Set<SetupStepId>(["linear"]);
+/** The tracker is optional (F-076): shown, skippable, ticked once connected, never counted against `complete`. */
+const optionalSetupSteps: ReadonlySet<SetupStepId> = new Set<SetupStepId>(["tracker"]);
 
 /**
  * Each step's page in the docs site, relative to `OSTRA_DOCS_URL` (the site exports with a
@@ -32,25 +34,37 @@ export const setupStepDocs = {
   admin: "docs/install/first-sign-in/",
   "model-provider": "docs/agents-and-models/model-providers/",
   github: "docs/install/setup/#connect-github",
-  linear: "docs/install/linear/",
+  // Linear's page until the docs gain their Trackers page (milestone 11, ticket 17).
+  tracker: "docs/install/linear/",
   project: "docs/install/setup/#create-a-project",
   runner: "docs/install/setup/#connect-a-runner",
   "first-task": "docs/using-ostra/tasks/",
 } as const satisfies Record<SetupStepId, string>;
 
 /**
- * `done`, `skipped` (the admin set it aside) or `open`; the Linear step also says `pending` (the
- * app is made and waits for its values or the consent) or `failed` (the connection broke).
+ * `done`, `skipped` (the admin set it aside) or `open`; the tracker step also says `pending` (the
+ * newest connection waits for its steps) or `failed` (its token stopped working).
  */
 export const setupStepStates = ["done", "skipped", "open", "pending", "failed"] as const;
 export type SetupStepState = (typeof setupStepStates)[number];
 
+/** The connection the tracker step stands on: the newest pending or failed one, or the newest active one once done. */
+const stepConnectionSchema = z.object({ id: connectionIdSchema, kind: z.enum(trackerKinds), name: z.string() });
+
 const setupStatusSchema = z.object({
-  steps: z.array(z.object({ id: z.enum(setupStepIds), state: z.enum(setupStepStates), docs: z.url() })),
+  steps: z.array(
+    z.object({
+      id: z.enum(setupStepIds),
+      state: z.enum(setupStepStates),
+      docs: z.url(),
+      /** The tracker step's connection when it's `pending`, `failed` or `done`, else `null`; absent on the other steps. */
+      connection: stepConnectionSchema.nullable().optional(),
+    }),
+  ),
   /** The first step that is `open`, or `null` when none is. */
   next: z.enum(setupStepIds).nullable(),
   /**
-   * Every step but the optional Linear one is done, or was once (`completedAt`): Home drops the
+   * Every step but the optional tracker one is done, or was once (`completedAt`): Home drops the
    * checklist, and it never comes back.
    */
   complete: z.boolean(),
@@ -68,35 +82,39 @@ export const setupRouter = router({
   status: memberProcedure.output(setupStatusSchema).query(async ({ ctx }) => {
     const { db, settings, ports } = ctx.deps;
     const organizationId = ctx.scope.organizationId;
-    const [providers, github, linear, setting, projects, runners, tasks] = await Promise.all([
+    const [providers, github, tracker, trackers, setting, projects, runners, tasks] = await Promise.all([
       db.modelProvider.count({ where: { organizationId } }),
       db.connection.count({ where: { organizationId, kind: "github" } }),
-      db.connection.findFirst({ where: { organizationId, kind: "linear", state: { not: "revoked" } }, select: { state: true } }),
-      db.organizationSetting.findUnique({ where: { organizationId }, select: { linearSkippedAt: true, setupCompletedAt: true } }),
+      trackerSetupStepInTx(db, organizationId),
+      db.connection.findMany({
+        where: { organizationId, kind: { in: [...trackerKinds] }, state: { not: "revoked" } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true, kind: true, name: true, state: true, externalWorkspaceName: true },
+      }),
+      db.organizationSetting.findUnique({ where: { organizationId }, select: { setupCompletedAt: true } }),
       db.project.count({ where: { organizationId } }),
       db.runner.count({ where: { organizationId, state: "online" } }),
       db.task.count({ where: { organizationId } }),
     ]);
     const settled = (done: boolean): SetupStepState => (done ? "done" : "open");
-    // A connected Linear is done whether or not it was once skipped; a connection in progress or
-    // broken says so; none is open, or skipped when an admin set it aside.
-    const linearState = (): SetupStepState => {
-      if (linear === null) {
-        return setting?.linearSkippedAt === undefined || setting.linearSkippedAt === null ? "open" : "skipped";
-      }
-      return linear.state === "active" ? "done" : linear.state === "pending" ? "pending" : "failed";
-    };
+    // Any active connection makes the step done, whether or not it was once skipped; otherwise the
+    // newest connection says pending or failed; none is open, or skipped (`trackerSetupStepInTx`).
+    const standsOn = tracker === "done" ? trackers.find((row) => row.state === "active") : tracker === "pending" || tracker === "failed" ? trackers[0] : undefined;
+    const connection =
+      standsOn === undefined || !isTrackerKind(standsOn.kind)
+        ? null
+        : { id: connectionIdSchema.parse(standsOn.id), kind: standsOn.kind, name: standsOn.name ?? defaultConnectionName(standsOn.kind, standsOn.externalWorkspaceName) };
     const states: Record<SetupStepId, SetupStepState> = {
       // Reaching a member procedure means an admin exists.
       admin: "done",
       "model-provider": settled(providers > 0),
       github: settled(github > 0),
-      linear: linearState(),
+      tracker,
       project: settled(projects > 0),
       runner: settled(runners > 0),
       "first-task": settled(tasks > 0),
     };
-    const steps = setupStepIds.map((id) => ({ id, state: states[id], docs: `${settings.docsUrl}${setupStepDocs[id]}` }));
+    const steps = setupStepIds.map((id) => ({ id, state: states[id], docs: `${settings.docsUrl}${setupStepDocs[id]}`, ...(id === "tracker" ? { connection } : {}) }));
     const allDone = steps.every((step) => step.state === "done" || optionalSetupSteps.has(step.id));
     // Kept the first time every step is done; a step that reopens later (a runner offline) doesn't undo it.
     const completedAt = setting?.setupCompletedAt?.getTime() ?? (allDone ? await recordSetupComplete(db, organizationId, ports.clock.now()) : null);
@@ -109,7 +127,7 @@ export const setupRouter = router({
     };
   }),
 
-  /** "Skip for now" on the checklist's Linear step. Admins only. */
+  /** "Skip for now" on the checklist's tracker step (`tracker`, or `linear` as the panel said before ticket 16). Admins only. */
   skip: adminProcedure
     .input(skipSetupStepInputSchema)
     .output(z.object({ skippedAt: z.number().int() }))

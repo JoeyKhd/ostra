@@ -166,6 +166,21 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
     "linear.enableAgentMode",
     "linear.saveApp",
     "linear.start",
+    // Milestone 11 (F-152, F-008; ticket 09): tracker connections of any kind, and Jira's and Linear's steps.
+    "trackers.create",
+    "trackers.disconnect",
+    "trackers.jira.checkToken",
+    "trackers.jira.findSite",
+    "trackers.jira.finishPolling",
+    "trackers.jira.recheck",
+    "trackers.jira.replaceToken",
+    "trackers.jira.rotateSecret",
+    "trackers.jira.saveToken",
+    "trackers.linear.authorizeUrl",
+    "trackers.linear.complete",
+    "trackers.linear.enableAgentMode",
+    "trackers.linear.saveApp",
+    "trackers.rename",
   ],
   "model providers": [
     "providers.chooseDefaultModelProvider",
@@ -228,7 +243,7 @@ const ORGANIZATION_ADMIN_WRITES: Readonly<Record<string, readonly string[]>> = {
  * Writes in the admin routers that are a project admin's, with their own tests: "Start from Linear"
  * on a board (F-012, ticket 26: `agent-mode-approvals.test.ts`).
  */
-const PROJECT_ADMIN_WRITES_IN_ADMIN_ROUTERS: readonly string[] = ["linear.setBoardAgentMode"];
+const PROJECT_ADMIN_WRITES_IN_ADMIN_ROUTERS: readonly string[] = ["linear.setBoardAgentMode", "trackers.linear.setBoardAgentMode"];
 
 /** Writes in the admin routers that any member makes, with their own tests: a library suggestion (F-145, `library.test.ts`). */
 const MEMBER_WRITES_IN_ADMIN_ROUTERS: readonly string[] = ["library.suggest"];
@@ -244,6 +259,7 @@ const ADMIN_ROUTERS: readonly string[] = [
   "members",
   "pools",
   "providers",
+  "trackers",
 ];
 
 describe("an organization admin manages the organization (F-003)", () => {

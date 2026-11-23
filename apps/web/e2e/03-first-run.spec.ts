@@ -97,7 +97,7 @@ test("F-076/c1: with the runner online, the checklist's last step starts the fir
   await page.goto("/");
   const checklist = page.getByTestId("setup-checklist");
   await expect(checklist).toBeVisible();
-  expect(await checklistSteps(page)).toEqual(["admin", "model-provider", "github", "linear", "project", "runner", "first-task"]);
+  expect(await checklistSteps(page)).toEqual(["admin", "model-provider", "github", "tracker", "project", "runner", "first-task"]);
   await expect(page.getByText("5 of 7", { exact: true })).toBeVisible();
   for (const step of ["admin", "model-provider", "github", "project", "runner"]) {
     await expect(page.locator(`[data-step="${step}"]`)).toHaveAttribute("data-done", "true");
@@ -105,7 +105,7 @@ test("F-076/c1: with the runner online, the checklist's last step starts the fir
     await expect(page.locator(`[data-step="${step}"] a:not([data-docs])`)).toHaveCount(0);
   }
   // Linear is neither connected nor skipped: it's the next step, and the first task is still open.
-  await expect(page.locator('[data-step="linear"]')).toHaveAttribute("data-next", "true");
+  await expect(page.locator('[data-step="tracker"]')).toHaveAttribute("data-next", "true");
   const firstTask = page.locator('[data-step="first-task"]');
   await expect(firstTask).toHaveAttribute("data-done", "false");
 

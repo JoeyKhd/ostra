@@ -34,19 +34,19 @@ describe("the checklist without Linear (F-076)", () => {
   it("F-076/c1: setup completes without Linear, and ticks Linear when it's connected", async () => {
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);
-    const linearOf = async () => (await admin.setup.status()).steps.find((step) => step.id === "linear")?.state;
+    const linearOf = async () => (await admin.setup.status()).steps.find((step) => step.id === "tracker")?.state;
 
     // Organization A has its project already; the model provider and GitHub come next.
     await seedConnectionAndModel(harness);
-    expect(await admin.setup.status()).toMatchObject({ next: "linear", complete: false });
+    expect(await admin.setup.status()).toMatchObject({ next: "tracker", complete: false });
     const runnerId = await seedPersonalRunner(harness, a.admin.id, "laptop");
     expect((await admin.setup.status()).complete).toBe(false);
     await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id, runnerId });
 
     // Every required step done, Linear untouched: setup is complete, and Linear stays offered.
     const done = await admin.setup.status();
-    expect(done.steps.filter((step) => step.state !== "done").map((step) => [step.id, step.state])).toEqual([["linear", "open"]]);
-    expect(done).toMatchObject({ next: "linear", complete: true });
+    expect(done.steps.filter((step) => step.state !== "done").map((step) => [step.id, step.state])).toEqual([["tracker", "open"]]);
+    expect(done).toMatchObject({ next: "tracker", complete: true });
 
     // A connection in progress says so, and still doesn't hold setup back.
     const pending = await seedLinearConnection(harness, { state: "pending" });

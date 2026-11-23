@@ -35,6 +35,8 @@ let other: ReadonlyMap<IsolationModelName, string>;
 let idsOfB: readonly string[];
 let idsOfRestricted: readonly string[];
 let projectAdmin: SeededMember;
+/** Milestone 11: each organization's tracker connections, by kind, for the procedures that take one. */
+let trackersOf: ReadonlyMap<string, { readonly linear: string; readonly jira: string }>;
 
 const tablesWith = async (db: Db, column: "organizationId" | "projectId"): Promise<readonly string[]> =>
   z
@@ -76,13 +78,31 @@ beforeAll(async () => {
   other = need(rowsB.get(b.project.id));
   // Milestone 11 (F-152, ADR 0071): B holds several tracker connections, two of one kind and one of
   // another, each with a board and a ticket on its project; none of them may reach A's answers.
+  const jiraOf = new Map<string, string>();
   for (const [kind, name] of [["linear", "B's second Linear"], ["jira", "B's Jira"], ["jira", "B's second Jira"]] as const) {
     const connection = await harness.test.db.connection.create({ data: { organizationId: b.organization.id, kind, name, appId: `${kind}-${randomUUID()}`, externalWorkspaceId: randomUUID() } });
+    if (kind === "jira" && !jiraOf.has(b.organization.id)) jiraOf.set(b.organization.id, connection.id);
     const board = await harness.test.db.board.create({ data: { organizationId: b.organization.id, projectId: b.project.id, connectionId: connection.id, externalId: "10000", name, statusMap: {} } });
     await harness.test.db.ticket.create({
       data: { organizationId: b.organization.id, projectId: b.project.id, boardId: board.id, connectionId: connection.id, externalId: randomUUID(), key: "B-1", title: "B's", url: "https://tracker.invalid/b-1", trackerUpdatedAt: new Date() },
     });
   }
+  // Milestone 11 (ticket 09): A's Jira connection, connected by polling, beside the fixture's Linear one.
+  const cloudId = randomUUID();
+  const jiraOfA = await harness.test.db.connection.create({
+    data: { organizationId: a.organization.id, kind: "jira", name: "A's Jira", appId: cloudId, externalWorkspaceId: cloudId, externalWorkspaceKey: "a-site.atlassian.net", state: "active", webhookMode: "polling" },
+  });
+  jiraOf.set(a.organization.id, jiraOfA.id);
+  const trackers = new Map<string, { readonly linear: string; readonly jira: string }>();
+  for (const organizationId of [a.organization.id, b.organization.id]) {
+    const linear = await harness.test.db.connection.findFirstOrThrow({ where: { organizationId, kind: "linear" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+    trackers.set(organizationId, { linear: linear.id, jira: jiraOf.get(organizationId) ?? "" });
+  }
+  trackersOf = new Map([
+    [a.openProject.id, trackers.get(a.organization.id) ?? { linear: "", jira: "" }],
+    [a.restrictedProject.id, trackers.get(a.organization.id) ?? { linear: "", jira: "" }],
+    [b.project.id, trackers.get(b.organization.id) ?? { linear: "", jira: "" }],
+  ]);
   idsOfB = [b.organization.id, ...(await idsWhere(harness.test.db, "organizationId", b.organization.id))];
   idsOfRestricted = [a.restrictedProject.id, ...(await idsWhere(harness.test.db, "projectId", a.restrictedProject.id))];
   // A project admin of the restricted project, who is an ordinary member of the organization.
@@ -113,6 +133,14 @@ const row = (target: Target, model: IsolationModelName): string => {
 };
 
 const none: InputOf = () => undefined;
+/** One of the target's organization's tracker connections, of a kind (milestone 11). */
+const trackerOf = (target: Target, kind: "linear" | "jira"): string => {
+  const value = trackersOf.get(target.projectId)?.[kind];
+  if (value === undefined || value === "") {
+    throw new Error(`no ${kind} connection for ${target.projectId}`);
+  }
+  return value;
+};
 /** The month `SpendDaily`'s fixture rows fall in (`isolation-models.ts` writes them on 2026-11-01). */
 const currentMonth = (): string => "2026-11";
 const project: InputOf = (target) => ({ projectId: target.projectId });
@@ -275,6 +303,11 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "files.limits": { input: none, about: "organization" },
   "tasks.files": { input: task, about: "project" },
   "tasks.ticketContext": { input: task, about: "project" },
+  // Milestone 11 (F-152/c3, ticket 09): the organization's tracker connections, each by its ID.
+  "trackers.list": { input: none, about: "organization" },
+  "trackers.get": { input: (target) => ({ id: trackerOf(target, "linear") }), about: "organization" },
+  "trackers.jira.webhook": { input: (target) => ({ connectionId: trackerOf(target, "jira") }), about: "organization" },
+  "trackers.linear.status": { input: (target) => ({ connectionId: trackerOf(target, "linear") }), about: "organization" },
 };
 
 /** Which procedures read each model's rows: what the suite calls for it. */
@@ -284,7 +317,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   OrganizationSetting: ["setup.status", "organization.get", "organization.previews"],
   AuditEntry: ["environments.snapshot.get", "email.settings.get", "audit.list", "registryUse.get"],
   ChangeNotice: ["stream.subscribe"],
-  Connection: ["github.connection", "linear.status", "setup.status"],
+  Connection: ["github.connection", "linear.status", "setup.status", "trackers.list", "trackers.get", "trackers.linear.status", "trackers.jira.webhook"],
   CodeHostInstallation: ["github.installations", "github.repos", "github.connections", "github.reposByAccount"],
   ModelProvider: ["providers.list", "providers.models", "agentProfiles.providerOptions"],
   Model: ["providers.models", "agentProfiles.get", "agentProfiles.effortLevels", "spend.modelPrice"],
@@ -300,7 +333,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   ProjectMember: ["projects.get", "projects.access", "members.list"],
   ProjectPool: ["projects.get", "pools.list", "projects.runners", "tasks.runnerChoices", "fleetUse.project"],
   Repo: ["projects.get", "tasks.get", "projects.repos"],
-  Board: ["boards.get", "inbox.filters"],
+  Board: ["boards.get", "inbox.filters", "trackers.list", "trackers.get"],
   Ticket: ["inbox.list", "inbox.get", "tickets.parent"],
   TicketWrite: ["tasks.get"],
   Environment: ["environments.get"],
@@ -361,7 +394,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   AutomationRun: ["automations.history"],
   BulkStart: ["inbox.bulkStart"],
   BulkStartItem: [],
-  AgentSession: ["linear.status"],
+  AgentSession: ["linear.status", "trackers.linear.status"],
   AgentActivity: [],
   RefineDraft: ["drafts.get"],
   RefineDraftImage: ["drafts.get"],
@@ -778,6 +811,12 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "files.limits": ["ok", "ok", "ok", "ok", "ok"],
   "tasks.files": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "tasks.ticketContext": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  // Milestone 11 (F-152/c3, ticket 09): every member reads the connections (without their secrets or
+  // the boards of projects they can't open); the webhook and Linear's own page are an admin's.
+  "trackers.list": ["ok", "ok", "ok", "ok", "ok"],
+  "trackers.get": ["ok", "ok", "ok", "ok", "ok"],
+  "trackers.jira.webhook": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  "trackers.linear.status": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
 };
 
 describe("the matrix of procedures and roles (F-003, F-087)", () => {

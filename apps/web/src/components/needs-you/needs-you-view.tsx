@@ -11,7 +11,7 @@ import { needsYouRowKey } from "@/components/home/home-words";
 import { RunnerApproval } from "@/components/runners/runner-approval";
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { BudgetNoticeRows, useBudgetNotices } from "@/components/spend/budget-notices";
-import { trackerName } from "@/components/tasks/task-ticket";
+import { trackerName } from "@/components/trackers/tracker-mark";
 import { Button } from "@/components/ui/button";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
@@ -234,7 +234,7 @@ export const NeedsYouView = () => {
     prefs === undefined
       ? null
       : {
-          tracker: prefs.tracker === null ? null : trackerName(prefs.tracker.kind),
+          tracker: prefs.tracker === null ? null : trackerName[prefs.tracker.kind],
           ticketOff: prefs.choices.filter((choice) => choice.channel === "tracker").every((choice) => !choice.enabled),
           email: !prefs.emailOn
             ? { kind: "install-off" }

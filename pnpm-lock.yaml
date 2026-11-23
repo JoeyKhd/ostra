@@ -1015,6 +1015,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@ostra/adapter-jira':
+        specifier: workspace:*
+        version: link:../adapters/adapter-jira
       '@ostra/adapter-linear':
         specifier: workspace:*
         version: link:../adapters/adapter-linear

@@ -391,7 +391,7 @@ describe("F-005: who may do what", () => {
 });
 
 describe("F-076: the checklist's Linear step", () => {
-  const linearStep = async (caller: AppCaller) => (await caller.setup.status()).steps.find((step) => step.id === "linear")?.state;
+  const linearStep = async (caller: AppCaller) => (await caller.setup.status()).steps.find((step) => step.id === "tracker")?.state;
 
   it("is open, then skipped by an admin, then pending, failed and done as the connection goes", async () => {
     const admin = await adminOn("session-1");
@@ -418,7 +418,7 @@ describe("F-076: the checklist's Linear step", () => {
 
     // The progress counts a skipped step: next is the first open step.
     const status = await admin.setup.status();
-    expect(status.steps.map((step) => step.id)).toEqual(["admin", "model-provider", "github", "linear", "project", "runner", "first-task"]);
+    expect(status.steps.map((step) => step.id)).toEqual(["admin", "model-provider", "github", "tracker", "project", "runner", "first-task"]);
     expect(status.next).not.toBe("linear");
   });
 });

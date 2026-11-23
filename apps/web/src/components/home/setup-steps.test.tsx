@@ -14,7 +14,7 @@ const steps = (linear: SetupStepState): readonly SetupStep[] => [
   { id: "admin", state: "done", docs: docs("install/first-sign-in/") },
   { id: "model-provider", state: "done", docs: docs("agents-and-models/model-providers/") },
   { id: "github", state: "done", docs: docs("install/setup/#3-connect-github") },
-  { id: "linear", state: linear, docs: docs("install/linear/") },
+  { id: "tracker", state: linear, docs: docs("install/linear/") },
   { id: "project", state: "open", docs: docs("install/setup/#5-create-a-project") },
   { id: "runner", state: "open", docs: docs("install/setup/#6-connect-a-runner") },
   { id: "first-task", state: "open", docs: docs("using-ostra/tasks/") },
@@ -26,7 +26,7 @@ const actionHrefs = (row: string): string[] => [...row.matchAll(/<a (?![^>]*data
 const skip = { run: () => undefined, pending: false };
 
 const linearRow = (html: string): string => {
-  const start = html.indexOf('data-step="linear"');
+  const start = html.indexOf('data-step="tracker"');
   return html.slice(start, html.indexOf("</li>", start));
 };
 
@@ -35,7 +35,7 @@ const render = (linear: SetupStepState, next: SetupStep["id"] | null, admin = tr
 
 describe("the checklist's Linear step", () => {
   it("F-005: next: Skip for now and the page's one primary Connect Linear", () => {
-    const row = linearRow(render("open", "linear"));
+    const row = linearRow(render("open", "tracker"));
     expect(row).toContain('data-next="true"');
     expect(row).toContain('data-tick="current"');
     expect(row).toContain(t("checklist.linear.skip"));
@@ -51,20 +51,20 @@ describe("the checklist's Linear step", () => {
   });
 
   it("while skipping, the link says so and is disabled", () => {
-    const row = linearRow(render("open", "linear", true, true));
+    const row = linearRow(render("open", "tracker", true, true));
     expect(row).toContain(t("checklist.linear.skipping"));
     expect(row).toContain("disabled");
   });
 
   it("started: Continue, and no skip", () => {
-    const row = linearRow(render("pending", "linear"));
+    const row = linearRow(render("pending", "tracker"));
     expect(row).toContain("paste the app");
     expect(row).toContain(t("checklist.linear.continue"));
     expect(row).not.toContain(t("checklist.linear.skip"));
   });
 
   it("failed: says Linear refused the token, with Authorize again in outline", () => {
-    const row = linearRow(render("failed", "linear"));
+    const row = linearRow(render("failed", "tracker"));
     expect(row).toContain(t("checklist.linear.failed"));
     expect(row).toContain(t("checklist.linear.authorizeAgain"));
     expect(row).not.toContain("bg-primary");
@@ -85,7 +85,7 @@ describe("the checklist's Linear step", () => {
   });
 
   it("a member sees no Skip for now and no Connect Linear", () => {
-    const row = linearRow(render("open", "linear", false));
+    const row = linearRow(render("open", "tracker", false));
     expect(row).not.toContain(t("checklist.linear.skip"));
     expect(actionHrefs(row)).toEqual([]);
   });

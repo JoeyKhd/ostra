@@ -5,8 +5,9 @@ import {
   connectLinearInputSchema,
   createLinearAuthorizeUrl,
   authorizeUrlInputSchema,
-  disconnectLinear,
   disconnectLinearInputSchema,
+  disconnectTracker,
+  isTrackerKind,
   enableAgentMode,
   LINEAR_REFRESH_MARGIN_MS,
   linearAddressProblems,
@@ -16,20 +17,29 @@ import {
   missingAgentModeScopes,
   setBoardAgentMode,
   startLinearConnection,
+  trackerKindNames,
 } from "@ostra/domain";
+import type { Connection, DbOrTx } from "@ostra/db";
+import type { AuthorizeLinearInput, AuthorizeUrlInput, ConnectLinearInput, MemberScope, TrackerConnectionChangeDeps } from "@ostra/domain";
 import { agentSessionIdSchema, boardIdSchema, connectionIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
-import type { OrganizationId } from "@ostra/protocol";
+import type { ConnectionId, OrganizationId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import type { ApiDeps } from "../trpc/context.ts";
 import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
 
-// F-005, F-042, ticket 27: the organization's Linear connection. Every procedure is for organization
-// admins and works inside their organization only (ADR 0026), `status` included: a member gets what
-// they need of the connection from the boards and the Inbox. The app's client secret, the webhook
-// signing secret, the tokens and the PKCE verifier go to the secret store at once, and no
-// procedure, log line or audit entry carries one: every output is built field by field.
+// F-005, F-042, ticket 27: a Linear connection. Every procedure is for organization admins and works
+// inside their organization only (ADR 0026), `status` included: a member gets what they need of the
+// connection from `trackers.list` and `trackers.get`, the boards and the Inbox. The app's client
+// secret, the webhook signing secret, the tokens and the PKCE verifier go to the secret store at
+// once, and no procedure, log line or audit entry carries one: every output is built field by field.
+//
+// Milestone 11 (F-152, ADR 0071; ticket 09): an organization holds several Linear connections, so
+// `trackers.linear.*` (`trackersLinearRouter`) takes each one by its ID. `linear.*` (`linearRouter`)
+// stays one release as a thin alias on the organization's first Linear connection, so the panel's
+// Organization › Linear page keeps working until ticket 14 moves it under Trackers; it goes in the
+// release after milestone 11.
 
 const modeSchema = z.enum(["webhooks", "polling"]);
 
@@ -122,6 +132,10 @@ const connectionSchema = commonSchema.extend({
 export const linearStatusSchema = z.discriminatedUnion("state", [noneSchema, connectionSchema]);
 export type LinearStatusView = z.infer<typeof linearStatusSchema>;
 
+/** One Linear connection's status, as `trackers.linear.status` and `trackers.get` answer it. */
+export const linearConnectionStatusSchema = connectionSchema;
+export type LinearConnectionStatus = z.infer<typeof linearConnectionStatusSchema>;
+
 /**
  * A Linear row's credential. Jira's service account token (milestone 11) is never a Linear row's:
  * a row without a credential, or with one that isn't Linear's, reads as the app's OAuth.
@@ -154,27 +168,44 @@ const silentSinceOf = async (
   return changed === null ? null : since;
 };
 
+/** The organization's first Linear connection that isn't revoked: what `linear.*`, the alias, acts on. */
+const firstLinearRow = (deps: { readonly db: DbOrTx }, organizationId: OrganizationId): Promise<Connection | null> =>
+  deps.db.connection.findFirst({ where: { organizationId, kind: "linear", state: { not: "revoked" } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+
+/** What every status says, whatever the connection: the scopes, the events and the intervals. */
+const commonOf = (deps: ApiDeps) => ({
+  scopes: [...deps.linear.scopes],
+  webhookEvents: [...deps.linear.webhookEvents],
+  pollSeconds: deps.settings.trackerPollSeconds,
+  reconcileMinutes: deps.settings.reconcileMinutes,
+});
+
+/** `linear.status`, the alias: the first Linear connection, or `none` with the mode the address would give. */
 const statusOf = async (deps: ApiDeps, organizationId: OrganizationId): Promise<LinearStatusView> => {
-  const { db, settings, linear } = deps;
-  const mode = modeOf(deps);
-  const common = {
-    scopes: [...linear.scopes],
-    webhookEvents: [...linear.webhookEvents],
-    pollSeconds: settings.trackerPollSeconds,
-    reconcileMinutes: settings.reconcileMinutes,
-  };
-  const row = await db.connection.findFirst({ where: { organizationId, kind: "linear", state: { not: "revoked" } } });
+  const { db } = deps;
+  const row = await firstLinearRow(deps, organizationId);
   if (row === null) {
+    const mode = modeOf(deps);
     const revoked = await db.connection.findFirst({ where: { organizationId, kind: "linear", state: "revoked" }, orderBy: { updatedAt: "desc" }, select: { externalWorkspaceKey: true, updatedAt: true } });
     return {
       state: "none",
       mode: mode.mode,
       modeReason: mode.reason,
-      ...common,
+      ...commonOf(deps),
       lastRevoked: revoked === null ? null : { workspaceKey: revoked.externalWorkspaceKey, at: revoked.updatedAt.getTime() },
     };
   }
+  return linearConnectionStatusOf(deps, organizationId, row);
+};
 
+/**
+ * One Linear connection's status (an admin's): its state, mode, app, events, polls, token and agent
+ * mode, as Organization › Linear has drawn it since milestone 2. Built field by field: no secret.
+ */
+export const linearConnectionStatusOf = async (deps: ApiDeps, organizationId: OrganizationId, row: Connection): Promise<LinearConnectionStatus> => {
+  const { db, settings, linear } = deps;
+  const mode = modeOf(deps);
+  const common = commonOf(deps);
   const connectionId = connectionIdSchema.parse(row.id);
   const [delivery, polled, starter] = await Promise.all([
     db.webhookDelivery.findFirst({ where: { organizationId, connectionId: row.id }, orderBy: { receivedAt: "desc" }, select: { receivedAt: true, event: true, ticketKey: true } }),
@@ -298,10 +329,146 @@ const startedSchema = z.object({
 
 const authorizeUrlSchema = z.object({ authorizeUrl: z.string() });
 
+/** What a procedure's handler has: the request's deps, scope and panel session. */
+type LinearCtx = { readonly deps: ApiDeps; readonly scope: MemberScope; readonly user: { readonly sessionId: string } };
+
+/**
+ * One of the organization's connections for `trackers.linear.*`, by its ID: Linear's, not revoked.
+ * Another organization's is `NOT_FOUND`; another kind's is refused, saying it isn't Linear's.
+ */
+const linearRowFor = async (deps: ApiDeps, organizationId: OrganizationId, connectionId: ConnectionId): Promise<Connection> => {
+  const row = await deps.db.connection.findFirst({ where: { id: connectionId, organizationId, state: { not: "revoked" } } });
+  if (row === null || !isTrackerKind(row.kind)) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "No such tracker connection" });
+  }
+  if (row.kind !== "linear") {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: `${row.name ?? trackerKindNames[row.kind]} is a ${trackerKindNames[row.kind]} connection: this is Linear's` });
+  }
+  return row;
+};
+
+const saveAppOf = async (ctx: LinearCtx, input: ConnectLinearInput) => {
+  const { db, ports, settings, linear } = ctx.deps;
+  const mode = modeOf(ctx.deps);
+  const result = await db.$transaction((tx) =>
+    connectLinear({ tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, publicUrl: settings.publicUrl, linear, authSessionId: ctx.user.sessionId, ...ports }, input),
+  );
+  const saved = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "not-pending": "CONFLICT", "webhook-secret-required": "BAD_REQUEST" });
+  return { authorizeUrl: saved.authorizeUrl };
+};
+
+const authorizeUrlOf = async (ctx: LinearCtx, input: AuthorizeUrlInput) => {
+  const { db, ports, settings, linear } = ctx.deps;
+  const mode = modeOf(ctx.deps);
+  const result = await db.$transaction((tx) =>
+    createLinearAuthorizeUrl({ tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, publicUrl: settings.publicUrl, linear, authSessionId: ctx.user.sessionId, ...ports }, input),
+  );
+  const made = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "not-ready": "PRECONDITION_FAILED" });
+  return { authorizeUrl: made.authorizeUrl };
+};
+
+const completeOf = (ctx: LinearCtx, input: AuthorizeLinearInput) => {
+  const { db, ports, settings, linear } = ctx.deps;
+  return authorizeLinear({ db, scope: ctx.scope, authSessionId: ctx.user.sessionId, publicUrl: settings.publicUrl, linear, ...ports }, input);
+};
+
+/** Linear's callback refusals that aren't the holder's: each a tRPC error. */
+const completeCodes = {
+  "bad-state": "BAD_REQUEST",
+  "exchange-failed": "BAD_GATEWAY",
+  "not-app-user": "BAD_REQUEST",
+  forbidden: "FORBIDDEN",
+  "missing-scopes": "PRECONDITION_FAILED",
+} as const;
+
+const agentModeOutputSchema = z.discriminatedUnion("kind", [z.object({ kind: z.literal("consent"), authorizeUrl: z.string() }), z.object({ kind: z.literal("on"), agentModeAt: z.number().int() })]);
+
+/**
+ * "Turn on agent mode" on one connection (F-012, ADR 0013): an organization admin's, from their own
+ * panel session. It answers Linear's consent URL with agent mode's scopes on the existing install
+ * (`actor=app`, PKCE, an `OAuthState` bound to this session); the callback keeps the granted scopes
+ * and turns it on, or refuses a token without them. A token that already holds them is turned on
+ * at once. It needs Linear's webhooks: a connection that polls is refused.
+ */
+const enableAgentModeOn = async (ctx: LinearCtx, row: Pick<Connection, "id" | "state" | "scopes" | "webhookMode">): Promise<z.infer<typeof agentModeOutputSchema>> => {
+  const { db, ports, settings, linear } = ctx.deps;
+  if (row.state !== "active") {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Agent mode needs an active Linear connection: authorize it first" });
+  }
+  if (row.webhookMode !== "webhooks") {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Agent mode needs Linear's webhooks: set OSTRA_CORE_PUBLIC_URL to a public https address" });
+  }
+  const connectionId = connectionIdSchema.parse(row.id);
+  const missing = missingAgentModeScopes(linear.capabilities, row.scopes);
+  if (missing === null) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This tracker has no agent sessions" });
+  }
+  if (missing.length === 0) {
+    const on = unwrap(await enableAgentMode({ db, ...ports, tracker: linear.capabilities }, ctx.scope, { connectionId }), {
+      forbidden: "FORBIDDEN",
+      "not-found": "NOT_FOUND",
+      "missing-scopes": "PRECONDITION_FAILED",
+      unsupported: "PRECONDITION_FAILED",
+    });
+    return { kind: "on", agentModeAt: on.agentModeAt };
+  }
+  const mode = modeOf(ctx.deps);
+  const result = await db.$transaction((tx) =>
+    createLinearAuthorizeUrl(
+      { tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, publicUrl: settings.publicUrl, linear, authSessionId: ctx.user.sessionId, ...ports },
+      { connectionId },
+      { agentMode: true },
+    ),
+  );
+  const made = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "not-ready": "PRECONDITION_FAILED" });
+  return { kind: "consent", authorizeUrl: made.authorizeUrl };
+};
+
+/**
+ * "Start from Linear" on a board: a project admin's switch (organization admins administer every
+ * project). One board per team in the organization: a second is refused, naming the project that
+ * holds the team.
+ */
+const setBoardAgentModeProcedure = memberProcedure
+  .input(z.strictObject({ boardId: boardIdSchema, on: z.boolean() }))
+  .output(z.object({ boardId: boardIdSchema, on: z.boolean() }))
+  .mutation(async ({ ctx, input }) => {
+    const set = unwrap(await setBoardAgentMode({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, input), {
+      forbidden: "FORBIDDEN",
+      "not-found": "NOT_FOUND",
+      "team-taken": "CONFLICT",
+      "agent-mode-off": "PRECONDITION_FAILED",
+    });
+    return { boardId: input.boardId, on: set.on };
+  });
+
+/** What `trackers.*`'s changes of either kind need (`TrackerConnectionChangeDeps`). */
+export const trackerChangeDepsOf = (ctx: Pick<LinearCtx, "deps" | "scope">): TrackerConnectionChangeDeps => {
+  const { db, ports, settings, linear } = ctx.deps;
+  const mode = modeOf(ctx.deps);
+  return {
+    db,
+    scope: ctx.scope,
+    adapters: ports.adapters,
+    audit: ports.audit,
+    notices: ports.notices,
+    clock: ports.clock,
+    corePublicUrl: mode.corePublicUrl,
+    corePublicUrlProblem: mode.reason,
+    publicUrl: settings.publicUrl,
+    linear,
+  };
+};
+
+/**
+ * `linear.*`: the alias on the organization's first Linear connection (milestone 11, ticket 09),
+ * kept one release so Organization › Linear works until ticket 14 moves it under Trackers. It goes
+ * in the release after milestone 11; `trackers.*` and `trackers.linear.*` replace it.
+ */
 export const linearRouter = router({
   /**
-   * Where the connection stands: one union. With none (or a revoked one) it answers `none` with the
-   * mode the address would give, so the page shows the mode before `start`.
+   * Where the first connection stands: one union. With none (or a revoked one) it answers `none`
+   * with the mode the address would give, so the page shows the mode before `start`.
    */
   status: adminProcedure.output(linearStatusSchema).query(({ ctx }) => statusOf(ctx.deps, ctx.scope.organizationId)),
 
@@ -310,21 +477,17 @@ export const linearRouter = router({
    * and answers the manifest link with the callback and webhook URLs in it. A second connection
    * while one is active is refused.
    *
-   * Milestone 11: the domain makes a new named connection on every start (ADR 0071). This page is
-   * still the panel's one Linear page until `trackers.*` takes connections of any kind (tickets 09
-   * and 14), so it keeps its one-connection behaviour here, on the organization's first Linear
-   * connection: a pending one is picked up, an active or failed one refuses a second.
+   * Milestone 11: the domain makes a new named connection on every start (ADR 0071), as
+   * `trackers.create({ kind: "linear" })` does. This alias keeps the one-connection page's
+   * behaviour on the organization's first Linear connection: a pending one is picked up, an
+   * active or failed one refuses a second. It goes with the alias.
    */
   start: adminProcedure.output(startedSchema).mutation(async ({ ctx }) => {
     const { db, ports, settings, linear } = ctx.deps;
     const organizationId = ctx.scope.organizationId;
     const mode = modeOf(ctx.deps);
     const result = await db.$transaction(async (tx) => {
-      const first = await tx.connection.findFirst({
-        where: { organizationId, kind: "linear", state: { not: "revoked" } },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: { id: true, state: true },
-      });
+      const first = await firstLinearRow({ db: tx }, organizationId);
       if (first !== null && first.state !== "pending") {
         return { ok: false, error: "already-connected", message: "This organization is already connected to Linear. Disconnect it first to connect another workspace" } as const;
       }
@@ -358,18 +521,7 @@ export const linearRouter = router({
   saveApp: adminProcedure
     .input(connectLinearInputSchema)
     .output(authorizeUrlSchema)
-    .mutation(async ({ ctx, input }) => {
-      const { db, ports, settings, linear } = ctx.deps;
-      const mode = modeOf(ctx.deps);
-      const result = await db.$transaction((tx) =>
-        connectLinear(
-          { tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, publicUrl: settings.publicUrl, linear, authSessionId: ctx.user.sessionId, ...ports },
-          input,
-        ),
-      );
-      const saved = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "not-pending": "CONFLICT", "webhook-secret-required": "BAD_REQUEST" });
-      return { authorizeUrl: saved.authorizeUrl };
-    }),
+    .mutation(({ ctx, input }) => saveAppOf(ctx, input)),
 
   /**
    * A fresh authorize URL: an `OAuthState` bound to this admin's session (10 minutes), with Linear's
@@ -379,116 +531,134 @@ export const linearRouter = router({
   authorizeUrl: adminProcedure
     .input(authorizeUrlInputSchema)
     .output(authorizeUrlSchema)
-    .mutation(async ({ ctx, input }) => {
-      const { db, ports, settings, linear } = ctx.deps;
-      const mode = modeOf(ctx.deps);
-      const result = await db.$transaction((tx) =>
-        createLinearAuthorizeUrl({ tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, publicUrl: settings.publicUrl, linear, authSessionId: ctx.user.sessionId, ...ports }, input),
-      );
-      const made = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "not-ready": "PRECONDITION_FAILED" });
-      return { authorizeUrl: made.authorizeUrl };
-    }),
+    .mutation(({ ctx, input }) => authorizeUrlOf(ctx, input)),
 
   /**
    * Linear's callback, called by the panel's route with the `code` and `state` Linear sent back. The
    * state must be this admin's own, from this session, unexpired and unused; it is used up. The
-   * token must be the app's own user. On success the connection is `active`.
+   * token must be the app's own user. On success the connection is `active`. A workspace another
+   * connection holds is `CONFLICT`, naming it (`trackers.linear.complete` answers the holder).
    */
   complete: adminProcedure
     .input(authorizeLinearInputSchema)
     .output(z.object({ connectionId: connectionIdSchema, workspaceName: z.string(), appUserName: z.string(), mode: modeSchema }))
     .mutation(async ({ ctx, input }) => {
-      const { db, ports, settings, linear } = ctx.deps;
-      const result = await authorizeLinear({ db, scope: ctx.scope, authSessionId: ctx.user.sessionId, publicUrl: settings.publicUrl, linear, ...ports }, input);
-      const connected = unwrap(result, {
-        "bad-state": "BAD_REQUEST",
-        "exchange-failed": "BAD_GATEWAY",
-        "not-app-user": "BAD_REQUEST",
-        forbidden: "FORBIDDEN",
-        "missing-scopes": "PRECONDITION_FAILED",
-        // Milestone 11 (F-152/c2): another connection holds the workspace; the message names it.
-        "workspace-taken": "CONFLICT",
-      });
+      const connected = unwrap(await completeOf(ctx, input), { ...completeCodes, "workspace-taken": "CONFLICT" });
       return { connectionId: connected.connectionId, workspaceName: connected.workspaceName, appUserName: connected.appUserName, mode: connected.mode };
     }),
 
-  /**
-   * "Turn on agent mode" (F-012, ADR 0013): an organization admin's, from their own panel session.
-   * It answers Linear's consent URL with agent mode's scopes on the existing install (`actor=app`,
-   * PKCE, an `OAuthState` bound to this session); the callback (`complete`) keeps the granted scopes
-   * and turns it on, or refuses a token without them. A token that already holds them is turned on
-   * at once. It needs Linear's webhooks: a connection that polls is refused.
-   */
-  enableAgentMode: adminProcedure
-    .output(z.discriminatedUnion("kind", [z.object({ kind: z.literal("consent"), authorizeUrl: z.string() }), z.object({ kind: z.literal("on"), agentModeAt: z.number().int() })]))
-    .mutation(async ({ ctx }) => {
-      const { db, ports, settings, linear } = ctx.deps;
-      const organizationId = ctx.scope.organizationId;
-      const row = await db.connection.findFirst({ where: { organizationId, kind: "linear", state: { not: "revoked" } }, select: { id: true, state: true, scopes: true, webhookMode: true } });
-      if (row === null) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "This organization isn't connected to Linear" });
-      }
-      if (row.state !== "active") {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Agent mode needs an active Linear connection: authorize it first" });
-      }
-      if (row.webhookMode !== "webhooks") {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Agent mode needs Linear's webhooks: set OSTRA_CORE_PUBLIC_URL to a public https address" });
-      }
-      const connectionId = connectionIdSchema.parse(row.id);
-      const missing = missingAgentModeScopes(linear.capabilities, row.scopes);
-      if (missing === null) {
-        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This tracker has no agent sessions" });
-      }
-      if (missing.length === 0) {
-        const on = unwrap(await enableAgentMode({ db, ...ports, tracker: linear.capabilities }, ctx.scope, { connectionId }), {
-          forbidden: "FORBIDDEN",
-          "not-found": "NOT_FOUND",
-          "missing-scopes": "PRECONDITION_FAILED",
-          unsupported: "PRECONDITION_FAILED",
-        });
-        return { kind: "on" as const, agentModeAt: on.agentModeAt };
-      }
-      const mode = modeOf(ctx.deps);
-      const result = await db.$transaction((tx) =>
-        createLinearAuthorizeUrl(
-          { tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, publicUrl: settings.publicUrl, linear, authSessionId: ctx.user.sessionId, ...ports },
-          { connectionId },
-          { agentMode: true },
-        ),
-      );
-      const made = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "not-ready": "PRECONDITION_FAILED" });
-      return { kind: "consent" as const, authorizeUrl: made.authorizeUrl };
-    }),
+  /** "Turn on agent mode" on the organization's first Linear connection. */
+  enableAgentMode: adminProcedure.output(agentModeOutputSchema).mutation(async ({ ctx }) => {
+    const row = await firstLinearRow(ctx.deps, ctx.scope.organizationId);
+    if (row === null) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "This organization isn't connected to Linear" });
+    }
+    return enableAgentModeOn(ctx, row);
+  }),
+
+  setBoardAgentMode: setBoardAgentModeProcedure,
 
   /**
-   * "Start from Linear" on a board: a project admin's switch (organization admins administer every
-   * project). One board per team in the organization: a second is refused, naming the project that
-   * holds the team.
-   */
-  setBoardAgentMode: memberProcedure
-    .input(z.strictObject({ boardId: boardIdSchema, on: z.boolean() }))
-    .output(z.object({ boardId: boardIdSchema, on: z.boolean() }))
-    .mutation(async ({ ctx, input }) => {
-      const set = unwrap(await setBoardAgentMode({ db: ctx.deps.db, ...ctx.deps.ports }, ctx.scope, input), {
-        forbidden: "FORBIDDEN",
-        "not-found": "NOT_FOUND",
-        "team-taken": "CONFLICT",
-        "agent-mode-off": "PRECONDITION_FAILED",
-      });
-      return { boardId: input.boardId, on: set.on };
-    }),
-
-  /**
-   * Revokes the token at Linear, deletes the secrets and ends the connection (`revoked`). Its boards
-   * and tickets stay, read-only.
+   * Revokes the token at Linear, deletes the secrets and ends the connection (`revoked`), through
+   * `disconnectTracker` as `trackers.disconnect` does. Its boards pause, and its tickets stay,
+   * read-only.
    */
   disconnect: adminProcedure
     .input(disconnectLinearInputSchema)
     .output(z.object({ connectionId: connectionIdSchema, revokedAtLinear: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
-      const { db, ports, linear } = ctx.deps;
-      const result = await disconnectLinear({ db, scope: ctx.scope, linear, ...ports }, input);
-      const done = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });
-      return { connectionId: done.connectionId, revokedAtLinear: done.revokedAtLinear };
+      const row = await ctx.deps.db.connection.findFirst({ where: { id: input.connectionId, organizationId: ctx.scope.organizationId, kind: "linear", state: { not: "revoked" } }, select: { id: true } });
+      if (row === null) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No such Linear connection" });
+      }
+      const done = unwrap(await disconnectTracker(trackerChangeDepsOf(ctx), input), { "no-connection": "NOT_FOUND", forbidden: "FORBIDDEN" });
+      return { connectionId: done.connectionId, revokedAtLinear: done.revokedAtTracker };
     }),
+});
+
+const connectionInputSchema = z.strictObject({ connectionId: connectionIdSchema });
+
+/** A connection that already holds the workspace or site, named for `Open it →`. */
+export const connectionHolderSchema = z.object({ id: connectionIdSchema, name: z.string() });
+
+/**
+ * `trackers.linear.*` (milestone 11, ticket 09): Linear's own steps and agent mode, on one of the
+ * organization's Linear connections by its ID. A connection is made with `trackers.create({ kind:
+ * "linear" })` and ended with `trackers.disconnect`. Admins only, except a board's "Start from
+ * Linear", a project admin's.
+ */
+export const trackersLinearRouter = router({
+  /** One Linear connection's status (an admin's), as `linear.status` has drawn it. */
+  status: adminProcedure
+    .input(connectionInputSchema)
+    .output(linearConnectionStatusSchema)
+    .query(async ({ ctx, input }) => linearConnectionStatusOf(ctx.deps, ctx.scope.organizationId, await linearRowFor(ctx.deps, ctx.scope.organizationId, input.connectionId))),
+
+  /** Step 2: the app's values, to the secret store; answers the authorize URL. */
+  saveApp: adminProcedure
+    .input(connectLinearInputSchema)
+    .output(authorizeUrlSchema)
+    .mutation(async ({ ctx, input }) => {
+      await linearRowFor(ctx.deps, ctx.scope.organizationId, input.connectionId);
+      return saveAppOf(ctx, input);
+    }),
+
+  /** Step 3: a fresh authorize URL, and to authorize a failed connection again. */
+  authorizeUrl: adminProcedure
+    .input(authorizeUrlInputSchema)
+    .output(authorizeUrlSchema)
+    .mutation(async ({ ctx, input }) => {
+      await linearRowFor(ctx.deps, ctx.scope.organizationId, input.connectionId);
+      return authorizeUrlOf(ctx, input);
+    }),
+
+  /**
+   * Linear's callback: the state names the connection. A workspace another connection of the
+   * organization holds is answered (not thrown) with the holder, so the callback page names it
+   * with `Open it →` (F-152/c2, ADR 0071); the pending row's secrets are gone.
+   */
+  complete: adminProcedure
+    .input(authorizeLinearInputSchema)
+    .output(
+      z.discriminatedUnion("ok", [
+        z.object({ ok: z.literal(true), connectionId: connectionIdSchema, workspaceName: z.string(), appUserName: z.string(), mode: modeSchema, resumedBoards: z.number().int() }),
+        z.object({ ok: z.literal(false), error: z.literal("workspace-taken"), message: z.string(), holder: connectionHolderSchema }),
+      ]),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await completeOf(ctx, input);
+      if (!result.ok && result.error === "workspace-taken") {
+        return { ok: false as const, error: result.error, message: result.message, holder: { id: result.holder.id, name: result.holder.name } };
+      }
+      const connected = unwrap(result, completeCodes);
+      return {
+        ok: true as const,
+        connectionId: connected.connectionId,
+        workspaceName: connected.workspaceName,
+        appUserName: connected.appUserName,
+        mode: connected.mode,
+        resumedBoards: connected.resumedBoards,
+      };
+    }),
+
+  /**
+   * "Turn on agent mode" on one connection. Agent mode is a capability (ADR 0013, choice 11): a
+   * connection whose adapter declares no agent sessions, as Jira's doesn't, is refused.
+   */
+  enableAgentMode: adminProcedure
+    .input(connectionInputSchema)
+    .output(agentModeOutputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = ctx.scope.organizationId;
+      const any = await ctx.deps.db.connection.findFirst({ where: { id: input.connectionId, organizationId, state: { not: "revoked" } }, select: { kind: true } });
+      if (any === null || !isTrackerKind(any.kind)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No such tracker connection" });
+      }
+      if (!ctx.deps.trackers.capabilities[any.kind].agentSessions) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Agent mode is Linear's: ${trackerKindNames[any.kind]} has no agent sessions` });
+      }
+      return enableAgentModeOn(ctx, await linearRowFor(ctx.deps, organizationId, input.connectionId));
+    }),
+
+  setBoardAgentMode: setBoardAgentModeProcedure,
 });

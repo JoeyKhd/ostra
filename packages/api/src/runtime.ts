@@ -1,3 +1,4 @@
+import { JiraAdapter } from "@ostra/adapter-jira";
 import type { Logger, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
 import { randomBytes } from "node:crypto";
@@ -20,10 +21,11 @@ import type { BlobStoreView } from "./services/blob-store-view.ts";
 import { coreAppStarter } from "./services/core-app-start.ts";
 import { accountMailIsOn, noEmailDirectory } from "./services/email.ts";
 import type { EmailDirectory } from "./services/email.ts";
+import { createJiraConnectKit } from "./services/jira-connect.ts";
 import { createLinearAppKit } from "./services/linear-app.ts";
 import type { LinearEndpoints } from "./services/linear-app.ts";
 import { createTrackerDirectory } from "./services/trackers.ts";
-import type { LinearTrackerAuth } from "./services/trackers.ts";
+import type { JiraTrackerAuth, LinearTrackerAuth } from "./services/trackers.ts";
 import { createStreamHub } from "./stream/hub.ts";
 import type { ApiDeps, Context } from "./trpc/context.ts";
 import { createContext } from "./trpc/context.ts";
@@ -48,6 +50,13 @@ export type ApiRuntimeInput = {
   readonly linearEndpoints?: LinearEndpoints;
   /** Builds a Linear adapter from a stored credential (tickets 27 to 29). */
   readonly makeLinearTracker: (auth: LinearTrackerAuth) => TrackerAdapter;
+  /**
+   * Milestone 11 (F-008): builds a Jira adapter from a connection's site and stored token. Unset,
+   * `JiraAdapter` through Atlassian's gateway, or the fake Jira at `OSTRA_JIRA_API_URL`.
+   */
+  readonly makeJiraTracker?: (auth: JiraTrackerAuth) => TrackerAdapter;
+  /** The fetch Jira's connect steps go through. Unset, the platform's. */
+  readonly jiraFetch?: typeof fetch;
   /** Builds the adapter that sends mail for the install's email (Resend, SMTP). Unset, the build has none and "Send a test mail" says so. */
   readonly email?: EmailDirectory;
   /** F-137: each agent's reasoning levels. Unset, read off the model's controls for the agents that take one. */
@@ -82,6 +91,21 @@ export type ApiRuntime = {
   readonly createContext: (input: { readonly headers: Headers; readonly resHeaders: Headers }) => Promise<Context>;
   readonly close: () => Promise<void>;
 };
+
+/**
+ * Jira's adapter for one connection (F-008, ADR 0047): the service account's scoped token through
+ * Atlassian's gateway with the site's cloud ID, or through the fake Jira that `OSTRA_JIRA_API_URL`
+ * names in tests.
+ */
+export const jiraTrackerOn =
+  (jiraApiUrl: string | null) =>
+  (auth: JiraTrackerAuth): TrackerAdapter =>
+    new JiraAdapter({
+      siteUrl: `https://${auth.host}`,
+      cloudId: auth.cloudId,
+      auth: { email: auth.email, token: auth.token },
+      ...(jiraApiUrl === null ? {} : { gatewayUrl: jiraApiUrl }),
+    });
 
 export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRuntime> => {
   const { settings, db } = input;
@@ -122,7 +146,13 @@ export const createApiRuntime = async (input: ApiRuntimeInput): Promise<ApiRunti
     agentEffort: input.agentEffort ?? shippedAgentEffort,
     blobStore: input.blobStore,
     linear: createLinearAppKit(input.linearEndpoints === undefined ? {} : { endpoints: input.linearEndpoints }),
-    trackers: createTrackerDirectory({ db, secretStore: input.adapters.secretStore, makeLinear: input.makeLinearTracker }),
+    jira: createJiraConnectKit({ apiUrl: settings.jiraApiUrl, ...(input.jiraFetch === undefined ? {} : { fetch: input.jiraFetch }) }),
+    trackers: createTrackerDirectory({
+      db,
+      secretStore: input.adapters.secretStore,
+      makeLinear: input.makeLinearTracker,
+      makeJira: input.makeJiraTracker ?? jiraTrackerOn(settings.jiraApiUrl),
+    }),
     email: input.email ?? noEmailDirectory,
     emailOn,
     stream: hub,

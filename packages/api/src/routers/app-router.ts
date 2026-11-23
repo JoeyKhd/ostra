@@ -12,6 +12,7 @@ import { homeRouter } from "./home.ts";
 import { inboxRouter } from "./inbox.ts";
 import { instanceRouter } from "./instance.ts";
 import { linearRouter } from "./linear.ts";
+import { trackersRouter } from "./trackers.ts";
 import { notificationsRouter } from "./notifications.ts";
 import { meRouter, organizationRouter } from "./organization.ts";
 import { projectsRouter } from "./projects.ts";
@@ -61,6 +62,8 @@ export const appRouter = router({
   library: libraryRouter,
   github: githubRouter,
   linear: linearRouter,
+  // Milestone 11 (F-152, ticket 09): tracker connections of any kind; `linear` above is the alias on the first Linear one.
+  trackers: trackersRouter,
   projects: projectsRouter,
   boards: boardsRouter,
   inbox: inboxRouter,

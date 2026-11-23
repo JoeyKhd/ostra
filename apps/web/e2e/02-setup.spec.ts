@@ -13,7 +13,7 @@ test("F-076/c1: a new organization's Home shows the checklist in its order, and 
   await page.goto("/");
   const checklist = page.getByTestId("setup-checklist");
   await expect(checklist).toBeVisible();
-  const order = ["admin", "model-provider", "github", "linear", "project", "runner", "first-task"];
+  const order = ["admin", "model-provider", "github", "tracker", "project", "runner", "first-task"];
   expect(await checklistSteps(page)).toEqual(order);
   await expect(page.getByText("1 of 7", { exact: true })).toBeVisible();
   await expect(page.locator('[data-step="admin"]')).toHaveAttribute("data-done", "true");
@@ -25,7 +25,7 @@ test("F-076/c1: a new organization's Home shows the checklist in its order, and 
   }
   // Linear is optional (milestone 2's step, live): offered with "Skip for now", and never what
   // holds setup back (03-first-run finishes setup without it).
-  const linear = page.locator('[data-step="linear"]');
+  const linear = page.locator('[data-step="tracker"]');
   await expect(linear).toContainText("Connect Linear");
   await expect(linear.getByRole("button", { name: "Skip for now" })).toBeVisible();
   await expect(linear.getByRole("link", { name: "Connect Linear", exact: true })).toHaveAttribute("href", "/organization/linear");

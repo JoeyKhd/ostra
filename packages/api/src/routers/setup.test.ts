@@ -23,7 +23,7 @@ describe("setup.status", () => {
         { id: "admin", state: "done" },
         { id: "model-provider", state: "open" },
         { id: "github", state: "open" },
-        { id: "linear", state: "open" },
+        { id: "tracker", state: "open" },
         { id: "project", state: "done" },
         { id: "runner", state: "open" },
         { id: "first-task", state: "open" },

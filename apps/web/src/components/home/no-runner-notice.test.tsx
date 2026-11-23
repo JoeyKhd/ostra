@@ -17,7 +17,7 @@ const status = (over: Partial<SetupStatus>): SetupStatus => ({
     { id: "admin", state: "done", docs },
     { id: "model-provider", state: "done", docs },
     { id: "github", state: "done", docs },
-    { id: "linear", state: "skipped", docs },
+    { id: "tracker", state: "skipped", docs },
     { id: "project", state: "done", docs },
     { id: "runner", state: "open", docs },
     { id: "first-task", state: "done", docs },

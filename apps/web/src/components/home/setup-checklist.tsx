@@ -39,7 +39,7 @@ export const SetupChecklist = ({ admin }: { readonly admin: boolean }) => {
         admin={admin}
         skip={{
           run: () => {
-            skip.mutate({ step: "linear" });
+            skip.mutate({ step: "tracker" });
           },
           pending: skip.isPending,
         }}

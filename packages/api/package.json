@@ -18,6 +18,7 @@
     "test": "vitest run --maxWorkers=4 --passWithNoTests"
   },
   "dependencies": {
+    "@ostra/adapter-jira": "workspace:*",
     "@ostra/adapter-linear": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",
     "@ostra/adapter-opencode": "workspace:*",

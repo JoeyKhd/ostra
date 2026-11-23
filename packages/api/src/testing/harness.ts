@@ -28,6 +28,7 @@ import { shippedAgentEffort } from "../services/agent-effort.ts";
 import type { AgentEffort } from "../services/agent-effort.ts";
 import { panelMessageFilesDeps } from "../services/agent-images.ts";
 import { appRouter } from "../routers/app-router.ts";
+import { createJiraConnectKit } from "../services/jira-connect.ts";
 import { createLinearAppKit } from "../services/linear-app.ts";
 import type { LinearEndpoints } from "../services/linear-app.ts";
 import { createTrackerDirectory } from "../services/trackers.ts";
@@ -108,6 +109,8 @@ export type BareHarness = {
     readonly tracker: { adapter: TrackerAdapter };
     /** The tokens the tracker directory built an adapter with, to search an output for them. */
     readonly trackerTokens: string[];
+    /** Milestone 11: the sites and service accounts the tracker directory built a Jira adapter for (never the token). */
+    readonly jiraTrackers: { readonly host: string; readonly cloudId: string; readonly email: string }[];
     /** Milestone 8 (ticket 30): the library's sources, which the library's calls out reach and nothing else. */
     readonly library: FakeLibrary;
     /** Milestone 9 (ticket 14): core's side of a member's upload (`deps.fileUploader`), and every upload it was asked for. */
@@ -142,6 +145,8 @@ export type BareHarnessOptions = {
   readonly modelProvider?: ModelProviderAdapter;
   /** Linear's OAuth and API addresses: a test points them at the fake Linear server. Default: the real ones. */
   readonly linearEndpoints?: LinearEndpoints;
+  /** Milestone 11: `OSTRA_JIRA_API_URL`, the fake Jira's gateway the connect steps call. Default: Jira's own. */
+  readonly jiraApiUrl?: string;
   /** The adapters that send mail (the test mail). Default: none. */
   readonly email?: EmailDirectory;
   /** F-137: each agent's reasoning levels. Default: the one the runtime uses. */
@@ -186,6 +191,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const outbox = memoryOutbox();
   const tracker: { adapter: TrackerAdapter } = { adapter: new JiraFakeAdapter({ site: createJiraSite() }) };
   const trackerTokens: string[] = [];
+  const jiraTrackers: { readonly host: string; readonly cloudId: string; readonly email: string }[] = [];
   const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
   const catalogEntries: CatalogEntry[] = [];
   const uploads: UploadedBlob[] = [];
@@ -271,11 +277,17 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       },
     },
     linear: createLinearAppKit(options.linearEndpoints === undefined ? {} : { endpoints: options.linearEndpoints }),
+    jira: createJiraConnectKit({ apiUrl: options.jiraApiUrl ?? null, timeoutMs: 5000 }),
     trackers: createTrackerDirectory({
       db: test.db,
       secretStore,
       makeLinear: (auth) => {
         trackerTokens.push(auth.token);
+        return tracker.adapter;
+      },
+      makeJira: (auth) => {
+        trackerTokens.push(auth.token);
+        jiraTrackers.push({ host: auth.host, cloudId: auth.cloudId, email: auth.email });
         return tracker.adapter;
       },
     }),
@@ -350,7 +362,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     deps,
     auth,
     hub,
-    fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens, library, core },
+    fakes: { secretStore, modelProvider, codeHost, jobs, outbox, tracker, trackerTokens, jiraTrackers, library, core },
     emailSwitch,
     logs,
     uploads,
