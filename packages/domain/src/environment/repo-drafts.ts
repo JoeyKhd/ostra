@@ -60,3 +60,144 @@ export const setupScriptFromRepos = (repos: readonly RepoSetupScript[]): string 
   const branches = scripts.flatMap((one) => [repoPattern(one.fullName), one.script.replace(/\s+$/u, ""), "    ;;"]);
   return ['case "$OSTRA_REPO" in', ...branches, "esac", ""].join("\n");
 };
+
+// ---------- a repo added after the environment was saved (F-112/c1, Q345 option (b)) ----------
+//
+// The saved environment keeps running as it is, and the new repo's draft waits beside it for a
+// project admin: Apply, Edit first or Dismiss. What Apply would save is worked out on read, from the
+// saved script as it is now and what detection found in the repo, so a draft older than the script
+// shows the change against the script that runs today.
+
+/** One line of the setup script Apply saves: kept as it is, or added by the draft. */
+export type RepoDraftLine = { readonly kind: "same" | "add"; readonly text: string };
+
+/**
+ * What a new repo's draft does to the saved setup script:
+ * - `case`: the saved script is a `case` on `OSTRA_REPO` without the repo, and gains its branch before `esac`;
+ * - `plain`: the saved script runs in every repo, and becomes a `case`, the old script under each
+ *   repo that ran it and the new lines under the new repo;
+ * - `nothing`: detection found no setup lines in the repo, so there's nothing to add;
+ * - `settled`: nothing to review: the saved plain script is detection's lines already, or its `case`
+ *   has a branch for the repo already (someone saved it since).
+ */
+export type RepoDraftChange =
+  | { readonly kind: "case" | "plain"; readonly script: string; readonly lines: readonly RepoDraftLine[] }
+  | { readonly kind: "nothing" }
+  | { readonly kind: "settled" };
+
+export type RepoDraftChangeInput = {
+  /** The saved setup script, `null` for none. */
+  readonly savedScript: string | null;
+  /** The new repo. */
+  readonly fullName: string;
+  /** Detection's setup lines for it. */
+  readonly setupLines: readonly string[];
+  /**
+   * The project's other repos in order that run the saved script as it is: not the ones with a
+   * draft of their own still waiting, which get their own lines when it's applied.
+   */
+  readonly otherRepos: readonly string[];
+};
+
+const CASE_LINE = /^case\s+"\$OSTRA_REPO"\s+in$/u;
+const SET_LINE = /^set\s+-[A-Za-z]+(?:\s+[A-Za-z]+)*$/u;
+
+/** The script's lines, its final newline left out. */
+const scriptLines = (script: string): readonly string[] => script.replace(/\r\n/gu, "\n").replace(/\n+$/u, "").split("\n");
+
+/** A `case` branch's patterns that name the repo: quoted either way, or bare. */
+const namesRepo = (line: string, fullName: string): boolean => {
+  const trimmed = line.trim();
+  return trimmed === repoPattern(fullName).trim() || trimmed === `"${fullName}")` || trimmed === `${fullName})`;
+};
+
+/** The lines that do something: no blanks, no comments, no leading `set -…`. */
+const workingLines = (lines: readonly string[]): readonly string[] => {
+  const kept = lines.map((line) => line.trim()).filter((line) => line !== "" && !line.startsWith("#"));
+  return kept[0] !== undefined && SET_LINE.test(kept[0]) ? kept.slice(1) : kept;
+};
+
+/** The new repo's branch, as `draftFromRepos` writes one. */
+const branchOf = (fullName: string, setupLines: readonly string[]): readonly string[] => [repoPattern(fullName), ...setupLines.map((line) => `    ${line}`), "    ;;"];
+
+export const repoDraftChange = (input: RepoDraftChangeInput): RepoDraftChange => {
+  if (input.setupLines.length === 0) {
+    return { kind: "nothing" };
+  }
+  const saved = input.savedScript === null || input.savedScript.trim() === "" ? [] : scriptLines(input.savedScript);
+  const branch = branchOf(input.fullName, input.setupLines);
+  const caseAt = saved.findIndex((line) => CASE_LINE.test(line.trim()));
+  const esacAt = saved.findLastIndex((line) => line.trim() === "esac");
+  if (caseAt >= 0 && esacAt > caseAt) {
+    if (saved.slice(caseAt + 1, esacAt).some((line) => namesRepo(line, input.fullName))) {
+      return { kind: "settled" };
+    }
+    const lines: RepoDraftLine[] = [
+      ...saved.slice(0, esacAt).map((text) => ({ kind: "same" as const, text })),
+      ...branch.map((text) => ({ kind: "add" as const, text })),
+      ...saved.slice(esacAt).map((text) => ({ kind: "same" as const, text })),
+    ];
+    return { kind: "case", lines, script: `${lines.map((line) => line.text).join("\n")}\n` };
+  }
+  const working = workingLines(saved);
+  if (working.length > 0 && working.length === input.setupLines.length && working.every((line, index) => line === input.setupLines[index]?.trim())) {
+    return { kind: "settled" };
+  }
+  // A plain script: a leading `set -…` stays on top, and the rest goes under each repo that ran it, as written.
+  const [first] = saved;
+  const hoisted = first !== undefined && SET_LINE.test(first.trim()) ? [first] : [];
+  const body = saved.slice(hoisted.length);
+  // A script without `set -…` gets none: Apply changes where its lines run, not how they run.
+  const lines: RepoDraftLine[] = hoisted.map((text) => ({ kind: "same" as const, text }));
+  lines.push({ kind: "add", text: 'case "$OSTRA_REPO" in' });
+  if (workingLines(body).length > 0) {
+    for (const [index, repo] of input.otherRepos.entries()) {
+      lines.push({ kind: "add", text: repoPattern(repo) });
+      // The old lines stay where they were for the first repo, and are added under each other one.
+      lines.push(...body.map((text) => ({ kind: index === 0 ? ("same" as const) : ("add" as const), text })));
+      lines.push({ kind: "add", text: "    ;;" });
+    }
+  }
+  lines.push(...branch.map((text) => ({ kind: "add" as const, text })), { kind: "add", text: "esac" });
+  return { kind: "plain", lines, script: `${lines.map((line) => line.text).join("\n")}\n` };
+};
+
+/** A language detection can name for a repo, from its tools or the command its setup starts with. */
+export type RepoLanguage = "node" | "python" | "rust" | "go" | "ruby";
+
+const languageOfCommand: Readonly<Record<string, RepoLanguage>> = {
+  corepack: "node",
+  pnpm: "node",
+  npm: "node",
+  yarn: "node",
+  bun: "node",
+  uv: "python",
+  pip: "python",
+  poetry: "python",
+  cargo: "rust",
+  go: "go",
+  bundle: "ruby",
+};
+
+/** The tool a line runs, when it's one detection writes: `pnpm` for `pnpm install`; `corepack` names none. */
+const toolOf = (line: string): string | null => {
+  const [word] = line.trim().split(/\s+/u);
+  return word === undefined || word === "corepack" || !Object.hasOwn(languageOfCommand, word) ? null : word;
+};
+
+/** The first tool a script's lines run that detection knows, e.g. `pnpm`; `null` when none. */
+export const setupToolOf = (lines: readonly string[]): string | null => {
+  for (const line of lines) {
+    const tool = toolOf(line);
+    if (tool !== null) {
+      return tool;
+    }
+  }
+  return null;
+};
+
+/** The repo's language, from the command its setup lines run first. */
+export const setupLanguageOf = (lines: readonly string[]): RepoLanguage | null => {
+  const tool = setupToolOf(lines);
+  return tool === null ? null : (languageOfCommand[tool] ?? null);
+};

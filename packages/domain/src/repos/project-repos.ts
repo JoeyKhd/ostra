@@ -13,6 +13,7 @@ import type { TaskStateName } from "../lifecycles/task.ts";
 import type { AuditLog, ChangeNotices, Clock, JobQueue, ServerAdapters } from "../ports.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
 import { readRepoDetection } from "../use-cases/create-project.ts";
+import { draftAddedRepo } from "../use-cases/environment-repo-drafts.ts";
 import type { AddProjectRepo, RemoveProjectRepo } from "../use-cases/m4-signatures.ts";
 import { repoAccessFor } from "../use-cases/repo-access.ts";
 import { appendServerEvent } from "../use-cases/server-events.ts";
@@ -144,7 +145,7 @@ export const addProjectRepo = async (
     return { ok: false, error: "not-linked", message: NOT_LINKED_MESSAGE };
   }
   const hostRepo = reach.repo;
-  const added = await deps.db.$transaction(async (tx): Promise<AddProjectRepoResult> => {
+  const added = await deps.db.$transaction(async (tx): Promise<AddedInTx> => {
     await lockProject(tx, organizationId, project.projectId);
     // Under the lock: the count and the positions another add may have changed.
     const repos = await tx.repo.findMany({ where: { projectId: project.projectId, organizationId }, select: { fullName: true, checkoutDir: true, position: true, hostRepoId: true } });
@@ -184,11 +185,19 @@ export const addProjectRepo = async (
     await deps.notices.emitInTx(tx, { organizationId, projectId: project.projectId, entity: "project", entityId: project.projectId });
     return { ok: true, repoId, checkoutDir, position };
   });
-  if (added.ok) {
-    await redraftEnvironment(deps, organizationId, project.projectId);
+  if (!added.ok) {
+    return added;
   }
-  return added;
+  await redraftEnvironment(deps, organizationId, project.projectId);
+  // F-112/c1 (Q345 option (b)): beside a saved environment, the new repo's own draft waits for review.
+  const drafted = await draftAddedRepo(deps, { organizationId, projectId: project.projectId, repoId: added.repoId, memberId: scope.memberId });
+  return { ...added, drafted };
 };
+
+/** The add itself, before the environment hears of it. */
+type AddedInTx =
+  | { readonly ok: true; readonly repoId: RepoId; readonly checkoutDir: string; readonly position: number }
+  | Exclude<AddProjectRepoResult, { readonly ok: true }>;
 
 /**
  * F-112: a repo added while the project's environment is still a draft drafts it again, from each of

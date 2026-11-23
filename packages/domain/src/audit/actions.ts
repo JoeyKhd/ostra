@@ -169,6 +169,9 @@ export const auditActions = {
   // Milestone 6 (F-113): a project admin decided an onboarding task's environment proposal.
   "environment.proposal-accepted": "environment",
   "environment.proposal-rejected": "environment",
+  // 2026-11-23 (F-112/c1, Q345 option (b)): a new repo's draft beside the saved setup, set aside, and its Undo.
+  "environment.repo-draft-dismissed": "environment",
+  "environment.repo-draft-restored": "environment",
   // Milestone 8 (F-140, ticket 15): the app's processes saved, by name and field, never a command;
   // "Keep it" on a port an agent announced, which proposes it for a project admin.
   "environment.app-processes-saved": "environment",

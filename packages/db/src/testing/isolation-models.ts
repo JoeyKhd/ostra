@@ -120,6 +120,8 @@ export const isolationModelList = [
   // Milestone 9 (its ticket 04).
   "MessageFile",
   "TaskTicketRead",
+  // 2026-11-23 (F-112/c1, Q345 option (b)).
+  "EnvironmentRepoDraft",
 ] as const;
 
 export type IsolationModelName = (typeof isolationModelList)[number];
@@ -507,6 +509,19 @@ export const isolationModels: Readonly<Record<IsolationModelName, FixtureBuilder
     ).id,
   TaskTicketRead: async ({ db, organizationId, projectId }, ensure) =>
     (await db.taskTicketRead.create({ data: { organizationId, projectId, taskId: await ensure("Task"), round: 1, reason: "start", descriptionSha256: randomBytes(32).toString("hex"), comments: [], fileKeys: [] } })).id,
+  EnvironmentRepoDraft: async ({ db, organizationId, projectId, memberId }, ensure) =>
+    (
+      await db.environmentRepoDraft.create({
+        data: {
+          organizationId,
+          projectId,
+          environmentId: await ensure("Environment"),
+          repoId: await ensure("Repo"),
+          createdByMemberId: memberId,
+          detection: { baseImage: null, setupLines: ["uv sync --frozen"], setupScript: "set -euo pipefail\nuv sync --frozen\n", variables: [], tools: [], services: [], appProcesses: [], reasons: [{ file: "uv.lock", finding: "uv" }] },
+        },
+      })
+    ).id,
 };
 
 /** The models without `organizationId`, each with why it has none (reviewed: ADR 0053). */
@@ -595,6 +610,7 @@ export const isolationProjectModels: ReadonlySet<IsolationModelName> = new Set<I
   // Milestone 9.
   "MessageFile",
   "TaskTicketRead",
+  "EnvironmentRepoDraft",
 ]);
 
 export const isolationModelNames = (): readonly IsolationModelName[] => isolationModelList;

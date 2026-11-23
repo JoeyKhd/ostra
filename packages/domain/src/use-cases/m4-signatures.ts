@@ -322,7 +322,18 @@ export type AddProjectRepo = (
   deps: M4Deps,
   scope: MemberScope,
   input: { readonly projectId: ProjectId; readonly fullName: RepoFullName },
-) => Promise<UseCaseResult<{ readonly repoId: RepoId; readonly checkoutDir: string; readonly position: number }, "forbidden" | "not-found" | "limit-reached" | "already-added" | "no-access" | "not-linked">>;
+) => Promise<
+  UseCaseResult<
+    {
+      readonly repoId: RepoId;
+      readonly checkoutDir: string;
+      readonly position: number;
+      /** F-112/c1: the environment was saved, and the repo's draft now waits beside it for review. */
+      readonly drafted: boolean;
+    },
+    "forbidden" | "not-found" | "limit-reached" | "already-added" | "no-access" | "not-linked"
+  >
+>;
 
 export type RemoveProjectRepo = (
   deps: M4Deps,

@@ -156,6 +156,8 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "environments.appProcesses.list": { input: project, about: "project" },
   "environments.checks.list": { input: project, about: "project" },
   "environments.get": { input: project, about: "project" },
+  // F-112/c1 (Q345 option (b)): a new repo's draft beside the saved setup.
+  "environments.repoDrafts": { input: project, about: "project" },
   "environments.screenshots.get": { input: project, about: "project" },
   "environments.services.list": { input: project, about: "project" },
   "environments.snapshot.get": { input: project, about: "project" },
@@ -360,6 +362,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   Finding: ["review.screen", "tasks.rounds"],
   TaskReviewer: ["review.screen"],
   EnvironmentProposal: ["environments.proposal", "environments.appProcesses.list"],
+  EnvironmentRepoDraft: ["environments.repoDrafts"],
   // Milestone 8 (its ticket 04). Ticket 20's pane list reads the previews (the app processes, the
   // announced ports, the latest screenshot) and their sharing: levels, named people, links and the
   // open views. Ticket 16's App tab reads the processes, and the thread a task's screenshots and
@@ -647,6 +650,7 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "environments.appProcesses.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.checks.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
+  "environments.repoDrafts": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.screenshots.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.services.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "environments.snapshot.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],

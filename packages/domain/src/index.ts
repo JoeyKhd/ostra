@@ -59,6 +59,7 @@ export * from "./use-cases/pr-title.ts";
 export * from "./use-cases/record-session-end.ts";
 export * from "./use-cases/register-personal-runner.ts";
 export * from "./use-cases/save-environment.ts";
+export * from "./use-cases/environment-repo-drafts.ts";
 export * from "./use-cases/drain-runner.ts";
 export * from "./use-cases/revoke-runner.ts";
 export * from "./use-cases/stop-task.ts";

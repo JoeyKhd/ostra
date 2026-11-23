@@ -959,6 +959,8 @@ model Project {
   // ---- milestone 9 (ADR 0070) ----
   messageFiles         MessageFile[]
   taskTicketReads      TaskTicketRead[]
+  // ---- 2026-11-23 (F-112/c1, Q345 option (b)) ----
+  environmentRepoDrafts EnvironmentRepoDraft[]
 
   // The target of every project record's composite foreign key (ADR 0026).
   @@unique([id, organizationId])
@@ -1037,6 +1039,8 @@ model Repo {
   diffCaches DiffCache[]
   // ---- milestone 8 (F-140) ----
   appProcesses AppProcess[]
+  // ---- 2026-11-23 (F-112/c1, Q345 option (b)) ----
+  environmentDrafts EnvironmentRepoDraft[]
 
   @@unique([projectId, hostRepoId])
   @@unique([projectId, checkoutDir])
@@ -1220,6 +1224,8 @@ model Environment {
   proposals EnvironmentProposal[]
   // ---- milestone 8 (F-140) ----
   appProcesses AppProcess[]
+  // ---- 2026-11-23 (F-112/c1, Q345 option (b)) ----
+  repoDrafts   EnvironmentRepoDraft[]
 
   @@unique([id, projectId])
   @@unique([projectId, organizationId])
@@ -1251,6 +1257,31 @@ model EnvironmentEntry {
 
   @@index([environmentId])
   @@map("environment_entry")
+}
+
+/// F-112/c1, Q345 option (b): a repo added to a project whose environment is saved gets its own
+/// draft, held beside the saved setup for a project admin to apply, edit first or dismiss. The
+/// saved environment runs as it is meanwhile. One per repo; removing the repo drops it.
+model EnvironmentRepoDraft {
+  id                  String      @id @default(uuid(7))
+  organizationId      String
+  projectId           String
+  project             Project     @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  environmentId       String
+  environment         Environment @relation(fields: [environmentId, projectId], references: [id, projectId], onDelete: Cascade)
+  repoId              String      @unique
+  repo                Repo        @relation(fields: [repoId, projectId], references: [id, projectId], onDelete: Cascade)
+  /// What detection read in the repo, parsed by the domain's `detectedEnvironmentSchema`. Never logged.
+  detection           Json
+  /// The member who added the repo.
+  createdByMemberId   String?
+  createdAt           DateTime    @default(now())
+  /// "Dismiss": the environment stays as it is, and the draft doesn't come back; "Undo" clears it.
+  dismissedAt         DateTime?
+  dismissedByMemberId String?
+
+  @@index([projectId])
+  @@map("environment_repo_draft")
 }
 
 /// A program started beside the agent, such as a database (Q40, F-094). Milestone 3.

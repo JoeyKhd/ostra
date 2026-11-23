@@ -17,6 +17,11 @@ import type { UseCaseResult } from "./common.ts";
 export const saveEnvironmentInputSchema = z.strictObject({
   projectId: projectIdSchema,
   environment: environmentConfigSchema,
+  /**
+   * F-112/c1 (Q345 option (b)): the repos whose waiting drafts this save takes in, by "Apply" or
+   * by "Edit first" and Save: their drafts are done, and the audit entry names them.
+   */
+  repoDrafts: z.array(repoIdSchema).max(100).optional(),
 });
 export type SaveEnvironmentInput = z.infer<typeof saveEnvironmentInputSchema>;
 
@@ -148,6 +153,13 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
     for (const repoId of projectRepoIds) {
       await tx.repo.update({ where: { id: repoId }, data: { envFile: envFileOf.get(repoId) ?? DEFAULT_ENV_FILE } });
     }
+    // F-112/c1: the drafts this save took in are done.
+    const drafted = input.repoDrafts === undefined || input.repoDrafts.length === 0
+      ? []
+      : await tx.repo.findMany({ where: { id: { in: [...input.repoDrafts] }, projectId: project.id, organizationId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, fullName: true } });
+    if (drafted.length > 0) {
+      await tx.environmentRepoDraft.deleteMany({ where: { environmentId: environmentRow.id, repoId: { in: drafted.map((repo) => repo.id) } } });
+    }
     await tx.environment.update({
       where: { id: environmentRow.id },
       data: {
@@ -170,6 +182,7 @@ export const saveEnvironment: SaveEnvironment = async (deps, input) => {
         secrets: rows.filter((candidate) => candidate.kind === "secret").length,
         files: rows.filter((candidate) => candidate.kind === "file").length,
         hasSetupScript: environment.setupScript !== null,
+        ...(drafted.length === 0 ? {} : { repoDraft: drafted.map((repo) => repo.fullName).join(", ") }),
       },
     });
     await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "environment", entityId: environmentId });

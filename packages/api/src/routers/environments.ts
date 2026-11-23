@@ -1,6 +1,16 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { Db, EnvironmentEntry as EntryRow } from "@ostra/db";
-import { detectionWithoutFiles, detectRepoEnvironment, installationStateSelect, installationUsable, saveEnvironment, saveEnvironmentInputSchema } from "@ostra/domain";
+import {
+  applyRepoDraft,
+  detectionWithoutFiles,
+  detectRepoEnvironment,
+  dismissRepoDraft,
+  installationStateSelect,
+  installationUsable,
+  listRepoDrafts,
+  saveEnvironment,
+  saveEnvironmentInputSchema,
+} from "@ostra/domain";
 import { connectionIdSchema, environmentIdSchema, projectIdSchema, repoFullNameSchema, repoIdSchema } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -63,6 +73,31 @@ const environmentViewSchema = z.object({
 });
 
 type EntryView = z.infer<typeof entryViewSchema>;
+
+/**
+ * F-112/c1 (Q345 option (b)): a repo added after the environment was saved, its draft waiting
+ * beside the saved setup. `lines` is the setup script Apply saves, each line kept or added.
+ */
+export const repoDraftViewSchema = z.object({
+  repoId: repoIdSchema,
+  fullName: z.string(),
+  /** Epoch ms. */
+  createdAt: z.number().int(),
+  createdBy: z.string().nullable(),
+  kind: z.enum(["case", "plain", "nothing"]),
+  lines: z.array(z.object({ kind: z.enum(["same", "add"]), text: z.string() })).readonly(),
+  script: z.string().nullable(),
+  envFile: z.string(),
+  variables: z.array(z.object({ name: z.string(), secret: z.boolean(), source: z.string() })).readonly(),
+  reasons: z.array(z.object({ file: z.string(), finding: z.string() })).readonly(),
+  tools: z.array(z.object({ tool: z.string(), version: z.string(), source: z.string() })).readonly(),
+  services: z.array(z.object({ name: z.string(), image: z.string().nullable(), ports: z.array(z.number().int()).readonly(), source: z.string() })).readonly(),
+  language: z.enum(["node", "python", "rust", "go", "ruby"]).nullable(),
+  tool: z.string().nullable(),
+  savedTool: z.string().nullable(),
+});
+
+const repoDraftInput = z.strictObject({ projectId: projectIdSchema, repoId: repoIdSchema });
 
 /** A stored entry as the panel sees it: a secret by name only. */
 const viewOf = (entry: EntryRow): EntryView[] => {
@@ -148,6 +183,53 @@ export const environmentsRouter = router({
         out.push({ repoId: repoIdSchema.parse(repo.id), fullName, detection });
       }
       return out;
+    }),
+
+  /** F-112/c1: the drafts of repos added since the environment was saved, waiting for review (anyone who can open the project). */
+  repoDrafts: projectProcedure("read", projectInput)
+    .output(z.array(repoDraftViewSchema))
+    .query(async ({ ctx, input }) => [...(await listRepoDrafts(ctx.deps.db, ctx.scope, input.projectId))]),
+
+  /**
+   * F-112/c1: "Apply" on a new repo's draft: saves the environment at once with its lines in the
+   * setup script and its variables in its section, scanned, audited and versioned like any save;
+   * the snapshot rebuilds. Answers the secrets detection named, which need a value before they're kept.
+   */
+  applyRepoDraft: projectProcedure("admin", repoDraftInput)
+    .output(z.object({ environmentId: environmentIdSchema, secretsWithoutValue: z.array(z.string()).readonly() }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      const result = await applyRepoDraft({ db, audit: ports.audit, notices: ports.notices, clock: ports.clock, jobs: ports.jobs, adapters: ports.adapters }, ctx.scope, input);
+      if (!result.ok && result.error === "secret-found") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: result.message });
+      }
+      const applied = unwrap(result, {
+        "not-found": "NOT_FOUND",
+        forbidden: "FORBIDDEN",
+        "nothing-to-apply": "BAD_REQUEST",
+        "unknown-repo": "BAD_REQUEST",
+        "duplicate-entry": "BAD_REQUEST",
+        "secret-without-value": "BAD_REQUEST",
+      });
+      return { environmentId: applied.environmentId, secretsWithoutValue: applied.secretsWithoutValue };
+    }),
+
+  /** F-112/c1: "Dismiss" on a new repo's draft: the environment stays as it is. Audited. */
+  dismissRepoDraft: projectProcedure("admin", repoDraftInput)
+    .output(z.object({ dismissed: z.literal(true) }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      unwrap(await dismissRepoDraft({ db, audit: ports.audit, notices: ports.notices, clock: ports.clock }, ctx.scope, { ...input, undo: false }), { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });
+      return { dismissed: true as const };
+    }),
+
+  /** F-112/c1: "Undo" after Dismiss, while the page is open: the draft waits again. Audited. */
+  undoDismissRepoDraft: projectProcedure("admin", repoDraftInput)
+    .output(z.object({ dismissed: z.literal(false) }))
+    .mutation(async ({ ctx, input }) => {
+      const { db, ports } = ctx.deps;
+      unwrap(await dismissRepoDraft({ db, audit: ports.audit, notices: ports.notices, clock: ports.clock }, ctx.scope, { ...input, undo: true }), { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN" });
+      return { dismissed: false as const };
     }),
 
   /** Milestone 3 (ticket 40): the services beside each box on `docker` runners (F-094). */

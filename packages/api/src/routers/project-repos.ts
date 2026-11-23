@@ -107,7 +107,15 @@ export const projectReposProcedures = {
    * to `OSTRA_PROJECT_MAX_REPOS`. Tasks pick it up at their next session.
    */
   addRepo: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, fullName: repoFullNameSchema }))
-    .output(z.object({ repoId: repoIdSchema, checkoutDir: z.string(), position: z.number().int() }))
+    .output(
+      z.object({
+        repoId: repoIdSchema,
+        checkoutDir: z.string(),
+        position: z.number().int(),
+        /** F-112/c1: the environment was saved, and the repo's own draft waits on Environment for review. */
+        drafted: z.boolean(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const added = await addProjectRepo(deps(ctx), ctx.scope, { projectId: input.projectId, fullName: input.fullName });
       if (!added.ok) {
@@ -115,7 +123,7 @@ export const projectReposProcedures = {
       }
       // F-055, F-060: the new repo's rules are read now, so the page shows them at once.
       await checkProjectRepos({ db: ctx.deps.db, clock: ctx.deps.ports.clock, adapters: ctx.deps.ports.adapters }, { organizationId: ctx.scope.organizationId, projectId: input.projectId, force: false });
-      return { repoId: added.repoId, checkoutDir: added.checkoutDir, position: added.position };
+      return { repoId: added.repoId, checkoutDir: added.checkoutDir, position: added.position, drafted: added.drafted };
     }),
 
   /**

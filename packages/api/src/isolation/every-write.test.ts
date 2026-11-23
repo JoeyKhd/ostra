@@ -836,6 +836,73 @@ describe("the App tab's and the thread's writes, by each role (F-140, F-121)", (
   });
 });
 
+// ---------- a new repo's draft beside the saved setup (F-112/c1, Q345 option (b)) ----------
+
+describe("a new repo's draft's writes, by each role (F-112)", () => {
+  type Role = "organization admin" | "project admin" | "project member" | "outsider" | "another organization";
+  const roles: readonly Role[] = ["organization admin", "project admin", "project member", "outsider", "another organization"];
+
+  it("F-112/c1: Apply, Dismiss and its Undo are a project admin's; a project member is refused, and outside the project it's NOT_FOUND", async () => {
+    const { projectId, projectAdmin, driver } = await restrictedProject("draft-writes");
+    const organizationId = harness.fixture.a.organization.id;
+    const outsider = await seedMember();
+    const callerOf = (role: Role): Promise<AppCaller> => {
+      switch (role) {
+        case "organization admin":
+          return harness.as(harness.fixture.a.admin);
+        case "project admin":
+          return harness.as(projectAdmin);
+        case "project member":
+          return harness.as(driver);
+        case "outsider":
+          return harness.as(outsider);
+        case "another organization":
+          return harness.as(harness.fixture.b.admin);
+        default:
+          return role satisfies never;
+      }
+    };
+    const repoId = repoIdSchema.parse((await harness.test.db.repo.findFirstOrThrow({ where: { projectId }, select: { id: true } })).id);
+    const environment = await harness.test.db.environment.findUniqueOrThrow({ where: { projectId }, select: { id: true } });
+    /** A saved plain script, and the repo's draft waiting (or dismissed, for Undo), afresh before each call. */
+    const fresh = async (dismissed: boolean) => {
+      await harness.test.db.environment.update({ where: { id: environment.id }, data: { status: "saved", setupScript: "corepack enable\npnpm install\n", savedAt: new Date() } });
+      await harness.test.db.environmentRepoDraft.deleteMany({ where: { repoId } });
+      await harness.test.db.environmentRepoDraft.create({
+        data: {
+          organizationId,
+          projectId,
+          environmentId: environment.id,
+          repoId,
+          detection: { baseImage: null, setupLines: ["uv sync --frozen"], setupScript: "set -euo pipefail\nuv sync --frozen\n", variables: [], tools: [], services: [], appProcesses: [], reasons: [] },
+          dismissedAt: dismissed ? new Date() : null,
+        },
+      });
+    };
+    const writes: Readonly<Record<string, { readonly dismissed: boolean; readonly call: (caller: AppCaller) => Promise<unknown> }>> = {
+      "environments.applyRepoDraft": { dismissed: false, call: (caller) => caller.environments.applyRepoDraft({ projectId, repoId }) },
+      "environments.dismissRepoDraft": { dismissed: false, call: (caller) => caller.environments.dismissRepoDraft({ projectId, repoId }) },
+      "environments.undoDismissRepoDraft": { dismissed: true, call: (caller) => caller.environments.undoDismissRepoDraft({ projectId, repoId }) },
+    };
+    const outside = { outsider: "NOT_FOUND", "another organization": "NOT_FOUND" } as const;
+    const admins = { "organization admin": "ok", "project admin": "ok", "project member": "FORBIDDEN", ...outside } as const;
+    // The guard: every write of a repo's draft has a row.
+    expect(mutationPaths().filter((path) => path.includes("RepoDraft") && !Object.hasOwn(writes, path))).toEqual([]);
+    const seen: Record<string, Record<string, string>> = {};
+    for (const [path, write] of Object.entries(writes)) {
+      const row: Record<string, string> = {};
+      for (const role of roles) {
+        await fresh(write.dismissed);
+        row[role] = await outcomeOf(async () => write.call(await callerOf(role)));
+      }
+      seen[path] = row;
+    }
+    expect(seen).toEqual({ "environments.applyRepoDraft": admins, "environments.dismissRepoDraft": admins, "environments.undoDismissRepoDraft": admins });
+    // A refused write changed nothing: no entry is the member's or the outsider's.
+    expect(await harness.test.db.auditEntry.count({ where: { projectId, actorId: { in: [outsider.id, driver.id] }, action: { in: ["environment.saved", "environment.repo-draft-dismissed", "environment.repo-draft-restored"] } } })).toBe(0);
+  });
+});
+
 // ---------- a message's files and a ticket's context (milestone 9, F-148, F-149) ----------
 
 describe("a message's files and a ticket's presses, by each role (F-148, F-149)", () => {
