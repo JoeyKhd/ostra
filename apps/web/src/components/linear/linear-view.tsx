@@ -2,8 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLinkIcon } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+
+import type { ConnectionId } from "@ostra/protocol";
 
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { buttonVariants } from "@/components/ui/button";
@@ -20,72 +22,96 @@ import { linearWorkspaceUrl } from "./linear-status";
 const callbackError = (value: string | null): string | null => (value === null || value === "" ? null : value.slice(0, 300));
 
 /**
- * Organization › Linear (F-005, F-042; connect-linear.md): connect the organization's own Linear
- * app in three steps, then see whether its events arrive and its token is healthy. Admins only.
+ * One Linear connection's page (F-005, F-042; connect-linear.md), at `/organization/trackers/<id>`
+ * since milestone 11 (F-152; ticket 12 moved it there from `/organization/linear`, ticket 14 gives
+ * it the targets' header): connect the organization's own Linear app in three steps, then see
+ * whether its events arrive and its token is healthy. Each call names this connection
+ * (`trackers.linear.*`, `trackers.disconnect`). A connection just made in the picker (`?new=1`)
+ * opens at step 1, whose button makes the app in Linear from the pre-filled link. Admins only.
  */
-export const LinearView = () => {
+export const LinearView = ({ connectionId, name }: { readonly connectionId: ConnectionId; readonly name: string }) => {
   const trpc = useTRPC();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const params = useSearchParams();
   const [mounted] = useState(() => Date.now());
+  const [fresh, setFresh] = useState(() => params.get("new") === "1");
   const me = useQuery(trpc.me.get.queryOptions());
-  const status = useQuery({ ...trpc.linear.status.queryOptions(), refetchInterval: 30_000 });
+  const status = useQuery({ ...trpc.trackers.linear.status.queryOptions({ connectionId }), refetchInterval: 30_000 });
   const now = status.dataUpdatedAt === 0 ? mounted : status.dataUpdatedAt;
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: trpc.linear.status.queryKey() });
+    await queryClient.invalidateQueries({ queryKey: trpc.trackers.pathKey() });
     await queryClient.invalidateQueries({ queryKey: trpc.setup.status.queryKey() });
   };
 
-  const start = useMutation(
-    trpc.linear.start.mutationOptions({
-      onSuccess: async (result) => {
-        window.open(result.manifestUrl, "_blank", "noopener");
-        await refresh();
-      },
-    }),
-  );
-  const saveApp = useMutation(trpc.linear.saveApp.mutationOptions({ onSuccess: refresh }));
+  const saveApp = useMutation(trpc.trackers.linear.saveApp.mutationOptions({ onSuccess: refresh }));
   const authorize = useMutation(
-    trpc.linear.authorizeUrl.mutationOptions({
+    trpc.trackers.linear.authorizeUrl.mutationOptions({
       onSuccess: (result) => {
         window.location.assign(result.authorizeUrl);
       },
     }),
   );
-  const disconnect = useMutation(trpc.linear.disconnect.mutationOptions({ onSuccess: refresh }));
+  const create = useMutation(
+    trpc.trackers.create.mutationOptions({
+      onSuccess: async (made) => {
+        await refresh();
+        router.replace(`/organization/trackers/${made.connectionId}?new=1`);
+      },
+    }),
+  );
+  const disconnect = useMutation(trpc.trackers.disconnect.mutationOptions());
 
   const data = status.data;
-  const connectionId = data === undefined || data.state === "none" ? null : data.connectionId;
-  const withConnection = (run: (id: NonNullable<typeof connectionId>) => void) => () => {
-    if (connectionId !== null) run(connectionId);
-  };
   const actions: LinearActions = {
-    start: { run: () => { start.mutate(); }, pending: start.isPending, error: errorText(start.error) },
+    // Step 1: the app made in Linear from the pre-filled link, in a new tab, from this press itself.
+    start: {
+      run: () => {
+        if (data?.manifestUrl !== null && data?.manifestUrl !== undefined) window.open(data.manifestUrl, "_blank", "noopener");
+        setFresh(false);
+        router.replace(`/organization/trackers/${connectionId}`, { scroll: false });
+      },
+      pending: false,
+      error: null,
+    },
     saveApp: {
       run: (values) => {
-        if (connectionId === null) return;
         saveApp.mutate({ connectionId, clientId: values.clientId, clientSecret: values.clientSecret, ...(values.webhookSecret === null ? {} : { webhookSecret: values.webhookSecret }) });
       },
       pending: saveApp.isPending,
       error: errorText(saveApp.error),
     },
-    authorize: { run: withConnection((id) => { authorize.mutate({ connectionId: id }); }), pending: authorize.isPending || authorize.isSuccess, error: errorText(authorize.error) },
-    // "Start again" ends the pending row and starts a fresh one (ticket 27).
+    authorize: { run: () => { authorize.mutate({ connectionId }); }, pending: authorize.isPending || authorize.isSuccess, error: errorText(authorize.error) },
+    // "Start again" ends this pending connection and starts a fresh one (ticket 27).
     startAgain: {
-      run: withConnection((id) => {
-        disconnect.mutate({ connectionId: id }, { onSuccess: () => { start.mutate(); } });
-      }),
-      pending: disconnect.isPending || start.isPending,
+      run: () => {
+        disconnect.mutate({ id: connectionId }, { onSuccess: () => { create.mutate({ kind: "linear" }); } });
+      },
+      pending: disconnect.isPending || create.isPending,
+      error: errorText(disconnect.error) ?? errorText(create.error),
+    },
+    disconnect: {
+      run: () => {
+        disconnect.mutate(
+          { id: connectionId },
+          {
+            onSuccess: () => {
+              void refresh();
+              router.push("/organization/trackers");
+            },
+          },
+        );
+      },
+      pending: disconnect.isPending,
       error: errorText(disconnect.error),
     },
-    disconnect: { run: withConnection((id) => { disconnect.mutate({ connectionId: id }); }), pending: disconnect.isPending, error: errorText(disconnect.error) },
   };
-  const connected = data !== undefined && data.state !== "none" && data.state !== "pending";
+  const connected = data !== undefined && data.state !== "pending";
   const error = callbackError(params.get("error"));
 
   return (
     <PageFrame
-      crumbs={[{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("linear.title") }]}
+      crumbs={[{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("trackers.title"), href: "/organization/trackers" }, { label: name }]}
       actions={
         connected ? (
           <a href={linearWorkspaceUrl(data.workspaceKey)} target="_blank" rel="noopener noreferrer" className={buttonVariants()}>
@@ -94,11 +120,9 @@ export const LinearView = () => {
           </a>
         ) : undefined
       }
-      properties={
-        <LinearProperties status={data} sessions={data !== undefined && data.state !== "none" && data.agentMode?.on === true ? <AgentSessionsGroup agent={data.agentMode} /> : null} />
-      }
+      properties={<LinearProperties status={data} sessions={data?.agentMode?.on === true ? <AgentSessionsGroup agent={data.agentMode} /> : null} />}
     >
-      <PageHeading title={t("linear.title")} lede={t("linear.lede")} />
+      <PageHeading title={name} lede={t("linear.lede")} />
       {error === null ? null : <ErrorLine className="mt-3">{error}</ErrorLine>}
       {status.isError ? <ErrorLine className="mt-6">{errorText(status.error)}</ErrorLine> : null}
       <LinearBody
@@ -106,7 +130,8 @@ export const LinearView = () => {
         actions={actions}
         now={now}
         justConnected={params.get("connected") === "1"}
-        agentMode={data !== undefined && data.state !== "none" ? <AgentModeSections status={data} now={now} justTurnedOn={params.get("agent-mode") === "1"} /> : undefined}
+        appMade={!(fresh && data?.state === "pending" && !data.appSaved)}
+        agentMode={data === undefined ? undefined : <AgentModeSections status={data} now={now} justTurnedOn={params.get("agent-mode") === "1"} />}
       />
     </PageFrame>
   );

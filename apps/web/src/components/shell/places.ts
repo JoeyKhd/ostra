@@ -54,7 +54,7 @@ export type OrganizationRow =
   | "skills"
   | "models"
   | "github"
-  | "linear"
+  | "trackers"
   | "members"
   | "preview-links"
   | "audit"
@@ -164,7 +164,9 @@ export const organizationGroups: readonly RowGroup<OrganizationRow>[] = [
     label: "shell.panel.connections",
     rows: [
       { id: "github", href: "/organization/github", label: "shell.github", icon: "git-pull-request", gate: "admin" },
-      { id: "linear", href: "/organization/linear", label: "shell.linear", icon: "ticket", gate: "admin" },
+      // Milestone 11 (F-152; app-targets/m11-trackers/trackers.md): every tracker connection, of any
+      // kind, in place of Linear's one. A member reads the list; its changes are the admins'.
+      { id: "trackers", href: "/organization/trackers", label: "shell.trackers", icon: "ticket", gate: "member" },
     ],
   },
   {
@@ -273,7 +275,10 @@ export const pagePlaces: readonly { readonly pattern: string; readonly place: Pl
   { pattern: "/organization/skills/[item-id]", place: organization("skills") },
   { pattern: "/organization/models", place: organization("models") },
   { pattern: "/organization/github", place: organization("github") },
-  { pattern: "/organization/linear", place: organization("linear") },
+  // Linear's old address leads to its first connection's page, or to Trackers (choice 13).
+  { pattern: "/organization/linear", place: organization("trackers") },
+  { pattern: "/organization/trackers", place: organization("trackers") },
+  { pattern: "/organization/trackers/[connection-id]", place: organization("trackers") },
   { pattern: "/organization/members", place: organization("members") },
   { pattern: "/organization/previews", place: organization("preview-links") },
   { pattern: "/organization/audit", place: organization("audit") },

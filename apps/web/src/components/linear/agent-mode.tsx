@@ -101,9 +101,10 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [line, setLine] = useState<{ readonly kind: "status" | "alert"; readonly text: string } | null>(null);
-  const refresh = () => queryClient.invalidateQueries({ queryKey: trpc.linear.status.queryKey() });
+  // Milestone 11 (F-152): on this connection, by its ID (`trackers.linear.*`).
+  const refresh = () => queryClient.invalidateQueries({ queryKey: trpc.trackers.pathKey() });
   const enable = useMutation(
-    trpc.linear.enableAgentMode.mutationOptions({
+    trpc.trackers.linear.enableAgentMode.mutationOptions({
       onSuccess: (result) => {
         if (result.kind === "consent") window.location.assign(result.authorizeUrl);
         else void refresh();
@@ -111,7 +112,7 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
     }),
   );
   const setBoard = useMutation(
-    trpc.linear.setBoardAgentMode.mutationOptions({
+    trpc.trackers.linear.setBoardAgentMode.mutationOptions({
       onSuccess: (result) => {
         const board = status.agentMode?.boards.find((one) => one.boardId === result.boardId);
         if (board !== undefined) setLine({ kind: "status", text: result.on ? t("agentMode.nowOn", { board: board.name, team: board.teamKey ?? board.name }) : t("agentMode.nowOff", { board: board.name }) });
@@ -159,7 +160,7 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
         ) : (
           <div className="mt-3">
             <p className="text-[12.5px] text-muted">{t("agentMode.offNote")}</p>
-            <Button variant="primary" className="mt-2.5" disabled={enable.isPending || enable.isSuccess || status.mode === "polling"} onClick={() => { enable.mutate(); }} data-testid="turn-on-agent-mode">
+            <Button variant="primary" className="mt-2.5" disabled={enable.isPending || enable.isSuccess || status.mode === "polling"} onClick={() => { enable.mutate({ connectionId: status.connectionId }); }} data-testid="turn-on-agent-mode">
               {enable.isPending || enable.isSuccess ? <LoaderCircleIcon className="animate-spin" /> : <ArrowUpRightIcon />}
               {enable.isPending || enable.isSuccess ? t("agentMode.opening") : t("agentMode.turnOn")}
             </Button>

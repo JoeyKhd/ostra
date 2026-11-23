@@ -28,6 +28,8 @@ const worldSchema = z.object({
   /** A running task, in the project's Live list beside the needs-you ones. */
   running: z.object({ taskId: z.string() }),
   orgNoteId: z.string(),
+  /** Milestone 11 (F-152): the organization's Linear tracker connection, for its own page. */
+  trackerConnectionId: z.string(),
   projectNoteId: z.string(),
   poolId: z.string(),
   runnerId: z.string(),
@@ -77,7 +79,11 @@ export const memberRoutes = (world: RoutesWorld): readonly PanelRoute[] => {
     { pattern: "/organization/email", path: "/organization/email" },
     { pattern: "/organization/github", path: "/organization/github" },
     { pattern: "/organization/insights", path: "/organization/insights" },
+    // Milestone 11 (F-152; ticket 12): every tracker connection, and one's own page. Linear's old
+    // address redirects, so it lands on the first Linear connection's page.
     { pattern: "/organization/linear", path: "/organization/linear" },
+    { pattern: "/organization/trackers", path: "/organization/trackers" },
+    { pattern: "/organization/trackers/[connection-id]", path: `/organization/trackers/${world.trackerConnectionId}` },
     { pattern: "/organization/members", path: "/organization/members" },
     { pattern: "/organization/memory", path: "/organization/memory" },
     { pattern: "/organization/memory/new", path: "/organization/memory/new" },

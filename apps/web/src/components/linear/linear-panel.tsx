@@ -153,8 +153,10 @@ const AppValuesForm = ({ status, act, current }: { readonly status: LinearStatus
 };
 
 /** The three steps of a connection that isn't active yet (states 1 and 2 of connect-linear.md). */
-const ConnectSection = ({ status, actions, now }: { readonly status: LinearStatus; readonly actions: LinearActions; readonly now: number }) => {
-  const steps = connectSteps(status);
+const ConnectSection = ({ status, actions, now, appMade }: { readonly status: LinearStatus; readonly actions: LinearActions; readonly now: number; readonly appMade: boolean }) => {
+  const made = connectSteps(status);
+  // A connection just made in the picker opens at step 1, until its button makes the app (F-152).
+  const steps = { created: made.created && appMade, saved: made.saved };
   const [replacing, setReplacing] = useState(false);
   const saved = steps.saved && !replacing;
   const current = currentStep({ created: steps.created, saved });
@@ -453,10 +455,12 @@ export type LinearBodyProps = {
   readonly justConnected: boolean;
   /** Milestone 6 (F-012): agent mode's sections, under the connection's. */
   readonly agentMode?: ReactNode;
+  /** `false` while a connection just made in the picker hasn't made its app yet: step 1 stays current. */
+  readonly appMade?: boolean;
 };
 
 /** The Linear page under its heading: the connect steps, or the connection's state (connect-linear.md). */
-export const LinearBody = ({ status, actions, now, justConnected, agentMode }: LinearBodyProps) => {
+export const LinearBody = ({ status, actions, now, justConnected, agentMode, appMade = true }: LinearBodyProps) => {
   if (status === undefined)
     return (
       <Section title={t("linear.connection.title")}>
@@ -471,7 +475,7 @@ export const LinearBody = ({ status, actions, now, justConnected, agentMode }: L
       </Section>
     );
   if (status.state === "active" || status.state === "failed") return <ConnectedSections status={status} actions={actions} now={now} justConnected={justConnected} {...(agentMode === undefined ? {} : { agentMode })} />;
-  return <ConnectSection status={status} actions={actions} now={now} />;
+  return <ConnectSection status={status} actions={actions} now={now} appMade={appMade} />;
 };
 
 export const PanelLabel = ({ children, count }: { readonly children: ReactNode; readonly count?: number }) => (

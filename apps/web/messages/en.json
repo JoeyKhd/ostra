@@ -528,7 +528,7 @@
     "switchOrganization": "Switch organization, {name}",
     "organizations": "Organizations",
     "current": "Current",
-    "linear": "Linear",
+    "trackers": "Trackers",
     "storage": "Storage",
     "settings": "Settings",
     "boards": "Boards",
@@ -539,6 +539,7 @@
     "profilesCount": "Agent profiles: {n}",
     "libraryCount": "Skills and servers: {n}",
     "membersCount": "Members: {n}",
+    "trackersCount": "Tracker connections: {n}",
     "email": "Email",
     "account": "Account",
     "notifications": "Notifications",
@@ -3601,7 +3602,6 @@
     "syncedMinutes": "{n} min ago"
   },
   "linear": {
-    "title": "Linear",
     "lede": "The organization's own Linear app reads tickets and writes back status, one comment and links. Its tokens stay on this server, in the secret store, and never reach an agent.",
     "openInLinear": "Open in Linear",
     "connect": {
@@ -3717,6 +3717,121 @@
       "eventsHelp": "AgentSessionEvent is asked for now, so agent mode later needs no new app.",
       "webhook": "Webhook",
       "webhookOff": "Off: polling every {seconds} s"
+    }
+  },
+  "trackers": {
+    "title": "Trackers",
+    "lede": "Where the organization's tickets live. Each client can bring its own Linear workspace or Jira site; a project's Boards then attach teams and projects from any of them.",
+    "ledeShort": "Each client's Linear workspace or Jira site. A project's Boards attach teams and projects from any of them.",
+    "connections": "Connections",
+    "col": {
+      "connection": "Connection",
+      "site": "Workspace or site",
+      "mode": "Mode",
+      "lastEvent": "Last event",
+      "status": "Status"
+    },
+    "kind": {
+      "linear": "Linear",
+      "jira": "Jira Cloud"
+    },
+    "mode": {
+      "webhooks": "Webhooks",
+      "polling": "Polling"
+    },
+    "status": {
+      "connected": "Connected",
+      "pending": "Pending",
+      "failed": "Failed",
+      "silent": "Silent",
+      "expiring": "Token expires"
+    },
+    "why": {
+      "noDelivery": "No delivery yet",
+      "notAuthorized": "Not authorized yet",
+      "tokenRefused": "Token refused",
+      "tokenExpired": "Token expired",
+      "siteNotFound": "Site not found"
+    },
+    "ago": "{age} ago",
+    "keptApart": "Each connection keeps its own token and webhook. A client's tickets only ever move through its own connection: {first}'s never pass through {second}'s.",
+    "keptApartPlain": "Each connection keeps its own token and webhook. A client's tickets only ever move through its own connection.",
+    "keptApartShort": "Each connection keeps its own token and webhook.",
+    "connect": "Connect a tracker",
+    "member": "Only the organization's admins connect, change or disconnect trackers.",
+    "memberEmpty": "No tracker is connected yet.",
+    "rows": "Tracker connections",
+    "picker": {
+      "lede": "Each connection is one Linear workspace or one Jira site, with its own token. Connect one per client.",
+      "kinds": "The tracker to connect",
+      "continue": "Continue with {kind}",
+      "soon": "Coming soon",
+      "toPick": "to pick",
+      "linear": {
+        "sub": "Linear's own app, per workspace",
+        "body": "You create the app in Linear, paste its values and authorize it. Webhooks, or polling without a public address."
+      },
+      "jira": {
+        "sub": "Jira Cloud, by service account",
+        "body": "A service account's scoped API token, and an admin webhook signed with a secret ostra makes."
+      }
+    },
+    "cap": {
+      "agentMode": "Agent mode",
+      "subIssues": "Sub-issues",
+      "subTasks": "Sub-tasks",
+      "magicWords": "Magic words",
+      "transitions": "Workflow transitions",
+      "jql": "JQL filter"
+    },
+    "empty": {
+      "title": "Connect a tracker",
+      "lede": "Tickets then become tasks, and ostra keeps their status in step. Until then, tasks start from prompts, and nothing else waits on it.",
+      "continue": "Continue",
+      "hint": "Pick one. You can connect more, of either kind, later."
+    },
+    "how": {
+      "title": "How it works",
+      "connect": "Connect",
+      "connectRest": "a Linear workspace or a Jira site, here, once per client.",
+      "attach": "Attach",
+      "attachRest": "its teams or projects on a project's Boards, and map ostra's steps to their statuses.",
+      "start": "Start",
+      "startRest": "tasks from the Inbox's tickets. ostra moves each ticket, comments once and links the PR.",
+      "keptTitle": "Kept apart",
+      "kept": "Each connection has its own token and webhook, in the secret store. A client's tickets only ever move through its own connection."
+    },
+    "panel": {
+      "connection": "Connection",
+      "status": "Status",
+      "since": "since {date}",
+      "mode": "Mode",
+      "silentSince": "Silent since {time}",
+      "silentAfter": "polling still finds changes",
+      "lastEvent": "Last event",
+      "signsInAs": "Signs in as",
+      "serviceAccount": "service account",
+      "appUser": "app user",
+      "token": "Token",
+      "expires": "Expires {date}",
+      "healthy": "Healthy",
+      "boards": "Boards on it",
+      "noBoards": "No board is attached yet.",
+      "does": "What {kind} does here",
+      "moves": "Moves status",
+      "byTransitions": "By workflow transitions",
+      "directly": "Directly",
+      "subTasks": "Sub-tasks",
+      "subIssues": "Sub-issues",
+      "yes": "Yes",
+      "richText": "Rich text",
+      "adf": "ADF, converted",
+      "markdown": "Markdown",
+      "agentMode": "Agent mode",
+      "notIn": "– not in {kind}",
+      "on": "On",
+      "off": "Off",
+      "open": "Open {name}"
     }
   },
   "organizationPreviews": {

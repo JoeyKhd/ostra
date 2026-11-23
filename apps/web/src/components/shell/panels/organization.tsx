@@ -19,9 +19,10 @@ const COUNTS_STALE_MS = 60_000;
 
 /**
  * The rows' counts (app-shell.md, "Organization"; `shell-peek.webp`): Memory's open proposals, the
- * runners, the agent profiles, the library's items and the members, each from the query its own page
- * reads, fetched only while this panel shows. A count that fails or isn't the member's to read is
- * left out, never shown as 0.
+ * runners, the agent profiles, the library's items, the tracker connections (milestone 11, F-152:
+ * `0` too, as `trackers-empty` draws it) and the members, each from the query its own page reads,
+ * fetched only while this panel shows. A count that fails or isn't the member's to read is left
+ * out, never shown as 0.
  */
 const useRowCounts = (admin: boolean): Partial<Readonly<Record<OrganizationRow, number>>> => {
   const trpc = useTRPC();
@@ -31,12 +32,14 @@ const useRowCounts = (admin: boolean): Partial<Readonly<Record<OrganizationRow, 
   const profiles = useQuery({ ...trpc.agentProfiles.list.queryOptions(), ...options });
   const library = useQuery({ ...trpc.library.list.queryOptions(), ...options });
   const members = useQuery({ ...trpc.members.list.queryOptions({ includeRemoved: false }), ...options });
+  const trackers = useQuery({ ...trpc.trackers.list.queryOptions(), ...options });
   return {
     ...(proposals.data === undefined || proposals.data.length === 0 ? {} : { memory: proposals.data.length }),
     ...(runners.data === undefined || !admin ? {} : { runners: runners.data.length }),
     ...(profiles.data === undefined ? {} : { "agent-profiles": profiles.data.length }),
     ...(library.data === undefined ? {} : { skills: library.data.length }),
     ...(members.data === undefined ? {} : { members: members.data.filter((member) => member.state === "active").length }),
+    ...(trackers.data === undefined ? {} : { trackers: trackers.data.connections.length }),
   };
 };
 
@@ -47,6 +50,7 @@ const countLabel: Partial<Readonly<Record<OrganizationRow, MessageKey>>> = {
   "agent-profiles": "shell.profilesCount",
   skills: "shell.libraryCount",
   members: "shell.membersCount",
+  trackers: "shell.trackersCount",
 };
 
 /**

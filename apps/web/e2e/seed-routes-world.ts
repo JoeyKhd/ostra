@@ -388,6 +388,7 @@ process.stdout.write(
     running,
     orgNoteId,
     projectNoteId,
+    trackerConnectionId: linear.id,
     poolId: pool.id,
     runnerId: runner.id,
     profileId: profile.id,

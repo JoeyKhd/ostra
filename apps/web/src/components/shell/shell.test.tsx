@@ -103,13 +103,15 @@ describe("the rail and the context panel (F-147)", () => {
       [null, ["insights", "memory"]],
       ["shell.panel.fleet", ["runners", "box-sizes"]],
       ["shell.panel.agents", ["agent-profiles", "skills"]],
+      // Milestone 11 (F-152): every member reads Trackers, which replaced Linear in the group.
+      ["shell.panel.connections", ["trackers"]],
       ["shell.panel.people", ["members"]],
     ]);
     expect(ids({ admin: true, instanceAdmin: false })).toEqual([
       [null, ["insights", "spend", "memory"]],
       ["shell.panel.fleet", ["runners", "box-sizes", "registry"]],
       ["shell.panel.agents", ["agent-profiles", "skills", "models"]],
-      ["shell.panel.connections", ["github", "linear"]],
+      ["shell.panel.connections", ["github", "trackers"]],
       // Organization › Previews (F-142): the organization's public links, for its admins, who may not be the instance admin.
       ["shell.panel.people", ["members", "preview-links", "audit"]],
     ]);
