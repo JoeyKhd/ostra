@@ -35,7 +35,7 @@ import { SHOW_PREVIEW_TOOL, showPreviewInputSchema } from "@ostra/protocol";
 import type { ShowPreviewInput } from "@ostra/protocol";
 
 import { approvalMetadataSchema } from "@ostra/task-view";
-import type { SubagentNode, TaskDataPart } from "@ostra/task-view";
+import type { QuestionData, SubagentNode, TaskDataPart } from "@ostra/task-view";
 
 import { AppProcessLine, AttachmentsRow, NoBrowserLine, SkippedLine } from "@/components/tasks/attachments/attachment-strip";
 import { monthWord } from "@/components/tasks/budget-reason";
@@ -100,14 +100,17 @@ export const AssistantText = ({ streaming }: { readonly streaming: boolean }) =>
  * F-138: an agent's text outside the thread's parts (a subagent's prompt and answer, in its
  * window), with the thread's own rules: markdown, no raw HTML, safe links, no remote image.
  */
-export const AgentMarkdown = ({ text, className, image }: {
+export const AgentMarkdown = ({ text, className, image, streaming, "data-part": dataPart }: {
   readonly text: string;
   readonly className?: string;
   /** Milestone 9 (ticket 16): how a picture in it shows, in place of `[alt]` (a ticket's stored file opens the viewer). */
   readonly image?: (props: ImgHTMLAttributes<HTMLImageElement>) => ReactNode;
+  /** Milestone 10 (F-151): the agent's prose in the thread, while it streams. */
+  readonly streaming?: boolean;
+  readonly "data-part"?: string;
 }) => (
-  <TextMessagePartProvider text={text}>
-    <div className={cn("agent-md", className)}>
+  <TextMessagePartProvider text={text} isRunning={streaming === true}>
+    <div className={cn("agent-md", className)} data-part={dataPart} data-streaming={streaming === undefined ? undefined : streaming ? "true" : "false"}>
       <MarkdownTextPrimitive smooth={false} components={image === undefined ? markdownComponents : { ...markdownComponents, img: image }} />
     </div>
   </TextMessagePartProvider>
@@ -500,8 +503,36 @@ const PlanStatus = ({ status }: { readonly status: "pending" | "in_progress" | "
 /** Done and pending steps are muted (no line-through: it reads as deleted); the current one is `--text`. */
 const planTone = (status: "pending" | "in_progress" | "completed"): string => (status === "in_progress" ? "text-text" : "text-muted");
 
-const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
+/**
+ * The agent's question (milestone 3): open, the page's answerable card, or the read-only block;
+ * answered or closed, its words and who answered. Milestone 10 (F-151): the compact thread draws it
+ * at its place in the turn (ticket 13 restyles it; an answered one is ticket 12's receipt there).
+ */
+export const QuestionBlock = ({ data }: { readonly data: QuestionData }) => {
   const { memberName, questionCard } = useTaskContext();
+  const status = data.status;
+  const card = status.state === "open" ? questionCard?.(data.questionId) : undefined;
+  if (card !== undefined && card !== null) return <div data-part="question">{card}</div>;
+  return (
+    <div data-part="question">
+      {status.state === "open" ? (
+        <NeedsYou data-testid="question" title={t("task.question.title")} className="my-2.5" footer={t("task.question.readOnly")}>
+          <AgentMarkdown text={data.message} />
+        </NeedsYou>
+      ) : (
+        <div className="my-1">
+          <AgentMarkdown text={data.message} />
+          <p className="text-sm text-muted">
+            {status.state === "answered" ? t("task.question.answered", { name: memberName(status.answeredBy) }) : t("task.question.closed", { reason: status.closedReason })}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
+  const { memberName } = useTaskContext();
   const [open, setOpen] = useState(false);
   switch (part.type) {
     case "data-plan":
@@ -518,27 +549,8 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           </ul>
         </div>
       );
-    case "data-question": {
-      const status = part.data.status;
-      const card = status.state === "open" ? questionCard?.(part.data.questionId) : undefined;
-      if (card !== undefined && card !== null) return <div data-part="question">{card}</div>;
-      return (
-        <div data-part="question">
-          {status.state === "open" ? (
-            <NeedsYou data-testid="question" title={t("task.question.title")} className="my-2.5" footer={t("task.question.readOnly")}>
-              <AgentMarkdown text={part.data.message} />
-            </NeedsYou>
-          ) : (
-            <div className="my-1">
-              <AgentMarkdown text={part.data.message} />
-              <p className="text-sm text-muted">
-                {status.state === "answered" ? t("task.question.answered", { name: memberName(status.answeredBy) }) : t("task.question.closed", { reason: status.closedReason })}
-              </p>
-            </div>
-          )}
-        </div>
-      );
-    }
+    case "data-question":
+      return <QuestionBlock data={part.data} />;
     case "data-compaction":
       return (
         <Line icon={<InfoIcon />} tone="muted">

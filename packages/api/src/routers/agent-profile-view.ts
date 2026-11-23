@@ -1,4 +1,4 @@
-import { agentDisplayName, modelImageInput, modelImageInputSchema } from "@ostra/domain";
+import { agentDisplayName, modelImageInput, modelImageInputSchema, profileMcpServersSchema } from "@ostra/domain";
 import type { Db } from "@ostra/db";
 import { agentProfileIdSchema, modelIdSchema } from "@ostra/protocol";
 import { z } from "zod";
@@ -17,8 +17,19 @@ export const agentProfileViewSchema = z.object({
   model: z.object({ id: modelIdSchema, name: z.string(), imageInput: modelImageInputSchema }).nullable(),
   /** Milestone 6 (ticket 34): the built-in Refine or Review profile, which the panel marks `built-in`; `null` for any other. */
   builtInKind: z.enum(["refine", "review"]).nullable(),
+  /**
+   * Milestone 10 (F-151): its MCP servers' names, which its agent's tools start with
+   * (`github_get_pull_request`), so the thread names a tool with its server. Names only.
+   */
+  mcpServers: z.array(z.string()),
 });
 export type AgentProfileView = z.infer<typeof agentProfileViewSchema>;
+
+/** The names of a profile's MCP servers, as stored; none when the stored list doesn't read. */
+const serverNames = (stored: unknown): string[] => {
+  const parsed = profileMcpServersSchema.safeParse(stored);
+  return parsed.success ? parsed.data.map((server) => server.name) : [];
+};
 
 /** One profile of the organization, or `null` when there's none by that ID. */
 export const loadAgentProfileView = async (db: Db, organizationId: string, profileId: string | null): Promise<AgentProfileView | null> => {
@@ -30,6 +41,7 @@ export const loadAgentProfileView = async (db: Db, organizationId: string, profi
       name: true,
       adapter: true,
       builtInKind: true,
+      mcpServers: true,
       model: { select: { id: true, displayName: true, endpointModelId: true, adminImageInput: true, catalogInputModalities: true } },
     },
   });
@@ -40,6 +52,7 @@ export const loadAgentProfileView = async (db: Db, organizationId: string, profi
     adapter: profile.adapter,
     agentName: agentDisplayName(profile.adapter),
     builtInKind: profile.builtInKind === "refine" || profile.builtInKind === "review" ? profile.builtInKind : null,
+    mcpServers: serverNames(profile.mcpServers),
     model:
       profile.model === null
         ? null

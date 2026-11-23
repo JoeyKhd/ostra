@@ -69,6 +69,10 @@ export { Properties } from "./task-properties";
 
 type TaskTab = "activity" | "changes" | "checks" | "events" | "draft";
 
+/** No turns priced yet, and an agent with no MCP servers: one value each, so the thread's memos hold. */
+const noTurns: readonly [] = [];
+const noServers: readonly string[] = [];
+
 /** The wait reasons milestones 3 and 4 word in their own blocks on this page (the waiting line skips them). */
 const wordedElsewhere: ReadonlySet<string> = new Set(["needs-services-runner", "provider-not-allowed", "installation-not-linked", "no-provider-for-model"]);
 
@@ -128,6 +132,12 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const waitingTask = outsideApprovals.data?.tasks.find((one) => one.taskId === taskId);
   const log = useTaskLog(taskId);
   const view = useMemo(() => deriveTaskState(log.state.events), [log.state.events]);
+  // Milestone 10 (F-151): what the compact thread reads of the task: each turn's figures, the repos'
+  // checkout folders (for relative paths) and their CI on their heads (for the PR card).
+  const usageTurns = task.data?.usage?.turns ?? noTurns;
+  const repos = task.data?.repos;
+  const checkoutDirs = useMemo(() => (repos ?? []).map((repo) => repo.checkoutDir), [repos]);
+  const ciOf = useCallback((repoId: string) => repos?.find((repo) => repo.repoId === repoId)?.ci ?? null, [repos]);
   const [stopping, setStopping] = useState(false);
   const now = useNow();
   const router = useRouter();
@@ -575,7 +585,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       phoneProperties="sheet"
     >
       {/* Milestone 9 (ticket 15): the chat column is where files dropped on the page go (`data-chat-column`). */}
-      <div data-chat-column className={cn("relative flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-10 sm:pt-[26px] xl:h-full")}>
+      <div data-chat-column className={cn("relative flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-9 sm:pb-4 sm:pt-[26px] xl:h-full")}>
         <div className="shrink-0">
           <div className="flex items-center gap-2.5 font-mono text-sm leading-[17px] text-faint">
             <span>{data.key} · {data.source === "prompt" ? t("taskPage.fromPrompt") : data.ticket === null ? t("taskPage.fromTicket") : t("taskPage.fromTracker", { tracker: trackerName(data.ticket.tracker) })}</span>
@@ -647,8 +657,9 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             details={properties}
           />
           {stop.error === null ? null : <p role="alert" className="mt-2 text-sm text-red">{errorText(stop.error)}</p>}
+          {/* Milestone 10 (F-151, s1.md): the tabs 12px under the status line, 38px tall at 14px, as milestone 8's `.tab`. */}
           <UnderlineTabs
-            className="mt-4"
+            className="mt-3 *:h-[38px] *:text-ui"
             label={t("taskAnswers.tabs.activity")}
             idPrefix="task-tab"
             selected={tab}
@@ -723,7 +734,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           tail={
             <>
               {heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan === null ? roundsTail : (
-                <div className="ml-10">
+                <div>
                   <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />
                 </div>
               )}
@@ -763,6 +774,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             messageFiles: data.messageFiles,
             replying: mode.kind === "send" && replyHint(needs, agentName) !== null,
           }}
+          usageTurns={usageTurns}
+          checkoutDirs={checkoutDirs}
+          mcpServers={data.agent?.mcpServers ?? noServers}
+          capMicroUsd={data.spend.unit === "usd" ? data.spend.cap : null}
+          ciOf={ciOf}
         />
         )}
       </div>

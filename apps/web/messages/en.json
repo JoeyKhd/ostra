@@ -2170,9 +2170,6 @@
       }
     },
     "agent": "Agent",
-    "working": "working",
-    "turnFailed": "the turn failed",
-    "turnStopped": "stopped",
     "queued": "queued",
     "afterInterrupt": "after an interrupt",
     "sending": "sending…",
@@ -5482,8 +5479,6 @@
       "rules": "Approval rules",
       "fromTask": "this task · {name}"
     },
-    "planning": "planning",
-    "proposedPlan": "proposed a plan",
     "intent": {
       "diff-comments": "from diff comments",
       "update-branch": "update branch",

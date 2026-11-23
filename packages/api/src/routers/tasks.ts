@@ -381,7 +381,7 @@ export const tasksRouter = router({
       include: {
         repos: {
           include: {
-            repo: { select: { fullName: true } },
+            repo: { select: { fullName: true, checkoutDir: true } },
             pullRequests: { orderBy: { openedAt: "asc" } },
             // Milestone 4 (F-104, ticket 30): the review check of each PR, per head, newest first.
             reviewChecks: { orderBy: [{ createdAt: "desc" }, { id: "desc" }] },
@@ -513,6 +513,8 @@ export const tasksRouter = router({
       repos: task.repos.map((repo) => ({
         repoId: repo.repoId,
         fullName: repo.repo.fullName,
+        /** Milestone 10 (F-151): its folder in the workspace, so the thread shows a path relative to it. */
+        checkoutDir: repo.repo.checkoutDir,
         branchName: repo.branchName,
         baseBranch: repo.baseBranch,
         state: repo.state,

@@ -231,3 +231,39 @@ describe("who sees the thread's data", () => {
     expect((await boardCard("insider", inCi.taskId, hidden.projectId))?.status).toMatchObject({ ciJobs: { done: 2, total: 4 } });
   });
 });
+
+describe("what the column reads of its task (ticket 09)", () => {
+  it("gives each repo's checkout folder and the agent's MCP servers by name, never their settings", async () => {
+    projectCounter += 1;
+    const place = await seedProject(harness, world, `thread-frame-${String(projectCounter)}`);
+    await harness.test.db.repo.update({ where: { id: place.repoId }, data: { checkoutDir: "calculator-web" } });
+    const task = await seedInCi(place, null);
+    const member = await harness.as(harness.fixture.a.member);
+    const before = await member.tasks.get({ taskId: task.taskId });
+    // The folder the repo is checked out in, so the thread shows its paths relative to it.
+    expect(before.repos.map((repo) => repo.checkoutDir)).toEqual(["calculator-web"]);
+    expect(before.agent?.mcpServers).toEqual([]);
+
+    // The profile's servers, by name only: their URLs, commands, headers and variables stay out.
+    const profileId = before.agent?.id;
+    expect(profileId).toBeDefined();
+    await harness.test.db.agentProfile.update({
+      where: { id: profileId ?? "" },
+      data: {
+        mcpServers: [
+          { name: "github", transport: "http", url: "https://mcp.example.test/github", readOnly: true, headerSecretRefs: { Authorization: "builtin:mcp-github-token" } },
+          { name: "linear", transport: "stdio", command: "npx", args: ["linear-mcp"], env: { LINEAR_TOKEN: "not-a-real-token" }, readOnly: false },
+        ],
+      },
+    });
+    const after = await member.tasks.get({ taskId: task.taskId });
+    expect(after.agent?.mcpServers).toEqual(["github", "linear"]);
+    const shown = JSON.stringify(after.agent);
+    for (const setting of ["mcp.example.test", "mcp-github-token", "linear-mcp", "not-a-real-token"]) expect(shown).not.toContain(setting);
+
+    // A stored list that no longer reads names no server, rather than failing the page.
+    await harness.test.db.agentProfile.update({ where: { id: profileId ?? "" }, data: { mcpServers: [{ name: "Not A Slug", transport: "carrier-pigeon" }] } });
+    expect((await member.tasks.get({ taskId: task.taskId })).agent?.mcpServers).toEqual([]);
+    await harness.test.db.agentProfile.update({ where: { id: profileId ?? "" }, data: { mcpServers: [] } });
+  });
+});

@@ -344,6 +344,44 @@
     padding-left: 10px;
     color: var(--muted);
   }
+  /*
+   * Milestone 10 (F-151, parts.md part 3): the agent's prose in the thread, the page itself.
+   * 14.5px/1.6 `--text`, `margin: 4px 0 6px`; paragraphs and lists 10px apart, list items 5px,
+   * bullets `--faint`; inline code mono 13px on `--surface`.
+   */
+  .thread-prose {
+    margin: 4px 0 6px;
+    font-size: var(--fs-body);
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .agent-md.thread-prose :where(p, ul, ol, pre, blockquote) {
+    margin: 0;
+  }
+  .agent-md.thread-prose :where(p, ul, ol, pre, blockquote) + :where(p, ul, ol, pre, blockquote) {
+    margin-top: 10px;
+  }
+  .thread-prose ul,
+  .thread-prose ol {
+    padding-left: 20px;
+  }
+  .thread-prose li {
+    padding-left: 2px;
+  }
+  .thread-prose li + li {
+    margin-top: 5px;
+  }
+  .thread-prose li::marker {
+    color: var(--faint);
+  }
+  .thread-prose :where(strong, b) {
+    font-weight: 600;
+  }
+  .thread-prose code {
+    font-size: 13px;
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
 }
 
 /*

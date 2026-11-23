@@ -41,6 +41,7 @@ const write = (n: number, kind: TaskDetail["sync"][number]["kind"], state: TaskD
 const repo = (n: number, fullName: string, pr: { readonly number: number; readonly state: "open" | "merged" | "closed_unmerged" } | null): TaskDetail["repos"][number] => ({
   repoId: repoIdSchema.parse(`01900000-0000-7000-8000-00000000010${String(n)}`),
   fullName,
+  checkoutDir: fullName.split("/").at(-1) ?? fullName,
   branchName: "ostra/calc-161",
   baseBranch: "main",
   state: pr === null ? "branch_pushed" : pr.state === "merged" ? "merged" : "pr_open",

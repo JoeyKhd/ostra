@@ -8,134 +8,58 @@ import {
 } from "@assistant-ui/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { RefreshCcwIcon, SquareTerminalIcon, UserIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import type { AgentMessage } from "@ostra/domain/agent-message";
 import { clientMessageIdSchema } from "@ostra/protocol";
 import type { TaskId, TaskKind } from "@ostra/protocol";
 import type { MemberId } from "@ostra/protocol";
-import { foldTaskEvents, visibleLiveText } from "@ostra/task-view";
+import { foldTaskEvents, turnOrdinalsOf, turnSpendOf, visibleLiveText } from "@ostra/task-view";
 import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
 
 import { AttachmentsProvider, useAttachments as useThreadAttachments } from "@/components/tasks/attachments/attachments-context";
-import { ThreadMessageFiles } from "@/components/tasks/attachments/thread-files";
 import { ThreadTicketContext } from "@/components/tasks/attachments/ticket-context-thread";
-import { SubagentsBadge } from "@/components/tasks/subagents-badge";
 import { SubagentsWindow } from "@/components/tasks/subagents-window";
 import type { SubagentsAt } from "@/components/tasks/subagents-window";
 import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
-import { formatClock } from "@/lib/format";
 import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
-import { agentMessageOf, agentMessageSummary, AgentMessageMark, isAutomatic, LinearMark, UserMessageText } from "./agent-message-view";
+import { agentMessageOf, agentMessageSummary, isAutomatic } from "./agent-message-view";
 import { toThreadMessageLike } from "./convert";
-import { MessageIntentMark, SentDiffCommentsContext, sentBySeq } from "./diff-comments-message";
-import { TurnUsage } from "./effort-marks";
-import { AssistantText, DataRow, Reasoning, SafeLink, ToolRow } from "./renderers";
+import { SentDiffCommentsContext, sentBySeq } from "./diff-comments-message";
 import type { TaskStreamState } from "./stream-state";
-import { createTaskIndexStore, indexMessages, TaskContext, useTaskContext, useTaskMessage } from "./task-context";
+import { createTaskIndexStore, indexMessages, TaskContext, useTaskMessage } from "./task-context";
 import type { TaskContextValue } from "./task-context";
+import { Bubble } from "./thread/bubble";
 import { Composer } from "./thread/composer";
 import type { ComposerFiles, SentFiles } from "./thread/composer";
+import { ThreadParts } from "./thread/thread-context";
+import type { ThreadPartsValue } from "./thread/thread-context";
+import { TurnItems } from "./thread/turn-items";
+import { pricedTurnsOf } from "./thread/turn-spend";
+import type { UsageTurn } from "./thread/turn-spend";
+import type { HeadCi } from "./thread/words";
 
 // The thread (ADR 0036): assistant-ui through `useExternalStoreRuntime` only, its primitives and
 // render-only parts. ostra's own store feeds it: the fold of the task's events, the partial text
 // and the driver's unsent messages. This folder is the only place that imports assistant-ui.
 
-/** One mono 13px `--faint` fact in a message header, after a ` · ` when it isn't the first. */
-const Meta = ({ children, dot = true, className }: { readonly children: string; readonly dot?: boolean; readonly className?: string }) => (
-  <span className={cn("font-mono text-sm text-faint", className)}>
-    {dot ? <span className="text-faint"> · </span> : null}
-    {children}
-  </span>
-);
-
 /**
- * A message's header (task.md, "Message header"): the author (14.5px, 600), then the time in mono
- * `--faint`; the agent's adds its model and a status word, a member's how it was delivered.
+ * One message of the thread (milestone 10, F-151, ticket 09): a member's as its bubble
+ * (`thread/bubble.tsx`), an agent's turn or a row outside any turn as its items, each through its
+ * part (`thread/turn-items.tsx`). No avatar, no header, no token line: the run's line carries the
+ * turn's time, and its numbers are in the opened run's footer, the time's tooltip and the panel.
  */
-const MessageHeader = ({ message, agentMessage }: { readonly message: TaskUIMessage; readonly agentMessage: AgentMessage | null }) => {
-  const { memberName, agent, openSubagents, ticketKey } = useTaskContext();
-  const meta = message.metadata;
-  const time = meta?.at === undefined ? null : formatClock(meta.at);
-  if (message.role === "user") {
-    const delivery = meta?.author?.delivery;
-    const intent = meta?.author?.intent;
-    // F-072: what ostra wrote for the agent says what it is after the time, in place of its intent's tag.
-    const marked = intent === "diff-comments" || intent === "linear-follow-up" || agentMessage !== null;
-    const author = agentMessage !== null && isAutomatic(agentMessage) ? t("task.agentMessage.ostra") : meta?.author === undefined ? "" : memberName(meta.author.memberId);
-    return (
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-        <span className="font-semibold">{author}</span>
-        {/* F-072: diff comments say how many after the time (task-changes.md, "In the Activity tab"). */}
-        {time === null && !marked ? null : (
-          <span className="min-w-0">
-            {time === null ? null : <Meta dot={false}>{time}</Meta>}
-            {intent === "diff-comments" ? (
-              <MessageIntentMark intent={intent} seq={meta?.author?.replayOf ?? meta?.firstSeq} />
-            ) : agentMessage !== null ? (
-              <AgentMessageMark message={agentMessage} intent={intent} />
-            ) : intent === "linear-follow-up" ? (
-              <LinearMark ticketKey={ticketKey} />
-            ) : null}
-          </span>
-        )}
-        {meta?.author?.held === true ? (
-          <span className="text-sm text-red" data-testid="message-held">
-            {t("task.held")}
-          </span>
-        ) : delivery === "queued" ? (
-          <span className="text-sm text-faint">{t("task.queued")}</span>
-        ) : null}
-        {delivery === "after-interrupt" ? <span className="text-sm text-faint">{t("task.afterInterrupt")}</span> : null}
-        {meta?.author?.reopen === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="reopen">{t("task.reopenTag")}</span> : null}
-        {meta?.author?.replayed === true ? <span className="rounded-sm border border-line-2 px-1.5 text-xs text-muted" data-tag="replayed">{t("task.replayedTag")}</span> : null}
-        {intent === undefined || intent === "message" || marked ? null : <MessageIntentMark intent={intent} seq={meta?.firstSeq} />}
-        {meta?.optimistic === true ? <span className="text-sm text-faint">{t("task.sending")}</span> : null}
-      </div>
-    );
-  }
-  if (message.role === "assistant") {
-    return (
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-        <span className="font-semibold">{agent.name}</span>
-        <span className="min-w-0">
-          {time === null ? null : <Meta dot={false}>{time}</Meta>}
-          {agent.model === null ? null : <Meta dot={time !== null}>{agent.model}</Meta>}
-          {/* F-063 (task-plan.md, "The agent message's status word"): a plan turn reads teal `planning` while it
-              runs, in the `working` slot, then `--faint` `proposed a plan`. Amber is only for what needs you. */}
-          {meta?.turnState === "running" ? <Meta className="text-teal">{meta.turnMode === "plan" ? t("taskAnswers.planning") : t("task.working")}</Meta> : null}
-          {meta?.turnMode === "plan" && meta.turnState === "ended" && meta.stopReason !== "cancelled" ? <Meta>{t("taskAnswers.proposedPlan")}</Meta> : null}
-          {meta?.turnState === "failed" ? <Meta className="text-red">{t("task.turnFailed")}</Meta> : null}
-          {meta?.stopReason === "cancelled" ? <Meta>{t("task.turnStopped")}</Meta> : null}
-        </span>
-        {/* F-138: the turn's subagents, nested ones included: the badge opens their window. */}
-        {meta?.subagents === undefined || openSubagents === undefined ? null : (
-          <SubagentsBadge tree={meta.subagents} className="ml-1" onOpen={() => { openSubagents(message.id, null); }} />
-        )}
-      </div>
-    );
-  }
-  return null;
-};
-
-const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly fallbackRole: string }) => {
+export const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly fallbackRole: string }) => {
   const own = useTaskMessage(id);
   const role = own?.role ?? fallbackRole;
   const meta = own?.metadata;
-  const system = role === "system";
-  const { memberName } = useTaskContext();
   const attachments = useThreadAttachments();
   // F-072: a message ostra wrote for the agent is drawn from what it carried, never its prompt.
   const agentMessage = useMemo(() => (own === undefined ? null : agentMessageOf(own)), [own]);
-  // Milestone 9 (ticket 16): a member's message's files, under its words.
-  const files = own?.parts.find((part) => part.type === "data-message-files");
   // F-149: a ticket task's first message is "What the agent got", drawn from the ticket's context.
   const ticketStart = attachments?.ticketContext?.rounds[0]?.messageSeq;
   if (role === "user" && ticketStart !== undefined && ticketStart !== null && meta?.firstSeq === ticketStart && attachments !== null) {
@@ -153,63 +77,9 @@ const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly 
       data-optimistic={meta?.optimistic === true ? "true" : undefined}
       data-first-seq={meta?.firstSeq}
       data-last-seq={meta?.lastSeq}
-      className={cn("flex gap-3 rounded-md data-[event-focus=true]:bg-sel", system ? "py-0.5 pl-10" : "py-2.5")}
+      className="rounded-md data-[event-focus=true]:bg-sel"
     >
-      {system ? null : (
-        <span className="mt-0.5 inline-grid size-7 shrink-0 place-items-center rounded-full border border-line-2 text-muted">
-          {role !== "user" ? (
-            <SquareTerminalIcon className="size-[14px] stroke-[1.75]" />
-          ) : agentMessage !== null && isAutomatic(agentMessage) ? (
-            <RefreshCcwIcon className="size-[14px] stroke-[1.75]" />
-          ) : (
-            <UserIcon className="size-[14px] stroke-[1.75]" />
-          )}
-        </span>
-      )}
-      <div className="min-w-0 flex-1">
-        {own === undefined ? null : <MessageHeader message={own} agentMessage={agentMessage} />}
-        <MessagePrimitive.Parts>
-          {({ part }) => {
-            switch (part.type) {
-              case "text":
-                return role === "user" ? (
-                  <UserMessageText text={part.text} intent={meta?.author?.intent} diffSeq={meta?.author?.replayOf ?? meta?.firstSeq} agentMessage={agentMessage} />
-                ) : (
-                  <AssistantText streaming={part.status.type === "running"} />
-                );
-              case "reasoning":
-                return <Reasoning text={part.text} streaming={part.status.type === "running"} />;
-              case "tool-call":
-                return <ToolRow toolCallId={part.toolCallId} />;
-              case "data":
-                return <DataRow id={part.id ?? ""} />;
-              case "source":
-                return (
-                  <div className="text-sm" data-part="source">
-                    <SafeLink href={part.url}>{part.title ?? part.url}</SafeLink>
-                  </div>
-                );
-              case "image":
-                // An image the agent made is shown only when it's inline data: never a remote request.
-                return part.image.startsWith("data:image/") ? (
-                  <img data-part="image" src={part.image} alt="" className="my-1 max-h-80 rounded-lg border border-line" />
-                ) : (
-                  <span className="text-sm text-faint">{t("task.imageRemote")}</span>
-                );
-              case "file":
-              case "audio":
-              case "generative-ui":
-                return null;
-              default:
-                return part satisfies never;
-            }
-          }}
-        </MessagePrimitive.Parts>
-        {role === "user" && files?.type === "data-message-files" ? <ThreadMessageFiles data={files.data} author={meta?.author === undefined ? "" : memberName(meta.author.memberId)} /> : null}
-        {/* F-084: each turn shows its own tokens once it ended, from the key proxy's counts; "≈" marks an estimate. */}
-        {/* F-137: with the level it ran at, its reasoning tokens, and the clamp's line when it moved the level. */}
-        {role === "assistant" && meta !== undefined && meta.turnState !== "running" ? <TurnUsage meta={meta} /> : null}
-      </div>
+      {own === undefined ? null : role === "user" ? <Bubble message={own} agentMessage={agentMessage} /> : <TurnItems message={own} />}
     </MessagePrimitive.Root>
   );
 });
@@ -269,9 +139,23 @@ export type TaskThreadProps = {
   readonly onFold?: (ms: number, messages: number) => void;
   /** Milestone 9 (ticket 15): what the composer needs to take files; `null` takes none. */
   readonly composerFiles?: ComposerFiles | null;
+  /**
+   * Milestone 10 (F-151): what the compact thread reads of the task, from `tasks.get`: each turn's
+   * figures (`usage.turns`, for the fold's spend and turn numbers), its repos' checkout folders
+   * and CI, its agent's MCP servers, and its spend cap.
+   */
+  readonly usageTurns?: readonly UsageTurn[];
+  readonly checkoutDirs?: readonly string[];
+  readonly mcpServers?: readonly string[];
+  readonly capMicroUsd?: number | null;
+  readonly ciOf?: (repoId: string) => HeadCi | null;
 };
 
-export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null }: TaskThreadProps) => {
+const NO_TURNS: readonly UsageTurn[] = [];
+const NO_NAMES: readonly string[] = [];
+const noCi = (): HeadCi | null => null;
+
+export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -305,13 +189,18 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
     [log.events, memberName],
   );
 
+  // Milestone 10 (F-151): each turn's spend and its number in the task, from `tasks.get`'s turns,
+  // matched to the log's turns (core's turn rows have IDs of their own).
+  const priced = useMemo(() => pricedTurnsOf(log.events, usageTurns), [log.events, usageTurns]);
+  const turnSpend = useMemo(() => turnSpendOf(priced), [priced]);
+  const turnOrdinals = useMemo(() => turnOrdinalsOf(priced), [priced]);
   const messages = useMemo(() => {
     const started = performance.now();
-    const next = foldTaskEvents(log.events, visibleLiveText(log.live), { optimistic, previous: previous.current, removedFiles, taskKind });
+    const next = foldTaskEvents(log.events, visibleLiveText(log.live), { optimistic, previous: previous.current, removedFiles, taskKind, turnSpend, turnOrdinals });
     onFold?.(performance.now() - started, next.length);
     previous.current = next;
     return next;
-  }, [log.events, log.live, optimistic, onFold, removedFiles, taskKind]);
+  }, [log.events, log.live, optimistic, onFold, removedFiles, taskKind, turnSpend, turnOrdinals]);
 
   // F-072: a diff-comments message is drawn from the comments it carried (`diff.comments.list`), read
   // only once the thread has one. A task's notice refreshes them (`change-scopes.ts`); a message whose
@@ -411,6 +300,11 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
     [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, openSubagents, approvalCard, approvalReceipt, approvalLostRace, questionCard, projectName, ticketKey],
   );
 
+  const threadParts = useMemo<ThreadPartsValue>(
+    () => ({ taskKind, workspace: { taskId, checkoutDirs, mcpServers }, project: projectName ?? "", capMicroUsd, ciOf }),
+    [taskKind, taskId, checkoutDirs, mcpServers, projectName, capMicroUsd, ciOf],
+  );
+
   // F-138: the member's message the turn answered, for the main agent's pane of the window.
   const askedOf = (messageId: string): { readonly name: string; readonly text: string } | null => {
     const at = messages.findIndex((message) => message.id === messageId);
@@ -464,30 +358,37 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
       <TaskContext.Provider value={context}>
         <AttachmentsProvider taskId={taskId} added={attachmentsAdded} filesAdded={filesAdded} agentName={agentName} messageOf={messageOf}>
         <SentDiffCommentsContext.Provider value={sentDiffComments}>
+          <ThreadParts.Provider value={threadParts}>
           <ThreadPrimitive.Root data-part="thread" className="flex min-h-0 flex-1 flex-col">
             {live}
             <ThreadPrimitive.Viewport autoScroll={focusSeq === null} className="min-h-0 flex-1 overflow-y-auto">
-              {hasEarlier ? (
-                <div className="py-2">
-                  <Button size="sm" variant="ghost" data-action="load-earlier" onClick={() => void loadEarlier()}>
-                    {t("task.loadEarlier")}
-                  </Button>
-                </div>
-              ) : null}
-              {hasEarlier ? null : <TicketContextAtStart taskId={taskId} />}
-              <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} />}</ThreadPrimitive.Messages>
-              {tail}
+              {/* Milestone 10 (F-151, parts.md part 1): one 720px column, left-aligned in the page's padding;
+                  a member's message 24px under what came before, 8px when it opens the column. */}
+              <div data-part="thread-column" className="max-w-[720px] pb-2.5 pt-1.5 [&>[data-message-id]:first-child>[data-part=bubble]]:mt-2">
+                {hasEarlier ? (
+                  <div className="py-2">
+                    <Button size="sm" variant="ghost" data-action="load-earlier" onClick={() => void loadEarlier()}>
+                      {t("task.loadEarlier")}
+                    </Button>
+                  </div>
+                ) : null}
+                {hasEarlier ? null : <TicketContextAtStart taskId={taskId} />}
+                <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} />}</ThreadPrimitive.Messages>
+                {tail}
+              </div>
             </ThreadPrimitive.Viewport>
             {canSend || canReopen ? (
-              <div className="shrink-0 pt-3">
+              // parts.md part 1: the box sits right under the thread's 10px end, the composer as wide as the column.
+              <div className="max-w-[720px] shrink-0">
                 <Composer interrupt={canSend && running && canInterrupt} onSend={sendText} reopen={!canSend} hint={composerHint} files={composerFiles} />
               </div>
             ) : instead !== undefined ? (
-              instead
+              <div className="max-w-[720px] shrink-0">{instead}</div>
             ) : notDriver === undefined ? null : (
-              <div className="shrink-0 pt-3 text-sm" data-part="not-driver">{notDriver}</div>
+              <div className="max-w-[720px] shrink-0 pt-3 text-sm" data-part="not-driver">{notDriver}</div>
             )}
           </ThreadPrimitive.Root>
+          </ThreadParts.Provider>
           {subagentsAt === null ? null : (
             <SubagentsWindow
               key={`${subagentsAt.messageId}:${subagentsAt.subagentId ?? ""}`}
