@@ -175,7 +175,7 @@ describe("What the agent got (F-149/c5)", () => {
   it("F-149/c5: ticketContext shows the start's round: the description, the comments, the links, and every file in the ticket's order", async () => {
     const task = await ticketTask();
     const context = await (await harness.as(harness.fixture.a.member)).tasks.ticketContext({ taskId: task.taskId });
-    expect(context).toMatchObject({ state: "read", ticketKey: "ENG-7", tracker: "linear", isDriver: true, canSendUpdates: true, canRetry: true });
+    expect(context).toMatchObject({ state: "read", ticketKey: "ENG-7", connection: { kind: "linear" }, isDriver: true, canSendUpdates: true, canRetry: true });
     // The ticket's limits, as the install has them (`OSTRA_TICKET_FILES_*`), for the left-out notes.
     expect(context?.limits).toEqual({ maxFiles: 20, maxFileBytes: 10 * MiB, maxTotalBytes: 50 * MiB });
     expect(context?.prompt).toContain("# ENG-7");
