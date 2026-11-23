@@ -297,6 +297,9 @@ export const deriveTaskState = (
       case "agent.unknown":
       case "unsupported":
         break;
+      case "egress.blocked":
+        // Post-v1 (F-052): a refused destination is bookkeeping; it changes no state.
+        break;
       default:
         event satisfies never;
     }

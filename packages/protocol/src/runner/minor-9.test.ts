@@ -4,6 +4,7 @@ import {
   encodeEventForMinor,
   eventKindMinMinor,
   isTaskEventKind,
+  minor10EventKinds,
   QUESTION_OTHER_MAX,
   readEventSchema,
   runnerEventSchema,
@@ -67,19 +68,20 @@ const ALREADY_WORDS = "This round's review is already handed in, and it stands a
 const SAVED_WORDS = "The review is saved. ostra posts it on the pull requests as comments, and a member reads every finding.";
 
 describe("the version", () => {
-  it("F-061, F-151: is minor 9; a minor-8 peer is inside the window and a minor-7 peer is outside it", () => {
-    expect(PROTOCOL_MINOR).toBe(9);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 8, max: 10 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 8 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 9)).toEqual({ ok: true, minor: 9 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 10)).toEqual({ ok: true, minor: 9 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 7)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 11)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
+  it("F-061, F-151: minor 9 stays in the codecs after minor 10; its own window is as it was", () => {
+    // Post-v1 (F-052) moved the build to minor 10 (`minor-10.test.ts`).
+    expect(PROTOCOL_MINOR).toBe(10);
+    expect(minorWindow(9)).toEqual({ min: 8, max: 10 });
+    expect(negotiate(9, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 8 });
+    expect(negotiate(9, PROTOCOL_MAJOR, 9)).toEqual({ ok: true, minor: 9 });
+    expect(negotiate(9, PROTOCOL_MAJOR, 10)).toEqual({ ok: true, minor: 9 });
+    expect(negotiate(9, PROTOCOL_MAJOR, 7)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
+    expect(negotiate(9, PROTOCOL_MAJOR, 11)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
     // A minor-9 runner against a minor-8 server speaks minor 8.
-    expect(negotiate(8, PROTOCOL_MAJOR, PROTOCOL_MINOR)).toEqual({ ok: true, minor: 8 });
-    expect(upFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(httpDownFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(negotiate(8, PROTOCOL_MAJOR, 9)).toEqual({ ok: true, minor: 8 });
+    expect(upFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(downFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(httpDownFrameCodec.minors).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 });
 
@@ -265,9 +267,11 @@ describe("unchanged at minor 9", () => {
   });
 
   it("F-151: every runner event and every command is minor 8's: encoded for a minor-8 peer exactly as for a minor-9 one", () => {
-    // No event kind is new: 98, as minor 8 left them.
-    expect(taskEventKinds).toHaveLength(98);
-    const runnerEvents = [...Object.values(eventFixtures), ...Object.values(minor8EventFixtures)].filter((event) => !serverOnlyKinds.has(event.kind));
+    // Minor 10 adds one kind (`egress.blocked`, F-052): 99 in all.
+    expect(taskEventKinds).toHaveLength(99);
+    const runnerEvents = [...Object.values(eventFixtures), ...Object.values(minor8EventFixtures)].filter(
+      (event) => !serverOnlyKinds.has(event.kind) && !minor10EventKinds.has(event.kind),
+    );
     expect(runnerEvents.length).toBeGreaterThan(40);
     for (const event of runnerEvents) {
       expect(encodeEventForMinor(event, 8), event.kind).toEqual(event);

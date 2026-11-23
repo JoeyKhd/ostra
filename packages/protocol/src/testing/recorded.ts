@@ -24,6 +24,8 @@ import { z } from "zod";
 // - Milestone 10 moved the server to minor 9 (F-151), whose window is minors 8 to 10: minor 11
 //   (synthetic, a `hello` only) is two ahead of it, and minor 7's build is one behind the window.
 //   Minor 9's own `hello` is the synthetic one recorded two ahead of minor 7, which now speaks 9.
+// - Post-v1 (F-052) moved the server to minor 10, whose window is minors 9 to 11: minor 11
+//   (synthetic) is one ahead of it, and minor 8's build is one behind the window.
 
 /** One recorded build. The frames are raw JSON, as they went over the wire. */
 export const recordedBuildSchema = z.strictObject({

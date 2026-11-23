@@ -62,7 +62,7 @@ const reviewTwice = async (h: Harness, beforeRepeat: () => void): Promise<TaskSp
 
 describe("a repeat review against a minor-8 and a minor-9 core (ticket 06)", () => {
   it("F-151/c7: against a minor-9 core, the runner says minor 9 in hello and speaks it, and a repeat submit_review is a completed call in the already words that records nothing", async () => {
-    expect(PROTOCOL_MINOR).toBe(9);
+    expect(PROTOCOL_MINOR).toBe(10);
     const h = await start();
     // The round's review is in: core answers the run before, `already`, by the sidecar's minor.
     const spec = await reviewTwice(h, () => {

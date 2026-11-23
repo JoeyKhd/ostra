@@ -95,6 +95,7 @@ export * from "./use-cases/repo-checks.ts";
 export * from "./environment/detect.ts";
 export * from "./environment/repo-drafts.ts";
 export * from "./environment/services.ts";
+export * from "./environment/network-rules.ts";
 
 // Milestone 3.
 export * from "./rules/index.ts";

@@ -195,6 +195,11 @@ export const auditActions = {
   // "Keep it" on a port an agent announced, which proposes it for a project admin.
   "environment.app-processes-saved": "environment",
   "environment.app-process-kept": "environment",
+  // Post-v1 (F-052, ADR 0073): the environment's network rules, one entry per change, with the
+  // rule's kind and, for an added or removed rule, its value. A rule's value is not a secret.
+  "environment.network-rule-added": "environment",
+  "environment.network-rule-changed": "environment",
+  "environment.network-rule-removed": "environment",
   // ---- memory (ADR 0044) ----
   "memory.note-created": "memory-note",
   "memory.note-edited": "memory-note",

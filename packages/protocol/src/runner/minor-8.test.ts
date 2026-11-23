@@ -37,6 +37,7 @@ import {
   taskSpecResponseSchemaFor,
   taskSpecSchema,
   taskSpecSchemaV7,
+  taskSpecSchemaV9,
 } from "../task/spec.ts";
 import type { TaskSpec } from "../task/spec.ts";
 import {
@@ -104,8 +105,9 @@ const hostileNames = [
 
 describe("the version", () => {
   it("F-061, F-148: a minor-8 server took minors 7 to 9, and minor 8 stays in the codecs after minor 9", () => {
-    // Milestone 10 moved the build to minor 9 (`minor-9.test.ts`); a minor-8 build's window is as it was.
-    expect(PROTOCOL_MINOR).toBe(9);
+    // Milestone 10 moved the build to minor 9 (`minor-9.test.ts`) and post-v1 to minor 10
+    // (`minor-10.test.ts`); a minor-8 build's window is as it was.
+    expect(PROTOCOL_MINOR).toBe(10);
     expect(minorWindow(8)).toEqual({ min: 7, max: 9 });
     expect(negotiate(8, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
     expect(negotiate(8, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 8 });
@@ -113,7 +115,7 @@ describe("the version", () => {
     expect(negotiate(8, PROTOCOL_MAJOR, 6)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
     // A minor-8 runner against a minor-7 server speaks minor 7, and against today's server minor 8.
     expect(negotiate(7, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 7 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 8)).toEqual({ ok: true, minor: 8 });
+    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 9)).toEqual({ ok: true, minor: 9 });
     expect(upFrameCodec.minors).toContain(8);
     expect(downFrameCodec.minors).toContain(8);
     expect(httpDownFrameCodec.minors).toContain(8);
@@ -358,7 +360,7 @@ describe("a minor-7 peer (F-148/c9)", () => {
     expect(down.restore?.pendingMessages).toEqual([{ clientMessageId: ids.filesMessage, text: "Make the history panel match the mock; the spec is attached." }]);
     expect(down.agent.modelId).toBe(taskSpecFilesFixture.agent.modelId);
     expect(taskSpecSchemaV7.safeParse(taskSpecFilesFixture).success).toBe(false);
-    expect(taskSpecResponseSchemaFor(8)).toBe(taskSpecSchema);
+    expect(taskSpecResponseSchemaFor(8)).toBe(taskSpecSchemaV9);
     expect(taskSpecResponseSchemaFor(7)).toBe(taskSpecSchemaV7);
     expect(encodeTaskSpecForMinor(taskSpecFilesFixture, 8)).toBe(taskSpecFilesFixture);
     for (const minor of [0, 1, 2, 3, 4, 5, 6]) {

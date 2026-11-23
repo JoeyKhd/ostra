@@ -28,6 +28,7 @@ export * from "./task/files.ts";
 
 export * from "./config/model-provider.ts";
 export * from "./config/environment.ts";
+export * from "./config/network-rule.ts";
 
 export * from "./runner/limits.ts";
 export * from "./runner/version.ts";

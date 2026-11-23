@@ -623,6 +623,12 @@ const kindCases: Readonly<Record<TaskEventKind, KindCase>> = {
       expect(typesOf(m)).not.toContain("data-system");
     },
   },
+  "egress.blocked": {
+    prefix: [],
+    check: (m) => {
+      expect(typesOf(m)).not.toContain("data-system");
+    },
+  },
   "pr.opened": {
     prefix: [f["pr.text_set"]],
     check: (m) => {

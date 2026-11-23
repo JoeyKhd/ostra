@@ -740,6 +740,9 @@ const applyEffects = async (
       case "files.written":
       case "box.lost":
       case "ticket.context_read":
+      // Post-v1 (F-052): a refused destination is stored for the task's Event log; nothing else
+      // moves (the proxy already refused the request).
+      case "egress.blocked":
         // Stored for the task page; nothing else moves.
         break;
       default:

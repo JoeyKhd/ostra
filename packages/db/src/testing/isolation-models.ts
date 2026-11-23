@@ -122,6 +122,8 @@ export const isolationModelList = [
   "TaskTicketRead",
   // 2026-11-23 (F-112/c1, Q345 option (b)).
   "EnvironmentRepoDraft",
+  // Post-v1 (F-052, ADR 0073).
+  "EnvironmentNetworkRule",
 ] as const;
 
 export type IsolationModelName = (typeof isolationModelList)[number];
@@ -509,6 +511,12 @@ export const isolationModels: Readonly<Record<IsolationModelName, FixtureBuilder
     ).id,
   TaskTicketRead: async ({ db, organizationId, projectId }, ensure) =>
     (await db.taskTicketRead.create({ data: { organizationId, projectId, taskId: await ensure("Task"), round: 1, reason: "start", descriptionSha256: randomBytes(32).toString("hex"), comments: [], fileKeys: [] } })).id,
+  EnvironmentNetworkRule: async ({ db, organizationId, projectId }, ensure) =>
+    (
+      await db.environmentNetworkRule.create({
+        data: { organizationId, projectId, environmentId: await ensure("Environment"), kind: "host", value: `registry-${tag()}.example.com`, ports: [443] },
+      })
+    ).id,
   EnvironmentRepoDraft: async ({ db, organizationId, projectId, memberId }, ensure) => {
     // A draft waits only beside a saved environment: saved, with a plain script the draft would
     // change, so its readers return it and a leak check would see it cross.
@@ -616,6 +624,7 @@ export const isolationProjectModels: ReadonlySet<IsolationModelName> = new Set<I
   "MessageFile",
   "TaskTicketRead",
   "EnvironmentRepoDraft",
+  "EnvironmentNetworkRule",
 ]);
 
 export const isolationModelNames = (): readonly IsolationModelName[] => isolationModelList;

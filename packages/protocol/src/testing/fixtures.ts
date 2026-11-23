@@ -583,6 +583,8 @@ export const eventFixtures: { readonly [K in TaskEventKind]: TaskEventOf<K> } = 
     leftOut: [{ name: "huge-recording.mov", reason: "too-big" }],
     failed: [{ name: "spec-v2.docx", reason: "download-failed" }],
   },
+  // Minor 10 (post-v1, F-052, ADR 0073).
+  "egress.blocked": { kind: "egress.blocked", host: "example.com", port: 443, reason: "not-listed" },
 };
 
 /**
@@ -1769,6 +1771,18 @@ export const taskSpecFilesFixture: TaskSpec = {
     hiddenRefs: [],
     pendingMessages: [
       { clientMessageId: ids.filesMessage, text: "Make the history panel match the mock; the spec is attached.", files: { fileIds: [ids.imageFile, ids.documentFile], images: [ids.imageFile] } },
+    ],
+  },
+};
+
+/** A task spec at minor 10: the environment's network allowlist, a host and a CIDR. */
+export const taskSpecNetworkRulesFixture: TaskSpec = {
+  ...taskSpecFixture,
+  environment: {
+    ...taskSpecFixture.environment,
+    networkRules: [
+      { kind: "host", host: "registry.npmjs.org", ports: [443] },
+      { kind: "cidr", cidr: "140.82.112.0/20", ports: [22, 443] },
     ],
   },
 };

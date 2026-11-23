@@ -108,8 +108,8 @@ describe("the version", () => {
   it("F-061: a minor-4 server took minors 3 to 5, and minor 4 stays in the codecs after minor 5", () => {
     // Milestone 6 moved the build to minor 5 (`minor-5.test.ts`), milestone 7 to minor 6
     // (`minor-6.test.ts`), milestone 8 to minor 7, milestone 9 to minor 8 and milestone 10 to minor
-    // 9; a minor-4 build's window is as it was.
-    expect(PROTOCOL_MINOR).toBe(9);
+    // 9 and post-v1 (F-052) to minor 10; a minor-4 build's window is as it was.
+    expect(PROTOCOL_MINOR).toBe(10);
     expect(minorWindow(4)).toEqual({ min: 3, max: 5 });
     expect(negotiate(4, PROTOCOL_MAJOR, 3)).toEqual({ ok: true, minor: 3 });
     expect(negotiate(4, PROTOCOL_MAJOR, 4)).toEqual({ ok: true, minor: 4 });
@@ -121,7 +121,7 @@ describe("the version", () => {
     expect(negotiate(6, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 5, max: 7 } });
     expect(negotiate(7, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 6, max: 8 } });
     expect(negotiate(8, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
+    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 4)).toEqual({ ok: false, reason: "minor", window: { min: 9, max: 11 } });
     expect(upFrameCodec.minors).toContain(4);
     expect(downFrameCodec.minors).toContain(4);
   });

@@ -134,4 +134,6 @@ export const foldCoverage = {
   // A pool runner's lost box (F-047) is a runner event core turns into `session.crashed`: never stored.
   "box.lost": eventLog("core records the session's crash"),
   "ticket.context_read": eventLog("\"What the agent got\" reads `tasks.ticketContext` (milestone 9)"),
+  // Post-v1 (F-052, ADR 0073).
+  "egress.blocked": eventLog("post-v1, F-052"),
 } as const satisfies Record<TaskEventKind, FoldPlace>;

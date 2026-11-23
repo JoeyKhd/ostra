@@ -56,6 +56,7 @@ import {
   taskSpecSchema,
   taskSpecSchemaV6,
   taskSpecSchemaV7,
+  taskSpecSchemaV9,
 } from "../task/spec.ts";
 import type { TaskSpec } from "../task/spec.ts";
 import {
@@ -154,7 +155,7 @@ const noPorts: AppToolContext = {
 describe("the version", () => {
   it("F-061: a minor-7 server took minors 6 to 8, and minor 7 stays in the codecs after minor 8", () => {
     // Milestone 9 moved the build to minor 8 (`minor-8.test.ts`); a minor-7 build's window is as it was.
-    expect(PROTOCOL_MINOR).toBe(9);
+    expect(PROTOCOL_MINOR).toBe(10);
     expect(minorWindow(7)).toEqual({ min: 6, max: 8 });
     expect(negotiate(7, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
     expect(negotiate(7, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
@@ -164,7 +165,7 @@ describe("the version", () => {
     // today's minor-9 server refuses it.
     expect(negotiate(6, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 6 });
     expect(negotiate(8, PROTOCOL_MAJOR, 7)).toEqual({ ok: true, minor: 7 });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 7)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
+    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 7)).toEqual({ ok: false, reason: "minor", window: { min: 9, max: 11 } });
     expect(upFrameCodec.minors).toContain(7);
     expect(downFrameCodec.minors).toContain(7);
     expect(httpDownFrameCodec.minors).toContain(7);
@@ -307,7 +308,7 @@ describe("the task spec at minor 7", () => {
     }
     expect(taskSpecSchemaV6.safeParse(taskSpecAppFixture).success).toBe(false);
     expect(taskSpecResponseSchemaFor(7)).toBe(taskSpecSchemaV7);
-    expect(taskSpecResponseSchemaFor(8)).toBe(taskSpecSchema);
+    expect(taskSpecResponseSchemaFor(8)).toBe(taskSpecSchemaV9);
     expect(taskSpecResponseSchemaFor(6)).toBe(taskSpecSchemaV6);
   });
 

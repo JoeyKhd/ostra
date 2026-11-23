@@ -34,6 +34,7 @@ import {
   taskSpecSchemaV5,
   taskSpecSchemaV6,
   taskSpecSchemaV7,
+  taskSpecSchemaV9,
 } from "../task/spec.ts";
 import {
   eventFixtures,
@@ -294,7 +295,8 @@ describe("the task spec at minor 3", () => {
     expect(taskSpecResponseSchemaFor(5)).toBe(taskSpecSchemaV5);
     expect(taskSpecResponseSchemaFor(6)).toBe(taskSpecSchemaV6);
     expect(taskSpecResponseSchemaFor(7)).toBe(taskSpecSchemaV7);
-    expect(taskSpecResponseSchemaFor(8)).toBe(taskSpecSchema);
+    expect(taskSpecResponseSchemaFor(8)).toBe(taskSpecSchemaV9);
+    expect(taskSpecResponseSchemaFor(10)).toBe(taskSpecSchema);
   });
 });
 

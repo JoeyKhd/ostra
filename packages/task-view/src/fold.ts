@@ -1646,6 +1646,9 @@ export const foldTaskEvents = (
         // Protocol minor 8 (milestone 9, ADR 0070): server-only; "What the agent got" reads the
         // rounds from `tasks.ticketContext` (ticket 14), and the thread draws it (ticket 16).
         break;
+      case "egress.blocked":
+        // Post-v1 (F-052, ADR 0073): bookkeeping for the Event log; the thread draws nothing.
+        break;
       case "subagent.started": {
         // F-138: placed in the tree of its parent's turn, or of the turn of the call that started it.
         const parent = event.parentSubagentId === undefined ? undefined : subagents.get(event.parentSubagentId);

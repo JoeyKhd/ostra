@@ -79,6 +79,10 @@ export type EnvironmentId = z.infer<typeof environmentIdSchema>;
 export const snapshotIdSchema = idBase.brand<"SnapshotId">();
 export type SnapshotId = z.infer<typeof snapshotIdSchema>;
 
+/** The ID of a rule of an environment's network allowlist (F-052, ADR 0073): an `EnvironmentNetworkRule` row. */
+export const networkRuleIdSchema = idBase.brand<"NetworkRuleId">();
+export type NetworkRuleId = z.infer<typeof networkRuleIdSchema>;
+
 /** The ID of an automation. */
 export const automationIdSchema = idBase.brand<"AutomationId">();
 export type AutomationId = z.infer<typeof automationIdSchema>;

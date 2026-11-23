@@ -55,7 +55,7 @@ const eventOf = (frame: unknown): unknown => {
 describe("the version", () => {
   it("F-061, F-138: a minor-6 server took minors 5 to 7, and minor 6 stays in the codecs after minor 7", () => {
     // Milestone 8 moved the build to minor 7 (`minor-7.test.ts`); a minor-6 build's window is as it was.
-    expect(PROTOCOL_MINOR).toBe(9);
+    expect(PROTOCOL_MINOR).toBe(10);
     expect(minorWindow(6)).toEqual({ min: 5, max: 7 });
     expect(negotiate(6, PROTOCOL_MAJOR, 5)).toEqual({ ok: true, minor: 5 });
     expect(negotiate(6, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
@@ -66,7 +66,7 @@ describe("the version", () => {
     expect(negotiate(7, PROTOCOL_MAJOR, 6)).toEqual({ ok: true, minor: 6 });
     // A minor-8 server refused it, and so does today's minor-9 one.
     expect(negotiate(8, PROTOCOL_MAJOR, 6)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
-    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 6)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
+    expect(negotiate(PROTOCOL_MINOR, PROTOCOL_MAJOR, 6)).toEqual({ ok: false, reason: "minor", window: { min: 9, max: 11 } });
     expect(upFrameCodec.minors).toContain(6);
     expect(downFrameCodec.minors).toContain(6);
   });

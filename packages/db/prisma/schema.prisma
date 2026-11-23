@@ -913,6 +913,7 @@ model Project {
   environment   Environment?
   entries       EnvironmentEntry[]
   services      Service[]
+  networkRules  EnvironmentNetworkRule[]
   checks        Check[]
   snapshots     Snapshot[]
   automations   Automation[]
@@ -1264,6 +1265,8 @@ model Environment {
   appProcesses AppProcess[]
   // ---- 2026-11-23 (F-112/c1, Q345 option (b)) ----
   repoDrafts   EnvironmentRepoDraft[]
+  // ---- post-v1 (F-052, ADR 0073) ----
+  networkRules EnvironmentNetworkRule[]
 
   @@unique([id, projectId])
   @@unique([projectId, organizationId])
@@ -1320,6 +1323,29 @@ model EnvironmentRepoDraft {
 
   @@index([projectId])
   @@map("environment_repo_draft")
+}
+
+/// A destination an environment's boxes may reach (F-052, ADR 0073): a public host name or a
+/// CIDR, and the TCP ports it opens. A child table of `Environment`, like `Service` and `Check`.
+/// Parsed and checked by the domain's `networkRuleSchema`/`networkRuleProblem`.
+model EnvironmentNetworkRule {
+  id             String                     @id @default(uuid(7))
+  organizationId String
+  projectId      String
+  project        Project                    @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  environmentId  String
+  environment    Environment                @relation(fields: [environmentId, projectId], references: [id, projectId], onDelete: Cascade)
+  kind           EnvironmentNetworkRuleKind
+  /// The host name or the CIDR, as the domain normalised it.
+  value          String
+  /// The TCP ports the rule opens, sorted and without repeats.
+  ports          Int[]
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  @@unique([environmentId, kind, value])
+  @@index([environmentId])
+  @@map("environment_network_rule")
 }
 
 /// A program started beside the agent, such as a database (Q40, F-094). Milestone 3.
@@ -2922,6 +2948,12 @@ enum EnvironmentEntryKind {
   variable
   secret
   file
+}
+
+/// Post-v1 (F-052, ADR 0073): what a network rule names, a public host or a CIDR.
+enum EnvironmentNetworkRuleKind {
+  host
+  cidr
 }
 
 enum SnapshotState {

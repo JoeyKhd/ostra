@@ -32,6 +32,7 @@ import { effortLevelSchema, reasoningControlsSchema } from "../agent/effort.ts";
 import { approvalRulesSchema, taskRulesSchema } from "../agent/rules.ts";
 import { ticketFileNameSchema, turnModeSchema } from "../events/agent-events.ts";
 import { blobRefSchema, contentTypeSchema } from "../runner/blobs.ts";
+import { networkRulesSchema } from "../config/network-rule.ts";
 import { utf8ByteLength } from "../json.ts";
 import { runnerLimits } from "../runner/limits.ts";
 import { appLabelSchema, appPathSchema, appPortSchema, appProcessNameSchema, screenshotWidthSchema } from "./app.ts";
@@ -402,17 +403,24 @@ export const taskSpecScreenshotsSchema = z.strictObject({
 export type TaskSpecScreenshots = z.infer<typeof taskSpecScreenshotsSchema>;
 
 /**
- * The environment section at the current minor (7): minor 0's, with the app's processes and the
- * after-turn screenshots. A minor-6 runner is never sent either (`encodeTaskSpecForMinor`), and is
- * never offered a task that has app processes (`isTaskOfferable`).
+ * The environment section at the current minor (10): minor 0's, with the app's processes and the
+ * after-turn screenshots (minor 7), and the environment's network allowlist (minor 10). A
+ * minor-6 runner is never sent the first two (`encodeTaskSpecForMinor`), and is never offered a
+ * task that has app processes (`isTaskOfferable`); a minor-9 runner is never sent the rules, nor
+ * offered a task whose environment has any.
  */
 export const taskSpecEnvironmentSchema = taskSpecEnvironmentSchemaV6.extend({
   /** Minor 7: the app's processes, in the order the runner starts them. Missing means none. */
   appProcesses: appProcessesSchema.optional(),
   /** Minor 7: the after-turn screenshots. Missing means off. */
   screenshots: taskSpecScreenshotsSchema.optional(),
+  /** Minor 10: the environment's network allowlist (F-052). Missing means none. */
+  networkRules: networkRulesSchema.optional(),
 });
 export type TaskSpecEnvironment = z.infer<typeof taskSpecEnvironmentSchema>;
+
+/** Minor 9's environment section: the current one without minor 10's network rules. */
+export const taskSpecEnvironmentSchemaV9 = taskSpecEnvironmentSchema.omit({ networkRules: true });
 
 // ---------- minor 1's additions (milestone 2) ----------
 
@@ -824,29 +832,44 @@ const promptedFileIds = (spec: {
   readonly restore?: { readonly pendingMessages: readonly { readonly files?: { readonly fileIds: readonly string[] } | undefined }[] } | undefined;
 }): readonly string[] => [...(spec.promptFiles?.fileIds ?? []), ...(spec.restore?.pendingMessages ?? []).flatMap((message) => message.files?.fileIds ?? [])];
 
+/** The current spec's fields, shared by minor 9's shape and the current one. */
+const taskSpecCurrentShape = {
+  ...taskSpecShapeV7,
+  /** Minor 8: the model's input modalities. */
+  agent: taskSpecAgentSchema,
+  /** Minor 1; minor 8 adds each pending message's files. */
+  restore: taskSpecRestoreSchema.optional(),
+  /** Minor 8: every sent file of the task, oldest first, within `taskFilesMax` and `taskFilesTotalBytes`. Missing means none. */
+  files: z.array(taskSpecMessageFileSchema).max(runnerLimits.taskFilesMax).optional(),
+  /** Minor 8: the first prompt's files. Missing means none. */
+  promptFiles: promptFilesSchema.optional(),
+};
+
 /**
- * The task spec at the current minor (8). Every field added since minor 0 is optional, so a spec
- * of any earlier minor parses. A minor-7 runner is sent minor 7's shape, a minor-6 runner minor
- * 6's, a minor-5 runner minor 5's and a minor-4 runner minor 3's (`encodeTaskSpecForMinor`), and
- * core never offers a runner a task that needs a later minor than its own (`isTaskOfferable`).
+ * Minor 9's task spec, kept for the spec endpoint's answer to a minor-9 runner: the current one
+ * without minor 10's environment network rules. A minor-9 runner never receives them.
+ */
+export const taskSpecSchemaV9 = z
+  .strictObject({ ...taskSpecCurrentShape, environment: taskSpecEnvironmentSchemaV9 })
+  .describe("The task spec a dispatch hands a minor-9 runner. It holds no secret.");
+
+/**
+ * The task spec at the current minor (10). Every field added since minor 0 is optional, so a spec
+ * of any earlier minor parses. A minor-9 runner is sent minor 9's shape, a minor-7 runner minor
+ * 7's, a minor-6 runner minor 6's, a minor-5 runner minor 5's and a minor-4 runner minor 3's
+ * (`encodeTaskSpecForMinor`), and core never offers a runner a task that needs a later minor than
+ * its own (`isTaskOfferable`).
  *
  * Minor 8 (ADR 0070): every sent file of the task (`files`), written under the workspace root's
  * `.ostra/` before a session starts and again on every fresh box; the first prompt's files
  * (`promptFiles`); each pending message's; and the model's inputs. Every file a prompt names is one
  * of `files`. Names, contents and texts are never logged.
+ *
+ * Minor 10 (F-052, ADR 0073): the environment's network allowlist
+ * (`environment.networkRules`).
  */
 export const taskSpecSchema = z
-  .strictObject({
-    ...taskSpecShapeV7,
-    /** Minor 8: the model's input modalities. */
-    agent: taskSpecAgentSchema,
-    /** Minor 1; minor 8 adds each pending message's files. */
-    restore: taskSpecRestoreSchema.optional(),
-    /** Minor 8: every sent file of the task, oldest first, within `taskFilesMax` and `taskFilesTotalBytes`. Missing means none. */
-    files: z.array(taskSpecMessageFileSchema).max(runnerLimits.taskFilesMax).optional(),
-    /** Minor 8: the first prompt's files. Missing means none. */
-    promptFiles: promptFilesSchema.optional(),
-  })
+  .strictObject(taskSpecCurrentShape)
   .superRefine((spec, context) => {
     const files = spec.files ?? [];
     const ids = new Set<string>(files.map((file) => file.fileId));
@@ -897,7 +920,8 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
 });
 
 /**
- * The spec in the shape a runner at `minor` reads: below minor 8, minor 8's fields are dropped (the
+ * The spec in the shape a runner at `minor` reads: below minor 10, the environment's network rules
+ * are dropped; below minor 8, minor 8's fields are dropped (the
  * files, the prompt's and each pending message's files, and the model's inputs); below minor 7,
  * minor 7's fields are dropped
  * (the app's processes, the after-turn screenshots, the `app` tools and each service's preview);
@@ -912,10 +936,11 @@ const agentForMinor1 = (agent: TaskSpecAgent): TaskSpecAgent => ({
  * (`taskSpecNeedsMinor2`, `taskSpecNeedsMinor3`, `isTaskOfferable`), so nothing it needs is lost.
  */
 export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSpec => {
+  const at9 = minor >= 10 ? current : specForMinor9(current);
   if (minor >= 8) {
-    return current;
+    return at9;
   }
-  const v7 = specForMinor7(current);
+  const v7 = specForMinor7(at9);
   if (minor >= 7) {
     return v7;
   }
@@ -956,6 +981,16 @@ export const encodeTaskSpecForMinor = (current: TaskSpec, minor: number): TaskSp
     coAuthors: spec.coAuthors,
     limits: { turnMaxMinutes: spec.limits.turnMaxMinutes },
   };
+};
+
+/** The spec without minor 10's field: the environment without its network rules. */
+const specForMinor9 = (current: TaskSpec): TaskSpec => {
+  if (!("networkRules" in current.environment)) {
+    return current;
+  }
+  const environment: Record<string, unknown> = { ...current.environment };
+  Reflect.deleteProperty(environment, "networkRules");
+  return taskSpecSchema.parse({ ...current, environment });
 };
 
 /**
@@ -1062,6 +1097,8 @@ export const taskSpecNeedsMinor6 = (spec: TaskSpec): boolean => spec.agent.repoS
  * in the dispatch note's words (`taskNotOfferableWords`).
  */
 export const taskNotOfferableReasonSchema = z.enum([
+  /** The environment's network rules (minor 10, F-052): a minor-9 runner would never enforce them. */
+  "network-rules",
   /** A message's or a ticket's files (minor 8, F-148): a minor-7 runner would never write them. */
   "message-files",
   /** The environment's app processes (minor 7, F-140): a minor-6 runner would never start them. */
@@ -1148,8 +1185,18 @@ export const taskSpecNeedsMinor7 = (spec: TaskSpec): boolean => taskNeedsMinor7R
 export const taskSpecNeedsMinor8 = (spec: TaskSpec): boolean =>
   (spec.files?.length ?? 0) > 0 || spec.promptFiles !== undefined || (spec.restore?.pendingMessages ?? []).some((message) => message.files !== undefined);
 
+/**
+ * Whether a spec carries the environment's network rules (F-052, ADR 0073): a minor-9 runner is
+ * never sent them and is never offered such a task, since it would run the box with every host
+ * open. An empty or missing list needs nothing: the environment behaves as it does today.
+ */
+export const taskSpecNeedsMinor10 = (spec: TaskSpec): boolean => (spec.environment.networkRules?.length ?? 0) > 0;
+
 /** The lowest runner minor a spec needs (ADR 0034). */
 export const taskSpecMinMinor = (spec: TaskSpec): number => {
+  if (taskSpecNeedsMinor10(spec)) {
+    return 10;
+  }
   if (taskSpecNeedsMinor8(spec)) {
     return 8;
   }
@@ -1184,6 +1231,9 @@ export const isTaskOfferable = (spec: TaskSpec, peerMinor: number): TaskOffer =>
   if (peerMinor >= minMinor) {
     return { offerable: true };
   }
+  if (minMinor === 10) {
+    return { offerable: false, reason: "network-rules", minMinor };
+  }
   if (minMinor === 8) {
     return { offerable: false, reason: "message-files", minMinor };
   }
@@ -1203,6 +1253,8 @@ export const isTaskOfferable = (spec: TaskSpec, peerMinor: number): TaskOffer =>
 export const taskNotOfferableWords = (reason: TaskNotOfferableReason, minMinor: number): string => {
   const needs = `a runner at protocol 1.${String(minMinor)} or later: update the runner`;
   switch (reason) {
+    case "network-rules":
+      return "This environment limits which hosts its agent may reach, and this runner needs upgrading.";
     case "message-files":
       return `A task with files needs ${needs}.`;
     case "app-processes":
@@ -1234,6 +1286,7 @@ export const taskSpecResponseSchemaFor = (
   minor: number,
 ):
   | typeof taskSpecSchema
+  | typeof taskSpecSchemaV9
   | typeof taskSpecSchemaV7
   | typeof taskSpecSchemaV6
   | typeof taskSpecSchemaV5
@@ -1241,8 +1294,11 @@ export const taskSpecResponseSchemaFor = (
   | typeof taskSpecSchemaV2
   | typeof taskSpecSchemaV1
   | typeof taskSpecSchemaV0 => {
-  if (minor >= 8) {
+  if (minor >= 10) {
     return taskSpecSchema;
+  }
+  if (minor >= 8) {
+    return taskSpecSchemaV9;
   }
   if (minor >= 7) {
     return taskSpecSchemaV7;

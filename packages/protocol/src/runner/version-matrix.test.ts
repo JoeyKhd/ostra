@@ -13,7 +13,8 @@ import { minorWindow, negotiate, PROTOCOL_MINOR, versionRefusalMessage } from ".
 // (F-138) moved it to minor 6: it read 5, 6 and 7, and refused 2, 3, 4 and 8. Milestone 8 moved
 // it to minor 7: it read 6, 7 and 8, and refused 2 to 5 and 9. Milestone 9 moved it to minor 8: it
 // read 7, 8 and 9, and refused 2 to 6 and 10. Milestone 10 moved it to minor 9: it reads 8, 9 and
-// 10, and refuses 2 to 7 and 11. The carriers' half, against core's gateway, is
+// 10, and refuses 2 to 7 and 11. Post-v1 (F-052) moved it to minor 10: it reads 9, 10 and 11, and
+// refuses 2 to 8. The carriers' half, against core's gateway, is
 // `apps/core/src/gateway/version-matrix.test.ts`.
 
 const outcomesAt = async (serverMinor: number): Promise<readonly (readonly [number, number | "refused"])[]> => {
@@ -116,8 +117,8 @@ describe("the compatibility matrix (F-061)", () => {
     expect(minorWindow(8)).toEqual({ min: 7, max: 9 });
   });
 
-  it("F-061, F-151: the matrix at minor 9: today's server accepts the recorded builds of minors 8, 9 and 10 and refuses 2 to 7 and 11", async () => {
-    expect(PROTOCOL_MINOR).toBe(9);
+  it("F-061, F-052: the matrix at minor 10: today's server accepts the recorded builds of minors 9, 10 and 11 and refuses 2 to 8", async () => {
+    expect(PROTOCOL_MINOR).toBe(10);
     expect(await outcomesAt(PROTOCOL_MINOR)).toEqual([
       [2, "refused"],
       [3, "refused"],
@@ -125,12 +126,12 @@ describe("the compatibility matrix (F-061)", () => {
       [5, "refused"],
       [6, "refused"],
       [7, "refused"],
-      [8, 8],
+      [8, "refused"],
       [9, 9],
-      [10, 9],
-      [11, "refused"],
+      [10, 10],
+      [11, 10],
     ]);
-    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 8, max: 10 });
+    expect(minorWindow(PROTOCOL_MINOR)).toEqual({ min: 9, max: 11 });
   });
 
   it("F-061/c1: each accepted build's frames are read at its minor, and the server writes down to exactly what that build reads", async () => {
@@ -178,8 +179,8 @@ describe("the compatibility matrix (F-061)", () => {
     const minor3 = helloSchema.parse((await readRecordedBuild(3)).hello);
     expect(negotiate(5, minor3.protocolMajor, minor3.protocolMinor)).toEqual({ ok: false, reason: "minor", window: { min: 4, max: 6 } });
     // A minor-6 server refused the minor-4 build with the window 5 to 7, a minor-7 server the minor-5
-    // build with 6 to 8, a minor-8 server the minor-6 build with 7 to 9, and today's minor-9 server
-    // refuses the minor-7 build with 8 to 10.
+    // build with 6 to 8, a minor-8 server the minor-6 build with 7 to 9, a minor-9 server the minor-7
+    // build with 8 to 10, and today's minor-10 server refuses it with 9 to 11.
     const minor4 = helloSchema.parse((await readRecordedBuild(4)).hello);
     expect(negotiate(6, minor4.protocolMajor, minor4.protocolMinor)).toEqual({ ok: false, reason: "minor", window: { min: 5, max: 7 } });
     const minor5 = helloSchema.parse((await readRecordedBuild(5)).hello);
@@ -187,6 +188,6 @@ describe("the compatibility matrix (F-061)", () => {
     const minor6 = helloSchema.parse((await readRecordedBuild(6)).hello);
     expect(negotiate(8, minor6.protocolMajor, minor6.protocolMinor)).toEqual({ ok: false, reason: "minor", window: { min: 7, max: 9 } });
     const minor7 = helloSchema.parse((await readRecordedBuild(7)).hello);
-    expect(negotiate(PROTOCOL_MINOR, minor7.protocolMajor, minor7.protocolMinor)).toEqual({ ok: false, reason: "minor", window: { min: 8, max: 10 } });
+    expect(negotiate(PROTOCOL_MINOR, minor7.protocolMajor, minor7.protocolMinor)).toEqual({ ok: false, reason: "minor", window: { min: 9, max: 11 } });
   });
 });

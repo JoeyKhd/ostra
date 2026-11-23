@@ -23,6 +23,7 @@ import {
   runnerEventSchemaV5,
   runnerEventSchemaV6,
   runnerEventSchemaV7,
+  runnerEventSchemaV9,
   runnerScopedEventKinds,
   taskEventSchema,
 } from "../events/agent-events.ts";
@@ -53,6 +54,9 @@ import type { FrameParse } from "./version.ts";
 // discriminated on `type`. ostra owns the format, so every frame is a strict object except
 // `hello`, the negotiation, which tolerates unknown fields. Ported from
 // spikes/runner-transport/src/protocol/messages.ts.
+//
+// Minor 10 (post-v1, F-052) adds no frame and no field to one: one task event, `egress.blocked`,
+// which minor 9's codec refuses. Its dispatch carries the environment's network rules in the spec.
 //
 // Minor 9 (milestone 10, F-151) adds no frame and no field to one. Its additions are a review
 // answer's `already` over HTTP (`http.ts`), three server events' optional fields, which no runner
@@ -225,6 +229,11 @@ export const eventsFrameSchema = z.strictObject({
   events: z.array(runnerEventSchema).min(1).max(runnerLimits.eventsPerFrameMax),
 });
 export type EventsFrame = z.infer<typeof eventsFrameSchema>;
+
+/** Minor 9's `events` frame: its events refuse minor 10's `egress.blocked` (F-052). */
+const eventsFrameSchemaV9 = eventsFrameSchema.extend({
+  events: z.array(runnerEventSchemaV9).min(1).max(runnerLimits.eventsPerFrameMax),
+});
 
 /** Minor 7's `events` frame: its events refuse minor 8's kinds and fields. */
 const eventsFrameSchemaV7 = eventsFrameSchema.extend({
@@ -407,9 +416,17 @@ export const liveTextSchema = z.strictObject({
 });
 export type LiveText = z.infer<typeof liveTextSchema>;
 
-const upFrameV9 = z.discriminatedUnion("type", [
+const upFrameV10 = z.discriminatedUnion("type", [
   helloSchema,
   eventsFrameSchema,
+  commandAckSchema,
+  statusSchema,
+  liveTextSchema,
+  runnerEventFrameSchema,
+]);
+const upFrameV9 = z.discriminatedUnion("type", [
+  helloSchema,
+  eventsFrameSchemaV9,
   commandAckSchema,
   statusSchema,
   liveTextSchema,
@@ -485,7 +502,7 @@ const upFrameV0 = z.discriminatedUnion("type", [
   statusSchemaV0,
   liveTextSchema,
 ]);
-export type UpFrame = z.infer<typeof upFrameV9>;
+export type UpFrame = z.infer<typeof upFrameV10>;
 export type UpFrameType = UpFrame["type"];
 
 // ---------- down: server to peer ----------
@@ -775,7 +792,8 @@ const encodeDownFrameFor =
 
 /**
  * Up frames, one codec per kept minor. Minor 9 (milestone 10) adds no frame, and one runner event:
- * a box never placed (`box.unscheduled`), which minor 8's codec refuses.
+ * a box never placed (`box.unscheduled`), which minor 8's codec refuses. Minor 10 (F-052) adds no
+ * frame; its one event, `egress.blocked`, is refused by minor 9's codec.
  */
 export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 0, decode: upFrameV0, encode: encodeUpFrameFor(0) },
@@ -788,6 +806,7 @@ export const upFrameCodec = createVersionedCodec<UpFrame>([
   { minor: 7, decode: upFrameV7, encode: encodeUpFrameFor(7) },
   { minor: 8, decode: upFrameV8, encode: (frame) => frame },
   { minor: 9, decode: upFrameV9, encode: (frame) => frame },
+  { minor: 10, decode: upFrameV10, encode: (frame) => frame },
 ]);
 
 /**
@@ -815,6 +834,7 @@ export const downFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 7, decode: downFrameV7, encode: encodeDownFrameFor(7) },
   { minor: 8, decode: downFrameV8, encode: (frame) => frame },
   { minor: 9, decode: downFrameV8, encode: (frame) => frame },
+  { minor: 10, decode: downFrameV8, encode: (frame) => frame },
 ]);
 
 /**
@@ -832,6 +852,7 @@ export const httpDownFrameCodec = createVersionedCodec<DownFrame>([
   { minor: 7, decode: downFrameV7Http, encode: encodeDownFrameFor(7) },
   { minor: 8, decode: downFrameV8Http, encode: (frame) => frame },
   { minor: 9, decode: downFrameV8Http, encode: (frame) => frame },
+  { minor: 10, decode: downFrameV8Http, encode: (frame) => frame },
 ]);
 
 /** Parse a frame a peer sent at `minor`. Never throws; the error names paths, never values. */

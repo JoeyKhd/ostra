@@ -84,8 +84,13 @@ export const PROTOCOL_MAJOR = 1;
  * 2026-11-22 before minor 9's release): a box the cluster never placed (no node, no room), whose
  * task core sends back to its pool's queue. A minor-8 runner sends none, and its unplaced box waits
  * as before; a minor-9 runner sends a minor-8 server none either (`runnerScopedEventSupportedAt`).
+ * Post-v1, F-052 ships minor 10 (ADR 0073): the environment's network rules in the task spec, and
+ * the runner's `egress.blocked`, one per destination its egress proxy refused. A minor-9 peer still
+ * works inside the window: it's never sent the rules (`encodeTaskSpecForMinor`), and it's never
+ * offered a task whose environment has any (`isTaskOfferable`'s `network-rules`); it sends no
+ * `egress.blocked`, and its codec refuses one. A minor-8 peer is outside the window.
  */
-export const PROTOCOL_MINOR = 9;
+export const PROTOCOL_MINOR = 10;
 
 /** The URL prefix of every runner endpoint. */
 export const RUNNER_PATH_PREFIX = `/runner/v${String(PROTOCOL_MAJOR)}`;

@@ -1217,6 +1217,30 @@ const minor8NewEventOptions = [
   z.strictObject({ kind: z.literal("ticket.context_read"), ...ticketContextReadSchema.shape }),
 ] as const;
 
+// ---------- the events new in minor 10 ----------
+
+/**
+ * The reason an egress proxy refused a destination (F-052, ADR 0073): it is in none of the
+ * environment's network rules (`not-listed`), its resolved address is inside the egress baseline
+ * and not in `OSTRA_EGRESS_ALLOW` (`baseline`), or its name did not resolve (`unresolvable`).
+ */
+export const egressBlockedReasonSchema = z.enum(["not-listed", "baseline", "unresolvable"]);
+export type EgressBlockedReason = z.infer<typeof egressBlockedReasonSchema>;
+
+const minor10NewEventOptions = [
+  /**
+   * The runner's (F-052): one destination its egress proxy refused, once per host and port per
+   * task. `host` is the name, or the literal address, exactly as the client asked for it — never a
+   * resolved address and never the client's. It carries no path, query, header or client address.
+   */
+  z.strictObject({
+    kind: z.literal("egress.blocked"),
+    host: z.string().min(1).max(253),
+    port: z.number().int().min(1).max(65_535),
+    reason: egressBlockedReasonSchema,
+  }),
+] as const;
+
 // ---------- the events every minor shares ----------
 
 const sharedEventOptions = [
@@ -1379,9 +1403,18 @@ export const taskEventSchema = z.discriminatedUnion("kind", [
   ...minor6NewEventOptions,
   ...minor7NewEventOptions,
   ...minor8NewEventOptions,
+  ...minor10NewEventOptions,
   ...agentOutputOptions,
   ...sharedEventOptions,
 ]);
+
+/**
+ * Minor 9's event union, kept for the codecs (ADR 0034): a minor-9 peer's events parse with it,
+ * and it refuses minor 10's `egress.blocked` (F-052).
+ */
+export const taskEventSchemaV9 = taskEventSchema.refine((event) => eventKindMinMinor(event.kind) < 10, {
+  message: "an event kind a minor-9 runner doesn't have",
+});
 
 /**
  * Minor 7's event union, kept for the codecs (ADR 0034): a minor-7 peer's events parse with it,
@@ -1662,8 +1695,19 @@ export const minor8EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKin
   minor8NewEventOptions.map((option) => option.shape.kind.value),
 );
 
+/**
+ * The kinds minor 10 added (F-052, ADR 0073): the runner's `egress.blocked`, one per refused
+ * destination. A minor-9 runner sends none and receives none.
+ */
+export const minor10EventKinds: ReadonlySet<TaskEventKind> = new Set<TaskEventKind>(
+  minor10NewEventOptions.map((option) => option.shape.kind.value),
+);
+
 /** The lowest minor that carries an event kind. */
 export const eventKindMinMinor = (kind: TaskEventKind): number => {
+  if (minor10EventKinds.has(kind)) {
+    return 10;
+  }
   if (minor8EventKinds.has(kind)) {
     return 8;
   }
@@ -1969,6 +2013,13 @@ export const runnerEventSchema = z.strictObject({
   }),
 });
 export type RunnerEvent = z.infer<typeof runnerEventSchema>;
+
+/** Minor 9's `runnerEventSchema`, for the up codec of a minor-9 peer: it refuses minor 10's kinds. */
+export const runnerEventSchemaV9 = runnerEventSchema.extend({
+  event: taskEventSchemaV9.refine((event) => !serverOnlyKinds.has(event.kind), {
+    message: "only the server writes this kind",
+  }),
+});
 
 /** Minor 7's `runnerEventSchema`, for the up codec of a minor-7 peer. */
 export const runnerEventSchemaV7 = runnerEventSchema.extend({
