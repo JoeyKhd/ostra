@@ -24,6 +24,10 @@ export * from "./tracker-suite.ts";
 export * from "./blob-store-suite.ts";
 export * from "./jira-fake.ts";
 export * from "./fake-linear/fake-linear.ts";
+// Milestone 11 (ticket 03): the fake Jira Cloud, over HTTP, and its contract-suite fixture.
+export * from "./fake-jira/fake-jira.ts";
+export * from "./fake-jira/fake-jql.ts";
+export * from "./fake-jira/suite-fixture.ts";
 export * from "./stub-models/types.ts";
 export * from "./stub-models/scenario.ts";
 export * from "./stub-models/server.ts";

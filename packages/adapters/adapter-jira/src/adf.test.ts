@@ -57,7 +57,7 @@ describe("ADF to markdown", () => {
     expect(read).toBe(["```ts\nconst a = `b`;\nrm -rf /\n```", "> quoted\n>\n> twice", "> careful", "---", "| Name | Value |\n| --- | --- |\n| a\\|b | 1 |"].join("\n\n"));
   });
 
-  it("reads links, a bare link as itself, mentions, emoji, dates, statuses and cards", () => {
+  it("F-008/c6: reads links, a bare link as itself, mentions, emoji, dates, statuses and cards", () => {
     const read = adfToMarkdown(
       doc(
         paragraph(
@@ -80,7 +80,7 @@ describe("ADF to markdown", () => {
     expect(read).toBe("[the spec](https://example.test/spec) https://example.test/a @Alex Kim 🎉 2026-11-23 IN PROGRESS https://github.com/ostra-test/test1/pull/7");
   });
 
-  it("reads an upload's media node as its file, an external image as itself, and an unknown upload as its name", () => {
+  it("F-008/c6: reads an upload's media node as its file, an external image as itself, and an unknown upload as its name", () => {
     const read = readAdf(
       doc(
         paragraph(text("See:")),
@@ -149,7 +149,7 @@ describe("markdown to ADF", () => {
     });
   });
 
-  it("writes nested and ordered lists, code blocks, quotes, rules and tables", () => {
+  it("F-008/c6: writes nested and ordered lists, code blocks, quotes, rules and tables", () => {
     const written = markdownToAdf("- one\n  - nested\n- two\n\n3. third\n\n```sh\nrm -rf / && echo `x`\n```\n\n> quoted\n\n---\n\n| A | B |\n| --- | --- |\n| 1 | 2 |");
     expect(written.content.map((node) => node.type)).toEqual(["bulletList", "orderedList", "codeBlock", "blockquote", "rule", "table"]);
     expect(written.content[0]).toEqual({
@@ -171,7 +171,7 @@ describe("markdown to ADF", () => {
     });
   });
 
-  it("writes a mention by account ID, a bare URL as a link, and leaves `<sub>` as text", () => {
+  it("F-008/c6: writes a mention by account ID, a bare URL as a link, and leaves `<sub>` as text", () => {
     expect(markdownToAdf("cc [~accountid:5b10ac8d82e05b22cc7d4ef5] <sub>see https://ostra.example.test/tasks/1.</sub>").content[0]).toEqual({
       type: "paragraph",
       content: [
@@ -209,11 +209,14 @@ describe("markdown to ADF", () => {
     expect(texts.join("")).toContain("[click]");
   });
 
-  it("F-008/c6: round-trips ostra's own writes exactly: a draft's description and the progress comment", () => {
+  it("F-008/c6: round-trips the subset exactly: a heading, nested lists, a code block, a table, a link, a draft's description and the progress comment", () => {
     for (const markdown of [
       "## What\n\nThe banner shows the user's name.\n\n- [ ] One `$(whoami)` stays text",
       "**ostra is working on this.**\n\n[progress.png](https://example.test/p.png)\n\n<sub>ostra edits this comment as the task moves: https://ostra.example.test/tasks/1</sub>",
-      "1. first\n2. second\n   - inner\n\n> a quote\n\n```\ncode\n```",
+      "1. first\n2. second\n   - inner\n\n> a quote\n\n```ts\nconst x = 1;\n```",
+      "- parent\n  - child\n    - grandchild\n- sibling",
+      "| Step | Status |\n| --- | --- |\n| Started | In Progress |",
+      "See [the spec](https://example.test/spec) and https://example.test/a",
       "ostra opened a PR",
     ]) {
       expect(adfToMarkdown(markdownToAdf(markdown))).toBe(markdown);

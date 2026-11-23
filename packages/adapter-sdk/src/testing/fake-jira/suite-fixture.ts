@@ -1,14 +1,13 @@
-import type { TrackerAdapter } from "@ostra/adapter-sdk";
-import type { TrackerFilesHooks, TrackerSuiteFixture } from "@ostra/adapter-sdk/testing";
-
-import { JIRA_WEBHOOK_MAX_AGE_MS } from "../webhooks.ts";
-import type { AdfNode } from "../adf.ts";
+import type { TrackerAdapter } from "../../tracker/base.ts";
+import type { AdfNode } from "../jira-fake.ts";
+import type { TrackerFilesHooks, TrackerSuiteFixture } from "../tracker-suite.ts";
 import type { FakeJira } from "./fake-jira.ts";
 
 // The tracker contract suite's fixture on the fake Jira (ADR 0025, Q104): this site with a second
 // project, and an adapter on another organization's site. The adapter under test is built with the
 // fake's site, its gateway and cloud ID (`mode: "gateway"`, a scoped token, ADR 0047) or the site
-// alone (`mode: "site"`, a classic token), and the service account's credential.
+// alone (`mode: "site"`, a classic token), and the service account's credential. `webhookMaxAgeMs`
+// is the adapter's own freshness window, which the suite's stale delivery steps past.
 
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
 const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -28,7 +27,7 @@ const mediaOf = (container: "mediaSingle" | "mediaGroup", upload: { readonly med
 const doc = (content: readonly AdfNode[]): AdfNode => ({ type: "doc", attrs: {}, content: [...content] });
 
 /** The files cases' hooks on a fake Jira, as Jira's editor makes them: an upload is an attachment, and a media node shows it. */
-export const jiraFilesHooks = (fake: FakeJira, mode: "gateway" | "site"): TrackerFilesHooks => {
+export const fakeJiraFilesHooks = (fake: FakeJira, mode: "gateway" | "site"): TrackerFilesHooks => {
   const fileUrl = (id: string): string => `${fake.apiUrl(mode)}/rest/api/3/attachment/content/${id}`;
   const holder = (summary: string): string => fake.createIssue({ summary }).id;
   return {
@@ -74,7 +73,12 @@ export const jiraFilesHooks = (fake: FakeJira, mode: "gateway" | "site"): Tracke
   };
 };
 
-export const fakeJiraSuiteFixture = (input: { readonly fake: FakeJira; readonly other: TrackerAdapter; readonly mode: "gateway" | "site" }): TrackerSuiteFixture => {
+export const fakeJiraSuiteFixture = (input: {
+  readonly fake: FakeJira;
+  readonly other: TrackerAdapter;
+  readonly mode: "gateway" | "site";
+  readonly webhookMaxAgeMs: number;
+}): TrackerSuiteFixture => {
   const { fake } = input;
   const ops = fake.addProject("OPS", "Operations");
   const status = (name: string): string => {
@@ -89,7 +93,7 @@ export const fakeJiraSuiteFixture = (input: { readonly fake: FakeJira; readonly 
     mapping: { started: status("In Progress"), inReview: status("In Review"), done: status("Done") },
     other: input.other,
     webhookSecret: fake.webhookSecret,
-    webhookMaxAgeMs: JIRA_WEBHOOK_MAX_AGE_MS,
+    webhookMaxAgeMs: input.webhookMaxAgeMs,
     ownUserId: fake.serviceAccount.accountId,
     integrationInstalled: false,
     now: () => fake.clock.now(),
@@ -127,6 +131,6 @@ export const fakeJiraSuiteFixture = (input: { readonly fake: FakeJira; readonly 
     seedUser: (email) => Promise.resolve({ userId: fake.addAccount({ displayName: `Seeded ${email.split("@")[0] ?? "user"}`, email }).accountId }),
     // Milestone 6: people by account ID; Jira has no agent sessions, so no session hooks.
     milestone6: { seedPerson: (person) => Promise.resolve({ userId: fake.addAccount({ displayName: person.name, email: person.email }).accountId }) },
-    files: jiraFilesHooks(fake, input.mode),
+    files: fakeJiraFilesHooks(fake, input.mode),
   };
 };

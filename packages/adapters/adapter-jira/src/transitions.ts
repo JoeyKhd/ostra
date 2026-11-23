@@ -20,11 +20,17 @@ export type WorkflowTransition = {
   readonly to: string;
 };
 
+/** A workflow's statuses and transitions: the shape of the spec's `TrackerWorkflow` (section 5.2). */
 export type WorkflowGraph = {
-  readonly name: string;
   readonly statuses: readonly WorkflowStatus[];
   readonly transitions: readonly WorkflowTransition[];
 };
+
+/**
+ * The longest route a move takes (Q352, spec choice 20): past three transitions, or with none, the
+ * ticket stays put and ostra's comment says so.
+ */
+export const MAX_ROUTE_STEPS = 3;
 
 /** Jira's category, in the four ostra shares; a done status named like "won't do" reads as cancelled. */
 export const jiraStatusCategory = (key: string | undefined, name: string): TicketStatusCategory => {
@@ -57,21 +63,25 @@ const passable = (graph: WorkflowGraph, id: string): boolean => {
 };
 
 /**
- * The shortest walk of transitions from `from` to `to` that passes through no done or cancelled
- * status, or `null` when none reaches it. `[]` when the status is already the goal.
+ * The shortest walk of transitions from `from` to `to`, at most `maxSteps` long, that passes
+ * through no done or cancelled status, or `null` when none reaches it. `[]` when the status is
+ * already the goal. A global transition is one step from anywhere.
  */
-export const findTransitionPath = (graph: WorkflowGraph, from: string, to: string): readonly WorkflowTransition[] | null => {
+export const findTransitionPath = (graph: WorkflowGraph, from: string, to: string, maxSteps: number = MAX_ROUTE_STEPS): readonly WorkflowTransition[] | null => {
   if (from === to) return [];
   const previous = new Map<string, { readonly at: string; readonly by: WorkflowTransition }>();
+  const depth = new Map<string, number>([[from, 0]]);
   const seen = new Set<string>([from]);
   const queue: string[] = [from];
   while (queue.length > 0) {
     const at = queue.shift();
     if (at === undefined) break;
-    if (at !== from && !passable(graph, at)) continue;
+    const here = depth.get(at) ?? 0;
+    if ((at !== from && !passable(graph, at)) || here >= maxSteps) continue;
     for (const transition of graph.transitions) {
       if (!takeable(transition, at) || seen.has(transition.to)) continue;
       seen.add(transition.to);
+      depth.set(transition.to, here + 1);
       previous.set(transition.to, { at, by: transition });
       if (transition.to === to) {
         const path: WorkflowTransition[] = [];
@@ -121,7 +131,7 @@ export type StepPlan = {
   readonly direct: readonly { readonly transition: WorkflowTransition; readonly from: readonly string[] | "any" }[];
   /** For every other status, the first transition of the shortest walk there. */
   readonly via: readonly { readonly from: string; readonly transition: WorkflowTransition; readonly steps: number }[];
-  /** The statuses from which no walk reaches the target: a ticket there stays put. */
+  /** The statuses from which no walk of at most `MAX_ROUTE_STEPS` reaches the target: a ticket there stays put. */
   readonly unreachableFrom: readonly string[];
   /** The target isn't one of the workflow's statuses. */
   readonly unknownTarget: boolean;

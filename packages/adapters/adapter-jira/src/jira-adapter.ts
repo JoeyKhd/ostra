@@ -84,7 +84,7 @@ import {
   workflowSchemeSchema,
 } from "./schemas.ts";
 import type { JiraAccount, JiraAttachment, JiraComment, JiraIssue, JiraIssueLink, JiraIssueRef, JiraStatusJson } from "./schemas.ts";
-import { findTransitionPath, jiraStatusCategory, nextTransition } from "./transitions.ts";
+import { findTransitionPath, jiraStatusCategory, MAX_ROUTE_STEPS, nextTransition } from "./transitions.ts";
 import type { AvailableTransition, WorkflowGraph, WorkflowStatus, WorkflowTransition } from "./transitions.ts";
 import { JIRA_WEBHOOK_MAX_AGE_MS, jiraWebhookHint, verifyJiraWebhook } from "./webhooks.ts";
 
@@ -160,11 +160,16 @@ export type JiraTokenCheck = {
   readonly workflowsReadable: boolean;
 };
 
-/** A board's workflow per issue type (`readWorkflow`), for the Boards page's mapping. */
+/**
+ * A board's workflow (`readWorkflow`), for the Boards page's mapping: the shape of the spec's
+ * `TrackerWorkflow` (section 5.2), which ticket 02 adds to the shared interface. Its issue types'
+ * workflows in one: each transition once per `(from, to, name)`.
+ */
 export type JiraBoardWorkflow = {
-  /** `false`: the token can't read workflows, and each move finds its transitions per ticket. */
+  /** `false`: the token can't read workflows. The statuses alone, and each move finds its transitions per ticket. */
   readonly readable: boolean;
-  readonly issueTypes: readonly { readonly id: string; readonly name: string; readonly subtask: boolean; readonly workflow: WorkflowGraph | null }[];
+  readonly statuses: readonly TrackerStatus[];
+  readonly transitions: readonly WorkflowTransition[];
 };
 
 const DEFAULT_GATEWAY = "https://api.atlassian.com";
@@ -172,8 +177,14 @@ const DEFAULT_PAGE = 50;
 const MAX_PAGE = 100;
 const MAX_COMMENT_PAGES = 10;
 const MAX_PROJECT_PAGES = 20;
-const MAX_WALK = 10;
+/** Transitions a screen refused, tried and routed around: past this many, the move gives up. */
+const MAX_REFUSED = 3;
 const GRAPH_TTL_MS = 5 * 60 * 1000;
+/** Jira Cloud's per-issue write limits (research/trackers.md §2.1), kept before Jira answers 429. */
+const ISSUE_WRITE_LIMITS: readonly { readonly count: number; readonly windowMs: number }[] = [
+  { count: 20, windowMs: 2000 },
+  { count: 100, windowMs: 30_000 },
+];
 /** The largest file `attachFile` uploads: milestone 2's cap on a ticket's file, as Linear's. */
 export const MAX_JIRA_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 /** ostra's issue property that keeps `attachFile`'s markers (Jira's attachments have no subtitle). */
@@ -362,6 +373,8 @@ type Request = {
   readonly json?: unknown;
   readonly form?: FormData;
   readonly accept?: string;
+  /** The issue this call writes to: Jira's per-issue write limits are kept for it. */
+  readonly writesIssue?: string;
 };
 
 type Markers = Readonly<Record<string, string>>;
@@ -379,6 +392,8 @@ export class JiraAdapter extends TrackerAdapter {
   readonly #budgetKey: string;
   #me: JiraAccount | undefined;
   readonly #graphs = new Map<string, { readonly at: number; readonly graph: WorkflowGraph | null; readonly readable: boolean }>();
+  /** When this adapter last wrote to each issue, for Jira's per-issue write limits. */
+  readonly #issueWrites = new Map<string, number[]>();
 
   constructor(options: JiraAdapterOptions, context?: AdapterContext) {
     super(context);
@@ -529,23 +544,30 @@ export class JiraAdapter extends TrackerAdapter {
   }
 
   /**
-   * The board's workflow per issue type: its statuses and transitions (from which statuses, or any),
-   * for the mapping's `by …` lines and warnings (`planMapping`). Without `read:workflow:jira`,
-   * `readable: false` and no graph.
+   * The board's workflow: its statuses, and its issue types' transitions in one (from which
+   * statuses, or any), for the mapping's `by …` lines and warnings (`planMapping`). Without
+   * `read:workflow:jira`, `readable: false` and the statuses alone.
    */
   async readWorkflow(board: BoardRef): Promise<AdapterResult<JiraBoardWorkflow>> {
     const project = await this.#project(board);
     if (!project.ok) {
       return project;
     }
-    const issueTypes: { id: string; name: string; subtask: boolean; workflow: WorkflowGraph | null }[] = [];
+    const statuses = await this.listStatuses(board);
+    if (!statuses.ok) {
+      return statuses;
+    }
+    const transitions = new Map<string, WorkflowTransition>();
     let readable = true;
     for (const type of project.value.issueTypes ?? []) {
       const graph = await this.#graph(project.value.id, type.id);
       readable &&= graph.readable;
-      issueTypes.push({ id: type.id, name: type.name, subtask: type.subtask === true, workflow: graph.graph });
+      for (const transition of graph.graph?.transitions ?? []) {
+        const from = transition.from === "any" ? "any" : [...transition.from].sort().join(",");
+        transitions.set(`${from}|${transition.to}|${transition.name}`, transition);
+      }
     }
-    return ok({ readable, issueTypes });
+    return ok({ readable, statuses: statuses.value, transitions: readable ? [...transitions.values()] : [] });
   }
 
   async getTicketContext(board: BoardRef, ref: TicketRef, options?: TicketContextOptions): Promise<AdapterResult<TicketContext>> {
@@ -703,16 +725,10 @@ export class JiraAdapter extends TrackerAdapter {
 
   // ---------- writes ----------
 
-  async updateStatus(board: BoardRef, key: TicketKey, statusId: string): Promise<AdapterResult<void>> {
-    const found = await this.#issueOnBoard(board, { key }, ["status", "project", "issuetype"]);
-    if (!found.ok) {
-      return found;
-    }
-    if (found.value.fields.status.id === statusId) {
-      return ok(undefined);
-    }
-    const walked = await this.#walk(found.value, statusId);
-    return walked.ok ? ok(undefined) : walked;
+  /** Jira can't write a status (spec section 5.3): a ticket moves only by `moveTicket`'s transitions. */
+  updateStatus(board: BoardRef, key: TicketKey, statusId: string): Promise<AdapterResult<void>> {
+    this.plumbing.logger.debug("jira.status.refused", { board: board.externalId, ticket: key, status: statusId });
+    return Promise.resolve(adapterError("unsupported", "Jira moves a ticket only by its workflow's transitions, never by writing its status: use moveTicket"));
   }
 
   async moveTicket(board: BoardRef, ref: TicketRef, target: MoveTarget, mapping: StatusMapping): Promise<AdapterResult<MoveResult>> {
@@ -739,7 +755,7 @@ export class JiraAdapter extends TrackerAdapter {
     }
     const created = await this.#call(
       "Jira's new comment",
-      { method: "POST", path: `/rest/api/3/issue/${found.value.id}/comment`, json: { body: this.#adf(markdown) } },
+      { method: "POST", path: `/rest/api/3/issue/${found.value.id}/comment`, json: { body: this.#adf(markdown) }, writesIssue: found.value.id },
       commentSchema,
     );
     return created.ok ? ok({ commentId: created.value.id }) : created;
@@ -756,10 +772,22 @@ export class JiraAdapter extends TrackerAdapter {
     if (!found.ok) {
       return found;
     }
-    // The path names the issue: a comment from elsewhere is Jira's 404, and edits nothing.
+    // The path names the issue: a comment from elsewhere is Jira's 404, and edits nothing. Only
+    // the service account's own is edited, even where its permissions would allow a person's.
+    const existing = await this.#call("Jira's comment", { method: "GET", path: `/rest/api/3/issue/${found.value.id}/comment/${commentId}` }, commentSchema);
+    if (!existing.ok) {
+      return existing;
+    }
+    const me = await this.#myself();
+    if (!me.ok) {
+      return me;
+    }
+    if (existing.value.author?.accountId !== me.value.accountId) {
+      return adapterError("forbidden", "editing a comment failed: only the service account's own comment is edited");
+    }
     const updated = await this.#call(
       "Jira's comment edit",
-      { method: "PUT", path: `/rest/api/3/issue/${found.value.id}/comment/${commentId}`, json: { body: this.#adf(markdown) } },
+      { method: "PUT", path: `/rest/api/3/issue/${found.value.id}/comment/${commentId}`, json: { body: this.#adf(markdown) }, writesIssue: found.value.id },
       commentSchema,
     );
     return updated.ok ? ok(undefined) : updated;
@@ -853,7 +881,7 @@ export class JiraAdapter extends TrackerAdapter {
     if (update.acceptanceCriteria !== undefined && this.#criteriaField !== null) {
       fields[this.#criteriaField] = update.acceptanceCriteria.trim() === "" ? null : this.#adf(update.acceptanceCriteria);
     }
-    return this.#write("Jira's issue edit", { method: "PUT", path: `/rest/api/3/issue/${found.value.id}`, json: { fields } });
+    return this.#write("Jira's issue edit", { method: "PUT", path: `/rest/api/3/issue/${found.value.id}`, json: { fields }, writesIssue: found.value.id });
   }
 
   /** Milestone 6 (F-099): a Jira attachment, its marker kept in ostra's issue property. */
@@ -872,7 +900,7 @@ export class JiraAdapter extends TrackerAdapter {
     form.append("file", new Blob([ownBuffer(file.bytes)], { type: file.contentType }), file.name);
     const uploaded = await this.#call(
       "Jira's attachment upload",
-      { method: "POST", path: `/rest/api/3/issue/${found.value.id}/attachments`, form },
+      { method: "POST", path: `/rest/api/3/issue/${found.value.id}/attachments`, form, writesIssue: found.value.id },
       z.array(attachmentSchema).min(1),
     );
     if (!uploaded.ok) {
@@ -891,6 +919,7 @@ export class JiraAdapter extends TrackerAdapter {
         method: "PUT",
         path: `/rest/api/3/issue/${found.value.id}/properties/${MARKERS_PROPERTY}`,
         json: { markers: { ...markers.value, [attachment.id]: file.marker.slice(0, 500) } },
+        writesIssue: found.value.id,
       });
       if (!written.ok) {
         return written;
@@ -1154,6 +1183,7 @@ export class JiraAdapter extends TrackerAdapter {
       {
         method: "POST",
         path: `/rest/api/3/issue/${issueId}/remotelink`,
+        writesIssue: issueId,
         json: {
           globalId: globalIdOf(link.url),
           application: link.application,
@@ -1286,25 +1316,32 @@ export class JiraAdapter extends TrackerAdapter {
         from: transition.type === "global" || (transition.from ?? []).length === 0 ? ("any" as const) : (transition.from ?? []),
         to: transition.to,
       }));
-    return remember({ name: workflowName, statuses: graphStatuses, transitions }, true);
+    return remember({ statuses: graphStatuses, transitions }, true);
   }
 
   /**
-   * Walks the issue to `goal` by its available transitions, one call each: by the workflow's
-   * shortest way when the token reads workflows, else one category step at a time. A goal no walk
-   * reaches is `conflict`, with the issue left where it was.
+   * Walks the issue to `goal` by its available transitions, one call each, at most
+   * `MAX_ROUTE_STEPS` of them (Q352): by the workflow's shortest way when the token reads
+   * workflows, else one category step at a time. A transition its screen refuses (Jira's 400: a
+   * field it needs) is routed around. A goal no route reaches is `conflict`, with the issue left
+   * where it was.
    */
   async #walk(issue: JiraIssue, goal: string): Promise<AdapterResult<TicketStatus>> {
     const projectId = issue.fields.project.id;
     const issueTypeId = issue.fields.issuetype?.id;
-    const { graph } = issueTypeId === undefined ? { graph: null } : await this.#graph(projectId, issueTypeId);
-    let goalCategory = graph?.statuses.find((status) => status.id === goal)?.category ?? null;
-    if (graph !== null) {
-      if (!graph.statuses.some((status) => status.id === goal)) {
+    const read = issueTypeId === undefined ? { graph: null } : await this.#graph(projectId, issueTypeId);
+    const refused = new Set<string>();
+    // The workflow less what a screen refused: what the next step is planned on.
+    const graphNow = (): WorkflowGraph | null => (read.graph === null ? null : { statuses: read.graph.statuses, transitions: read.graph.transitions.filter((transition) => !refused.has(transition.id)) });
+    const noRoute = (from: string): AdapterResult<never> =>
+      adapterError("conflict", `moving a ticket failed: no route of at most ${String(MAX_ROUTE_STEPS)} transitions reaches status ${goal} from status ${from}`);
+    let goalCategory = read.graph?.statuses.find((status) => status.id === goal)?.category ?? null;
+    if (read.graph !== null) {
+      if (!read.graph.statuses.some((status) => status.id === goal)) {
         return adapterError("invalid-input", `moving a ticket failed: status ${goal} isn't in the ticket's workflow`);
       }
-      if (findTransitionPath(graph, issue.fields.status.id, goal) === null) {
-        return adapterError("conflict", `moving a ticket failed: no transition reaches status ${goal} from status ${issue.fields.status.id}`);
+      if (findTransitionPath(read.graph, issue.fields.status.id, goal) === null) {
+        return noRoute(issue.fields.status.id);
       }
     } else {
       const statuses = await this.#projectStatuses({ externalId: projectId });
@@ -1319,30 +1356,42 @@ export class JiraAdapter extends TrackerAdapter {
     }
     let current = toStatus(issue.fields.status);
     const visited = new Set<string>([current.id]);
-    for (let step = 0; step < MAX_WALK; step += 1) {
+    let taken = 0;
+    while (taken < MAX_ROUTE_STEPS) {
+      const graph = graphNow();
+      if (graph !== null && findTransitionPath(graph, current.id, goal, MAX_ROUTE_STEPS - taken) === null) {
+        return noRoute(current.id);
+      }
       const listed = await this.#call("Jira's transitions", { method: "GET", path: `/rest/api/3/issue/${issue.id}/transitions` }, transitionsSchema);
       if (!listed.ok) {
         return listed;
       }
       const available: AvailableTransition[] = listed.value.transitions
-        .filter((transition) => transition.isAvailable !== false)
+        .filter((transition) => transition.isAvailable !== false && !refused.has(transition.id))
         .map((transition) => ({ id: transition.id, name: transition.name, to: toStatus(transition.to) }));
       const choice = nextTransition({ available, goal, goalCategory, currentCategory: current.category, visited, graph });
       if (choice === null) {
-        return adapterError("conflict", `moving a ticket failed: no transition reaches status ${goal} from status ${current.id}`);
+        return noRoute(current.id);
       }
-      const done = await this.#write("Jira's transition", { method: "POST", path: `/rest/api/3/issue/${issue.id}/transitions`, json: { transition: { id: choice.id } } });
+      const done = await this.#write("Jira's transition", { method: "POST", path: `/rest/api/3/issue/${issue.id}/transitions`, json: { transition: { id: choice.id } }, writesIssue: issue.id });
       if (!done.ok) {
+        // A screen that needs a field ostra doesn't fill: another transition may still get there.
+        if (done.error.code === "invalid-input" && refused.size < MAX_REFUSED) {
+          this.plumbing.logger.debug("jira.transition.refused", { ticket: issue.id, transition: choice.id });
+          refused.add(choice.id);
+          continue;
+        }
         return done;
       }
       this.plumbing.logger.debug("jira.transition", { ticket: issue.id, transition: choice.id, to: choice.to.id });
+      taken += 1;
       current = { id: choice.to.id, name: choice.to.name, category: choice.to.category };
       visited.add(current.id);
       if (current.id === goal) {
         return ok(current);
       }
     }
-    return adapterError("conflict", `moving a ticket failed: status ${goal} wasn't reached in ${String(MAX_WALK)} transitions`);
+    return noRoute(current.id);
   }
 
   async #search(jql: string, cursor: string | undefined, pageSize: number | undefined, fields: readonly string[]): Promise<AdapterResult<TicketPage>> {
@@ -1392,7 +1441,39 @@ export class JiraAdapter extends TrackerAdapter {
     return ok(undefined);
   }
 
+  /**
+   * Counts a write to an issue against Jira's per-issue limits (20 in 2 s, 100 in 30 s): one past
+   * them waits here, with the time until the window frees, instead of spending a call on a 429.
+   */
+  #countIssueWrite(issueId: string): AdapterResult<void> {
+    const now = this.plumbing.clock.now();
+    const longest = Math.max(...ISSUE_WRITE_LIMITS.map((limit) => limit.windowMs));
+    const recent = (this.#issueWrites.get(issueId) ?? []).filter((at) => at > now - longest);
+    for (const limit of ISSUE_WRITE_LIMITS) {
+      const inWindow = recent.filter((at) => at > now - limit.windowMs);
+      const oldest = inWindow[0];
+      if (inWindow.length >= limit.count && oldest !== undefined) {
+        this.plumbing.logger.debug("jira.write.limited", { ticket: issueId, windowMs: limit.windowMs });
+        return adapterError("rate-limited", "writing to a ticket waits for Jira's per-issue write limit", Math.max(1, oldest + limit.windowMs - now));
+      }
+    }
+    recent.push(now);
+    this.#issueWrites.set(issueId, recent);
+    if (this.#issueWrites.size > 1000) {
+      for (const [id, times] of this.#issueWrites) {
+        if (times.every((at) => at <= now - longest)) this.#issueWrites.delete(id);
+      }
+    }
+    return ok(undefined);
+  }
+
   async #send(operation: string, request: Request, timeoutMs = this.#timeoutMs): Promise<AdapterResult<Response>> {
+    if (request.writesIssue !== undefined) {
+      const counted = this.#countIssueWrite(request.writesIssue);
+      if (!counted.ok) {
+        return counted;
+      }
+    }
     const budget = this.plumbing.rateBudget;
     if (budget !== undefined) {
       const decision = await budget.check(this.#budgetKey);

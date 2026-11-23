@@ -7,7 +7,6 @@ import type { AvailableTransition, WorkflowGraph } from "./transitions.ts";
 // issue's transitions to take next (boards-mixed.md, choice 7).
 
 const graph: WorkflowGraph = {
-  name: "Software workflow",
   statuses: [
     { id: "1", name: "Backlog", category: "open" },
     { id: "2", name: "To Do", category: "open" },
@@ -36,7 +35,7 @@ const status = (id: string) => {
 const available = (...pairs: (readonly [string, string])[]): AvailableTransition[] => pairs.map(([id, to]) => ({ id, name: id, to: status(to) }));
 
 describe("a Jira workflow", () => {
-  it("finds the shortest walk to a status, and none to one nothing reaches", () => {
+  it("finds the shortest walk to a status within three transitions, and none to one nothing reaches", () => {
     expect(findTransitionPath(graph, "2", "6")?.map((transition) => transition.name)).toEqual(["Start progress", "Ready for review", "Done"]);
     expect(findTransitionPath(graph, "6", "3")?.map((transition) => transition.name)).toEqual(["Reopen", "Start progress"]);
     // A global transition is taken from anywhere.
@@ -47,6 +46,9 @@ describe("a Jira workflow", () => {
     expect(findTransitionPath(graph, "5", "4")).toBeNull();
     expect(findTransitionPath(graph, "2", "6")?.some((transition) => transition.to === "7")).toBe(false);
     expect(findTransitionPath(graph, "2", "1")).toBeNull();
+    // Past three transitions it's no route (Q352): Won't Do to Done takes four.
+    expect(findTransitionPath(graph, "7", "6")).toBeNull();
+    expect(findTransitionPath(graph, "7", "6", 4)?.map((transition) => transition.name)).toEqual(["Reopen", "Start progress", "Ready for review", "Done"]);
   });
 
   it("counts each status's steps to a target, leaving out the ones that can't reach it", () => {
@@ -63,7 +65,8 @@ describe("a Jira workflow", () => {
     // No transition reaches In Review from Blocked: a ticket there stays put.
     expect(inReview?.unreachableFrom).toEqual(["5"]);
     expect(inReview?.via.find((step) => step.from === "2")).toMatchObject({ transition: { name: "Start progress" }, steps: 2 });
-    expect(done?.unreachableFrom).toEqual(["5"]);
+    // Won't Do is four transitions from Done: past the cap, it stays put too.
+    expect(done?.unreachableFrom).toEqual(["5", "7"]);
     expect(planMapping(graph, { started: "3", inReview: "4", done: "1" })[2]).toMatchObject({ unknownTarget: false, unreachableFrom: ["2", "3", "4", "5", "6", "7"] });
     expect(planMapping(graph, { started: "3", inReview: "4", done: "99" })[2]?.unknownTarget).toBe(true);
   });

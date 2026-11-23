@@ -1,33 +1,39 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 
-import { hmacSha256Hex } from "@ostra/adapter-sdk";
-import { manualClock } from "@ostra/adapter-sdk/testing";
-import type { ManualClock } from "@ostra/adapter-sdk/testing";
 import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import type { ExternalTicketId, TicketKey } from "@ostra/protocol";
+import { z } from "zod";
 
-import { adfNodeSchema, markdownToAdf } from "../adf.ts";
-import type { AdfDoc, AdfNode } from "../adf.ts";
+import { hmacSha256Hex } from "../../plumbing/signature.ts";
+import { markdownToAdf } from "../jira-fake.ts";
+import type { AdfNode } from "../jira-fake.ts";
+import { manualClock } from "../memory.ts";
+import type { ManualClock } from "../memory.ts";
 import { matchesJql, parseJql } from "./fake-jql.ts";
 import type { JqlSubject } from "./fake-jql.ts";
 
-// A local stand-in for Jira Cloud's REST v3 (spec section 8, ADR 0047), the way the fake Linear
-// stands in for Linear: one in-process HTTP server that answers Jira's own paths and JSON shapes,
-// built from Atlassian's docs (context/research/trackers.md §2). It serves a site and Atlassian's
-// gateway at once: `/rest/api/3/...` is the site (a classic token), `/ex/jira/{cloudId}/rest/api/3/...`
-// the gateway (a scoped token), and `/_edge/tenant_info` names the cloud ID without a credential.
+// The fake Jira (m11 spec section 5.3, ADR 0047): a local stand-in for Jira Cloud's REST v3, the
+// way the fake Linear stands in for Linear, for `adapter-jira`'s tests and core's, the API's and
+// the browser specs' (spec section 9). One in-process HTTP server that answers Jira's own paths
+// and JSON shapes, built from Atlassian's docs (context/research/trackers.md §2). It serves a site
+// and Atlassian's gateway at once: `/rest/api/3/...` is the site (a classic token),
+// `/ex/jira/{cloudId}/rest/api/3/...` the gateway (a scoped token), and `/_edge/tenant_info` names
+// the cloud ID without a credential. The in-memory `JiraFakeAdapter` (`../jira-fake.ts`) stays for
+// the tests where a `TrackerAdapter` is enough.
 //
 // What it has: accounts (a service account and people) with Basic `email:token` sign-in, scoped
 // tokens whose scopes each route checks; projects with issue types, statuses in Jira's three
-// categories and a workflow per issue type whose transitions are the only way to change a status;
-// issues with ADF descriptions and comments, labels, priorities, sub-tasks and epic children,
-// issue links, attachments (multipart uploads, `attachment/content/{id}?redirect=false`), remote
-// links upserted by `globalId`, and issue properties; JQL search with `nextPageToken`; user search
-// by name or address, with addresses each person may hide; project permissions per account;
-// signed admin-webhook deliveries; and 429 with `Retry-After`, as asked or past Jira's per-issue
-// write limit (20 writes per 2 s).
+// categories and a workflow per issue type whose transitions are the only way to change a status,
+// one of them behind a screen that refuses; issues with ADF descriptions and comments, labels,
+// priorities, sub-tasks and epic children, issue links, attachments (multipart uploads,
+// `attachment/content/{id}?redirect=false`), remote links upserted by `globalId`, and issue
+// properties; JQL search with `nextPageToken`; user search by name or address, with addresses
+// each person may hide; project permissions per account; signed admin-webhook deliveries, rightly
+// or wrongly signed; 429 with `Retry-After`, as asked or past Jira's per-issue write limit (20
+// writes per 2 s); and a record of each request: its route, whether it came to the gateway or the
+// site, and a digest of its credential.
 //
 // Where the docs don't say, the fake assumes, and says so:
 // - Each fake site numbers its IDs from its own range, so one site's IDs never name another's
@@ -40,7 +46,14 @@ import type { JqlSubject } from "./fake-jql.ts";
 
 export type FakeJiraCategory = "new" | "indeterminate" | "done";
 export type FakeJiraStatus = { readonly id: string; readonly name: string; readonly category: FakeJiraCategory };
-export type FakeJiraTransition = { readonly id: string; readonly name: string; readonly from: readonly string[] | "any"; readonly to: string };
+export type FakeJiraTransition = {
+  readonly id: string;
+  readonly name: string;
+  readonly from: readonly string[] | "any";
+  readonly to: string;
+  /** A screen whose fields Jira needs before it takes the transition: an API call without them is refused (400). */
+  readonly screenRequires?: readonly string[];
+};
 export type FakeJiraWorkflow = { readonly name: string; readonly statuses: readonly string[]; readonly transitions: readonly FakeJiraTransition[] };
 export type FakeJiraIssueType = { readonly id: string; readonly name: string; readonly subtask: boolean; readonly hierarchyLevel: number };
 export type FakeJiraProject = { readonly id: string; readonly key: string; readonly name: string };
@@ -184,8 +197,8 @@ export type FakeJira = {
   readonly injectFaults: (faults: readonly FakeJiraFault[]) => void;
   /** Headers every answer carries from now on (`X-RateLimit-Remaining` and the rest). */
   readonly setRateHeaders: (headers: Readonly<Record<string, string>>) => void;
-  /** Each API call, as `METHOD /rest/api/3/...` without the gateway prefix. */
-  readonly calls: () => readonly { readonly route: string; readonly query: string; readonly via: "gateway" | "site" }[];
+  /** Each API call, as `METHOD /rest/api/3/...` without the gateway prefix, where it came, and a digest of its token. */
+  readonly calls: () => readonly { readonly route: string; readonly query: string; readonly via: "gateway" | "site"; readonly credential: string | null }[];
   readonly close: () => Promise<void>;
 };
 
@@ -288,6 +301,16 @@ const multipartFile = (body: Buffer, contentType: string): { readonly name: stri
   return null;
 };
 
+const adfNodeSchema: z.ZodType<AdfNode> = z.lazy(() =>
+  z.looseObject({
+    type: z.string(),
+    text: z.string().optional(),
+    attrs: z.record(z.string(), z.unknown()).optional(),
+    marks: z.array(z.looseObject({ type: z.string(), attrs: z.record(z.string(), z.unknown()).optional() })).optional(),
+    content: z.array(adfNodeSchema).optional(),
+  }),
+);
+
 /** Whether a document is ADF Jira would take: a `doc` of version 1 with no empty text. */
 const validDoc = (value: unknown): value is AdfNode => {
   const parsed = adfNodeSchema.safeParse(value);
@@ -346,6 +369,9 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
       { id: "71", name: "Block", from: [progress], to: blocked },
       { id: "81", name: "Unblock", from: [blocked], to: progress },
       { id: "91", name: "Plan", from: [backlog], to: todo },
+      // The one way straight from Backlog to Done, behind a screen that needs a resolution: a call
+      // that doesn't give one is refused, and a move has to go round by review.
+      { id: "101", name: "Close", from: [backlog], to: done, screenRequires: ["resolution"] },
     ],
   };
   const issueTypes: FakeJiraIssueType[] = [
@@ -366,7 +392,7 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
   const links: IssueLink[] = [];
   const faults: FakeJiraFault[] = [];
   let rateHeaders: Readonly<Record<string, string>> = {};
-  const calls: { route: string; query: string; via: "gateway" | "site" }[] = [];
+  const calls: { route: string; query: string; via: "gateway" | "site"; credential: string | null }[] = [];
   const defaultTimeZone = options.timeZone ?? "America/Los_Angeles";
 
   const addProject = (key: string, name: string): FakeJiraProject => {
@@ -890,6 +916,14 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
         sendJson(response, 201, commentJson(comment, viewer));
         return;
       }
+      case "GET issue/:id/comment/:id": {
+        needScope(call, "read:jira-work");
+        const issue = visibleIssue(call, idOrKey ?? "");
+        const comment = issue.comments.find((one) => one.id === subId);
+        if (comment === undefined) throw answer(404, "Can not find a comment for the id");
+        sendJson(response, 200, commentJson(comment, viewer));
+        return;
+      }
       case "PUT issue/:id/comment/:id": {
         needScope(call, "write:jira-work");
         const issue = visibleIssue(call, idOrKey ?? "");
@@ -912,7 +946,7 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
         sendJson(response, 200, {
           expand: "transitions",
           transitions: allowed
-            ? availableTransitions(issue).map((transition) => ({ id: transition.id, name: transition.name, to: statusJson(transition.to), hasScreen: false, isGlobal: transition.from === "any", isInitial: false, isAvailable: true, isConditional: false, isLooped: false }))
+            ? availableTransitions(issue).map((transition) => ({ id: transition.id, name: transition.name, to: statusJson(transition.to), hasScreen: transition.screenRequires !== undefined, isGlobal: transition.from === "any", isInitial: false, isAvailable: true, isConditional: false, isLooped: false }))
             : [],
         });
         return;
@@ -926,6 +960,9 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
         const wanted = prop(transitionRef, "id");
         const transition = availableTransitions(issue).find((one) => one.id === wanted);
         if (transition === undefined) throw answer(400, "Transition id is not valid for the current status");
+        for (const field of transition.screenRequires ?? []) {
+          if (prop(body["fields"], field) === undefined) throw answer(400, `Field '${field}' is required`);
+        }
         countWrite(issue);
         issue.statusId = transition.to;
         touch(issue);
@@ -1081,9 +1118,14 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
       return;
     }
     const authorization = request.headers.authorization ?? "";
-    calls.push({ route: `${request.method ?? "GET"} ${path}`, query: url.search, via: gateway ? "gateway" : "site" });
     const basic = /^Basic ([A-Za-z0-9+/=]+)$/.exec(authorization)?.[1];
     const [email, secret] = basic === undefined ? [] : Buffer.from(basic, "base64").toString("utf8").split(":");
+    calls.push({
+      route: `${request.method ?? "GET"} ${path}`,
+      query: url.search,
+      via: gateway ? "gateway" : "site",
+      credential: secret === undefined ? null : createHash("sha256").update(secret).digest("hex").slice(0, 16),
+    });
     const held = secret === undefined ? undefined : tokens.get(secret);
     const viewer = held === undefined ? undefined : accountOf(held.accountId);
     // A scoped token answers only at the gateway; a classic one only at the site.
@@ -1139,9 +1181,9 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
     }
     if (input.withImage === true) {
       const image = attachTo(issue, { name: "screenshot.png", contentType: "image/png", bytes: PNG_BYTES, byAccountId: person.accountId });
-      const described: AdfDoc = {
+      const described: AdfNode = {
         type: "doc",
-        version: 1,
+        attrs: { version: 1 },
         content: [...(issue.description?.content ?? []), { type: "mediaSingle", attrs: { layout: "center" }, content: [{ type: "media", attrs: { id: image.mediaId, type: "file", collection: "", alt: image.filename } }] }],
       };
       issue.description = described;
