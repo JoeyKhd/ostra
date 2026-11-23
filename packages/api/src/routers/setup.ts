@@ -34,8 +34,8 @@ export const setupStepDocs = {
   admin: "docs/install/first-sign-in/",
   "model-provider": "docs/agents-and-models/model-providers/",
   github: "docs/install/setup/#connect-github",
-  // Linear's page until the docs gain their Trackers page (milestone 11, ticket 17).
-  tracker: "docs/install/linear/",
+  // The Trackers page, which picks Linear or Jira.
+  tracker: "docs/install/trackers/",
   project: "docs/install/setup/#create-a-project",
   runner: "docs/install/setup/#connect-a-runner",
   "first-task": "docs/using-ostra/tasks/",
