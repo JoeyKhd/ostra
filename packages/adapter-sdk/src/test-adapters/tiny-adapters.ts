@@ -151,6 +151,10 @@ export class TinyTracker extends TrackerAdapter {
     ticketFields: { acceptanceCriteria: false },
     // Milestone 9 (F-149): no files: a task starts from the ticket's text, and says so.
     ticketFiles: "none" as const,
+    // Milestone 11 (F-008): no magic word, plain markdown, no query on its events.
+    magicWords: false,
+    richText: "markdown" as const,
+    jqlFilter: false,
   };
   /** Milestone 3: the board's users, by email, for `findUsersByEmail`; milestone 6 names them for `getUser`. */
   readonly users: { readonly email: string; readonly userId: string; readonly name?: string }[] = [];

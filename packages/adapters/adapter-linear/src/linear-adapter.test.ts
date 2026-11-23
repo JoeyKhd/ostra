@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 
 import { sha256Hex } from "@ostra/adapter-sdk";
 import type { AdapterResult, TrackerAdapter } from "@ostra/adapter-sdk";
-import { createFakeLinear, defineTrackerContractSuite, fakeLinearSuiteFixture, memoryAdapterContext, memoryRateBudgetStore } from "@ostra/adapter-sdk/testing";
+import { createFakeLinear, defineTrackerContractSuite, fakeLinearSuiteFixture, memoryAdapterContext, memoryRateBudgetStore, checkTrackerParity, secondSubjectOf } from "@ostra/adapter-sdk/testing";
 import type { FakeLinear } from "@ostra/adapter-sdk/testing";
 import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -27,11 +27,23 @@ const originOf = (fake: FakeLinear): string => new URL(fake.apiUrl).origin;
 const adapterOn = (fake: FakeLinear, token: string, kind: "api-key" | "oauth", context?: ReturnType<typeof memoryAdapterContext>) =>
   new LinearAdapter({ auth: { kind, token }, apiUrl: fake.apiUrl, fileOrigins: [originOf(fake)] }, context);
 
+/**
+ * Milestone 11 (F-152/c3): the organization's second Linear workspace (another fake Linear, as
+ * another client's workspace is another Linear organization), connected by its own app, with its
+ * own token and webhook secret.
+ */
+const secondWorkspace = (fake: FakeLinear, other: LinearAdapter, kind: "api-key" | "oauth") => {
+  const app = fake.createApp({ name: "ostra", redirectUris: ["https://ostra.example.test/oauth/linear/callback"], webhookUrl: null });
+  const adapter = kind === "oauth" ? adapterOn(fake, fake.mintToken("app").accessToken, "oauth") : adapterOn(fake, fake.adminApiKey, "api-key");
+  return secondSubjectOf(adapter, fakeLinearSuiteFixture({ fake, other, ownUserId: null, webhookSecret: app.webhookSecret }));
+};
+
 defineTrackerContractSuite({
   name: "linear, on the fake Linear with the app's token",
   create: async () => {
     const fake = await createFakeLinear();
     const other = await createFakeLinear();
+    const second = await createFakeLinear();
     const app = fake.createApp({ name: "ostra", redirectUris: ["https://ostra.example.test/oauth/linear/callback"], webhookUrl: null });
     // Agent mode's scopes on the install, so the session cases run (ticket 07).
     const token = fake.mintToken("app", LINEAR_AGENT_MODE_SCOPES);
@@ -40,9 +52,12 @@ defineTrackerContractSuite({
     const adapter = adapterOn(fake, token.accessToken, "oauth");
     return {
       adapter,
-      fixture: fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: appUser.id, webhookSecret: app.webhookSecret, milestone6: true }),
+      fixture: {
+        ...fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: appUser.id, webhookSecret: app.webhookSecret, milestone6: true }),
+        second: secondWorkspace(second, adapterOn(other, other.adminApiKey, "api-key"), "oauth"),
+      },
       dispose: async () => {
-        await Promise.all([fake.close(), other.close()]);
+        await Promise.all([fake.close(), other.close(), second.close()]);
       },
     };
   },
@@ -53,11 +68,15 @@ defineTrackerContractSuite({
   create: async () => {
     const fake = await createFakeLinear();
     const other = await createFakeLinear();
+    const second = await createFakeLinear();
     return {
       adapter: adapterOn(fake, fake.adminApiKey, "api-key"),
-      fixture: fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: null, webhookSecret: "lin_wh_dev", milestone6: true }),
+      fixture: {
+        ...fakeLinearSuiteFixture({ fake, other: adapterOn(other, other.adminApiKey, "api-key"), ownUserId: null, webhookSecret: "lin_wh_dev", milestone6: true }),
+        second: secondWorkspace(second, adapterOn(other, other.adminApiKey, "api-key"), "api-key"),
+      },
       dispose: async () => {
-        await Promise.all([fake.close(), other.close()]);
+        await Promise.all([fake.close(), other.close(), second.close()]);
       },
     };
   },
@@ -84,6 +103,10 @@ describe("the Linear adapter", () => {
     expect(await adapterOn(fake, person.accessToken, "oauth").health()).toEqual({ status: "ok" });
     expect(await adapterOn(fake, person.accessToken, "api-key").health()).toMatchObject({ status: "down" });
     expect(await adapterOn(fake, "lin_api_wrong", "api-key").health()).toMatchObject({ status: "down" });
+  });
+
+  it("F-008/c5: declares the magic word, markdown and no JQL filter, and reads no workflow, as the tracker parity table says", async () => {
+    expect(await checkTrackerParity(adapter, board())).toEqual([]);
   });
 
   it("lists statuses in Linear's board order, with Linear's types in the four categories", async () => {
@@ -281,6 +304,10 @@ describe("the Linear adapter", () => {
       ticketFields: { acceptanceCriteria: false },
       // Milestone 9 (F-149): every file the ticket shows on Linear's file host.
       ticketFiles: "all",
+      // Milestone 11 (F-008): the magic word, markdown, no query on its webhooks.
+      magicWords: true,
+      richText: "markdown",
+      jqlFilter: false,
     });
   });
 });

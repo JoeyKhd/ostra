@@ -74,6 +74,20 @@ describe("the docs site's adapter guide", () => {
     expect(compile([without]).join("\n")).toMatch(/ticketFiles/);
   });
 
+  it("F-008/c5: the guide's tracker sample declares milestone 11's words, and the guide names readWorkflow and via", async () => {
+    const markdown = await readFile(guide, "utf8");
+    const tracker = samplesOf(markdown).find((sample) => sample.fileName === "tracker-capabilities.ts");
+    for (const word of ["magicWords: false", 'richText: "markdown"', "jqlFilter: false"]) {
+      expect(tracker?.code).toContain(word);
+    }
+    for (const name of ["`readWorkflow(board)`", "`MoveResult.via`", "`routeTo(workflow, from, to)`", "`reachability(workflow, target)`", "`magicWords`", "`richText`", "`jqlFilter`"]) {
+      expect(markdown).toContain(name);
+    }
+    if (tracker === undefined) return;
+    const without = { ...tracker, code: tracker.code.replace(/^\s*jqlFilter: false,\r?\n/m, "") };
+    expect(compile([without]).join("\n")).toMatch(/jqlFilter/);
+  });
+
   it("F-058/c1: a sample that misuses the SDK fails to compile, so the check is real", () => {
     const broken = samplesOf(
       [

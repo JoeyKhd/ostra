@@ -5,6 +5,7 @@ import type { AdapterContext, Plumbing } from "../common/context.ts";
 import { adapterError } from "../common/result.ts";
 import type { AdapterResult, HealthReport } from "../common/result.ts";
 import type { TicketFilesCapability, TrackerCapabilities } from "./capabilities.ts";
+import type { TrackerWorkflow, TransitionTaken } from "./workflow.ts";
 
 // The tracker kind (ADR 0013, ADR 0025, ADR 0047): Linear first, then Jira, GitHub Issues, GitLab.
 // ostra keeps references and a cached copy of tickets, never the source of truth. Milestone 2 adds
@@ -336,6 +337,11 @@ export type MoveResult = {
   /** `false` when the ticket was already there: nothing was written. */
   readonly moved: boolean;
   readonly status: TicketStatus;
+  /**
+   * Milestone 11 (F-008): the transitions the move performed, in order, for the task's "On Jira"
+   * rows. `[]` when nothing moved, and on a tracker that writes statuses directly (Linear).
+   */
+  readonly via: readonly TransitionTaken[];
 };
 
 /** How a PR's link relates to its ticket: the board's magic word, `Closes` or `Refs` (spec section 11, item 5). */
@@ -547,7 +553,8 @@ export abstract class TrackerAdapter {
   /**
    * Links a PR to a ticket. Linking the same URL again links it once. `options.kind` (milestone 2)
    * is the board's magic word: `closes` for `Closes`, `references` for `Refs`. A tracker that
-   * can't say how a link relates ignores it; without it, the tracker's default.
+   * can't say how a link relates ignores it, as one without `magicWords` does (milestone 11);
+   * without it, the tracker's default.
    */
   abstract linkPullRequest(
     board: BoardRef,
@@ -573,7 +580,9 @@ export abstract class TrackerAdapter {
 
   /**
    * Moves a ticket to the mapping's status for `target`. Linear sets the status; Jira walks its
-   * transitions. Already there: `moved: false`, and nothing is written.
+   * transitions, the shortest route of at most three (`routeTo`), and answers them in `via`.
+   * Already there: `moved: false`, and nothing is written. No route reaches it: `conflict`, and
+   * nothing is written.
    */
   abstract moveTicket(
     board: BoardRef,
@@ -631,6 +640,18 @@ export abstract class TrackerAdapter {
   findUsersByEmail(board: BoardRef, emails: readonly string[]): Promise<AdapterResult<readonly TrackerUser[]>> {
     this.plumbing.logger.debug("findUsersByEmail is not supported", { board: board.externalId, count: emails.length });
     return Promise.resolve(adapterError("unsupported", `${this.name} can't find users by email`));
+  }
+
+  /**
+   * Milestone 11 (F-008, spec section 5.2): the board's workflow, its statuses and the transitions
+   * between them (global ones `from: "any"`), for the mapping's `by …` lines and warnings
+   * (`reachability`). `readable: false`, with the statuses alone, when the credential can't read
+   * the graph. Needs `statusGraph`; without it, and on an adapter that doesn't override it,
+   * `unsupported`.
+   */
+  readWorkflow(board: BoardRef): Promise<AdapterResult<TrackerWorkflow>> {
+    this.plumbing.logger.debug("readWorkflow is not supported", { board: board.externalId });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't read a workflow`));
   }
 
   // ---------- milestone 6 (spec section 5.2): each `unsupported` until an adapter has it ----------

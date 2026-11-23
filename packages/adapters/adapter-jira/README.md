@@ -15,11 +15,11 @@ The Jira Cloud tracker adapter (ADR 0013, ADR 0047, F-008): Jira's REST v3 over 
   - whether it reads workflows.
   The scopes it needs are `JIRA_TOKEN_SCOPES`: `read:jira-work`, `write:jira-work`, `read:jira-user` and `read:workflow:jira`.
 - **Boards and statuses:** a board is a Jira project (`listBoards`, paged). `listStatuses` lists the project's statuses across its issue types, by category. Jira's `new`, `indeterminate` and `done` read as `open`, `started` and `done`, and a done status named like "Won't do" reads as `cancelled`.
-- **Moves walk the workflow.** `moveTicket` never writes a status, and `updateStatus` is `unsupported`. A move takes the issue's available transitions one call at a time, at most three of them (`MAX_ROUTE_STEPS`, Q352). It never passes through a done or cancelled status it wasn't asked for.
+- **Moves walk the workflow.** `moveTicket` never writes a status, and `updateStatus` is `unsupported`. A move takes the issue's available transitions one call at a time, at most three of them (`MAX_ROUTE_STEPS`, Q352). It never passes through a done or cancelled status it wasn't asked for. It answers the transitions it took, in order, in `MoveResult.via`, for the task's "On Jira" rows.
   - With `read:workflow:jira`, the adapter reads the workflow (scheme, then `workflow/search`) and takes the shortest route. A target no route reaches is `conflict`, and the ticket stays where it was.
   - Without that scope, it steps toward the target's category and never away from it. Out of a done status, it reopens first.
   - A transition whose screen needs a field ostra doesn't fill is refused by Jira (400), and the walk routes around it.
-  - `readWorkflow(board)` answers the spec's `TrackerWorkflow` shape: the board's statuses, and its issue types' transitions in one, a global one as `any`. Without the scope it's `readable: false`, with the statuses alone.
+  - `readWorkflow(board)` is the tracker contract's (`TrackerWorkflow`, from `@ostra/adapter-sdk`): the board's statuses, and its issue types' transitions in one, a global one as `any`. Without the scope it's `readable: false`, with the statuses alone.
   - `planMapping(workflow, mapping)` gives the Boards page its `by …` lines and its warnings: per step, the transitions into the target, the route from every status, and the statuses no route leaves.
 - **Reading tickets:** everything is keyed on the issue's numeric ID, since a key changes when the issue moves project.
   - `getTicketContext` reads the description and comments from ADF to markdown, plus labels, priority, the parent, sub-tasks and an epic's children (`parent = …` in JQL), issue links both ways, remote links and attachments.

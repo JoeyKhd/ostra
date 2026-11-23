@@ -95,6 +95,9 @@ export const trackerCapabilities = {
   agentSessionLink: false,
   ticketFields: { acceptanceCriteria: false },
   ticketFiles: "images",
+  magicWords: false,
+  richText: "markdown",
+  jqlFilter: false,
 } as const satisfies TrackerCapabilities;
 ```
 
@@ -114,6 +117,20 @@ An adapter that declares `none` may leave the hooks out. The cases are:
 - `downloadFile` gets a file within `maxBytes`, refuses one over it with `invalid-input` having read no more, and refuses a URL off the file host with no credential sent.
 
 `defineTrackerFilesSuite` runs these cases alone, for an adapter the full suite doesn't run.
+
+## The tracker kind: workflows, and the words a tracker declares
+
+A tracker declares three more things about itself, which the panel reads instead of the tracker's name:
+
+- **`magicWords`:** a PR's body links the ticket with the board's magic word, `Closes` or `Refs`. Linear does; Jira links a PR by the key in its branch and title, so it doesn't, and `linkPullRequest` ignores the link's `kind`.
+- **`richText`:** what the tracker stores a ticket's text as, `markdown` or `adf`. The adapter always takes and gives markdown, and converts.
+- **`jqlFilter`:** the tracker's events can be narrowed by a query on its side, as Jira's admin webhook takes JQL.
+
+A tracker whose statuses form a graph (`statusGraph`) reads it with `readWorkflow(board)`: the board's statuses, and the transitions between them, each from its statuses or from `"any"` for a global one. When the credential can't read the graph, it answers `readable: false` with the statuses alone. A board whose issue types use several workflows reads as their union (`mergeWorkflows`). Without `statusGraph`, the base class answers `unsupported`.
+
+A tracker that moves tickets by transitions (`transitions`) walks the shortest route of at most three, which `routeTo(workflow, from, to)` finds without passing through a done or cancelled status, and answers the transitions it took in `MoveResult.via`. No route reaches the target: `conflict`, and the ticket stays where it is. A tracker that writes the status directly answers `via: []`. `reachability(workflow, target)` says, for each status, how a ticket there reaches a target, or that it can't: the Boards page's lines and warnings.
+
+The suite's workflow cases take `workflow` hooks in their fixture: `setStatus` to put a ticket in a status as a person does, a two-step route (`twoSteps`), a status no route reaches the target from (`noRoute`), a global transition's name, and `withoutWorkflowAccess`, an adapter whose credential can't read the graph. Its `second` subject, a connection on another site or workspace of the same organization (`secondSubjectOf`), proves the two never read each other's tickets, files or deliveries.
 
 ## The agent kind
 

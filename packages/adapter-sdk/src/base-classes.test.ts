@@ -114,6 +114,9 @@ describe("a missing operation", () => {
         agentSessionLink: false,
         ticketFields: { acceptanceCriteria: false },
         ticketFiles: "none" as const,
+        magicWords: false,
+        richText: "markdown" as const,
+        jqlFilter: false,
       };
       health(): Promise<HealthReport> {
         return ok();

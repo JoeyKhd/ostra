@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { TinyTracker } from "../test-adapters/tiny-adapters.ts";
 import { FakeAgentAdapter } from "./fake-acp-agent/fake-agent-adapter.ts";
+import { createJiraSite, JiraFakeAdapter } from "./jira-fake.ts";
 import { checkParity, parityFeatures, parityTable, pendingParity, suiteCases } from "./parity.ts";
 import type { ParitySubject } from "./parity.ts";
+import { checkTrackerParity, trackerParityRows, trackerParityTable } from "./tracker-parity.ts";
 
 // Adapter parity for the scripted fakes (milestone 7, ticket 03; spec section 6): each fake the
 // agent suite runs has an entry for every row, and each entry names cases that exist and run the
@@ -115,5 +118,36 @@ describe("adapter parity, the scripted fakes", () => {
   it("lists every row of spec section 6 once", () => {
     expect(new Set(parityFeatures).size).toBe(parityFeatures.length);
     expect(parityFeatures).toHaveLength(33);
+  });
+});
+
+// Milestone 11 (spec section 6): the tracker rows, for the in-memory Jira fake and the tiny tracker
+// here; Linear's and Jira's entries are checked in their own packages' tests.
+describe("adapter parity, the tracker fakes", () => {
+  const site = createJiraSite();
+  const board = { externalId: site.projects[0]?.id ?? "" };
+
+  it("F-008/c5: the Jira fake and the tiny tracker declare magicWords, richText and jqlFilter, and answer readWorkflow, as their entries say", async () => {
+    expect(trackerParityRows).toEqual(["F-008 The magic word", "F-008 Rich text", "F-008 The JQL filter", "F-008 The workflow read"]);
+    expect(Object.keys(trackerParityTable).sort()).toEqual(["jira", "jira-fake", "linear", "tiny-tracker"]);
+    expect(await checkTrackerParity(new JiraFakeAdapter({ site }), board)).toEqual([]);
+    expect(await checkTrackerParity(new TinyTracker(), { externalId: "tiny-board" })).toEqual([]);
+    // The Jira fake reads its workflow; without workflow access, it still answers, not readable.
+    expect(await new JiraFakeAdapter({ site, workflowAccess: false }).readWorkflow(board)).toMatchObject({ ok: true, value: { readable: false, transitions: [] } });
+  });
+
+  it("F-008/c5: the check fails when a declared word or the workflow read differs from the table, or an adapter has no entry", async () => {
+    const fake = new JiraFakeAdapter({ site });
+    const jiraFake = trackerParityTable["jira-fake"];
+    if (jiraFake === undefined) throw new Error("the Jira fake has an entry");
+    expect(await checkTrackerParity(fake, board, { "jira-fake": { ...jiraFake, magicWords: true, readWorkflow: "unsupported" } })).toEqual([
+      "jira-fake: F-008 The magic word: declares false, the table says true",
+      "jira-fake: F-008 The workflow read: answers reads, the table says unsupported",
+    ]);
+    expect(await checkTrackerParity(fake, board, { "jira-fake": { ...jiraFake, richText: "markdown", jqlFilter: false } })).toEqual([
+      "jira-fake: F-008 Rich text: declares adf, the table says markdown",
+      "jira-fake: F-008 The JQL filter: declares true, the table says false",
+    ]);
+    expect(await checkTrackerParity(fake, board, {})).toEqual(["jira-fake: no entry in the tracker parity table"]);
   });
 });

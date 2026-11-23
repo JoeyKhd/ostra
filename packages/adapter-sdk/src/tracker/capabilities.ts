@@ -7,6 +7,14 @@ export type TicketFilesCapability = "all" | "images" | "none";
 
 export const ticketFilesCapabilities: readonly TicketFilesCapability[] = ["all", "images", "none"];
 
+/**
+ * Milestone 11 (F-008): what the tracker stores a ticket's text as. The adapter always takes and
+ * gives markdown; this is the panel's `Rich text` row (`Markdown`, `ADF, converted`).
+ */
+export type TrackerRichText = "markdown" | "adf";
+
+export const trackerRichTexts: readonly TrackerRichText[] = ["markdown", "adf"];
+
 /** What a tracker adapter can do (ADR 0025). Optional abilities are declared, never assumed. */
 export type TrackerCapabilities = {
   /** The tracker shows an agent's session natively (Linear's agent sessions, milestone 6). */
@@ -46,4 +54,18 @@ export type TrackerCapabilities = {
    * its text names (`filesInText`), each fetched with `downloadFile`.
    */
   readonly ticketFiles: TicketFilesCapability;
+  /**
+   * Milestone 11 (F-008, spec section 5.2): a PR's body links the ticket with the board's magic
+   * word (`Closes`, `Refs`). Linear yes; Jira no, as its GitHub integration links by the key in the
+   * branch and the title, which ostra always writes. Without it the panel draws no magic-word row,
+   * and `linkPullRequest`'s `kind` is ignored.
+   */
+  readonly magicWords: boolean;
+  /** Milestone 11 (F-008): what the tracker stores a ticket's text as; the adapter converts. */
+  readonly richText: TrackerRichText;
+  /**
+   * Milestone 11 (F-008): the tracker's events can be narrowed by a query on its side (Jira's admin
+   * webhook JQL), shown as a row of the connect steps. Linear no.
+   */
+  readonly jqlFilter: boolean;
 };

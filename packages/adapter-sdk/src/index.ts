@@ -14,6 +14,7 @@ export * from "./plumbing/web-socket-duplex.ts";
 
 export * from "./tracker/capabilities.ts";
 export * from "./tracker/base.ts";
+export * from "./tracker/workflow.ts";
 export * from "./code-host/capabilities.ts";
 export * from "./code-host/base.ts";
 export * from "./code-host/tree.ts";

@@ -21,6 +21,7 @@ export * from "./notification-suite.ts";
 export * from "./fake-email.ts";
 export * from "./self-signed-cert.ts";
 export * from "./tracker-suite.ts";
+export * from "./tracker-workflow-cases.ts";
 export * from "./blob-store-suite.ts";
 export * from "./jira-fake.ts";
 export * from "./fake-linear/fake-linear.ts";
@@ -41,6 +42,7 @@ export * from "./egress-probes.ts";
 export * from "./run-agent-suite.ts";
 export * from "./agent-parity-cases.ts";
 export * from "./parity.ts";
+export * from "./tracker-parity.ts";
 // Milestone 9 (ticket 02): images in a prompt, and a message's files on disk.
 export * from "./agent-files-cases.ts";
 // Milestone 10 (ticket 07, F-151): an enum question answered in a member's own words.

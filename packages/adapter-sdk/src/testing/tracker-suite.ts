@@ -8,10 +8,12 @@ import { describe, expect, it } from "vitest";
 import type { AdapterResult } from "../common/result.ts";
 import { agentActivityKinds, ticketStatusCategories } from "../tracker/base.ts";
 import type { AgentActivityKind, BoardRef, OwnWrites, StatusMapping, Ticket, TicketFileWhere, TrackerAdapter } from "../tracker/base.ts";
-import { ticketFilesCapabilities } from "../tracker/capabilities.ts";
+import { ticketFilesCapabilities, trackerRichTexts } from "../tracker/capabilities.ts";
 import type { TicketFilesCapability } from "../tracker/capabilities.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
+import { defineTrackerTwoSitesCases, defineTrackerWorkflowCases } from "./tracker-workflow-cases.ts";
+import type { TrackerSecondSubject, TrackerWorkflowHooks } from "./tracker-workflow-cases.ts";
 
 // The tracker contract suite (ADR 0025, spec section 5.2): every tracker adapter runs it, against
 // its fake (the Jira fake here; Linear's adapter on the fake Linear server, ticket 07) and, when
@@ -84,6 +86,16 @@ export type TrackerSuiteFixture = {
    * `ticketFiles: "none"` may leave it out.
    */
   readonly files?: TrackerFilesHooks;
+  /**
+   * Milestone 11 (F-008/c5): the workflow's hooks, for the workflow read and the moves along it.
+   * Absent: only an adapter that declares neither `statusGraph` nor `transitions` may leave it out.
+   */
+  readonly workflow?: TrackerWorkflowHooks;
+  /**
+   * Milestone 11 (F-152/c3): a second connection of the adapter in the same organization, on
+   * another site or workspace. Absent: the two-site case is skipped.
+   */
+  readonly second?: TrackerSecondSubject;
 };
 
 /**
@@ -216,6 +228,9 @@ const trackerCapabilityTypes = {
   agentSessionLink: "boolean",
   ticketFields: "object",
   ticketFiles: "string",
+  magicWords: "boolean",
+  richText: "string",
+  jqlFilter: "boolean",
 } as const;
 
 /** The tracker's first cases only: for an adapter whose milestone 2 operations aren't built yet. */
@@ -699,6 +714,15 @@ export const defineTrackerContractSuite = (options: ContractSuiteOptions<Tracker
       };
     });
     defineCommonCases(subject, "tracker", trackerCapabilityTypes);
+    defineTrackerWorkflowCases(subject);
+    defineTrackerTwoSitesCases(subject);
+
+    it("declares milestone 11's words: magicWords, richText and jqlFilter", () => {
+      const { capabilities } = subject().adapter;
+      expect(trackerRichTexts).toContain(capabilities.richText);
+      expect(typeof capabilities.magicWords).toBe("boolean");
+      expect(typeof capabilities.jqlFilter).toBe("boolean");
+    });
 
     const otherSeesNothing = async (ticket: SeededTicket): Promise<void> => {
       const { fixture } = subject();
@@ -813,8 +837,15 @@ export const defineTrackerContractSuite = (options: ContractSuiteOptions<Tracker
       ] as const) {
         const moved = must(await adapter.moveTicket(fixture.board, ref, target, fixture.mapping), `moveTicket ${target}`);
         expect(moved).toMatchObject({ moved: true, status: { id: statusId } });
+        // Milestone 11 (F-008): a transitions tracker names what it took; one that writes the status, nothing.
+        if (adapter.capabilities.transitions) {
+          expect(moved.via.length).toBeGreaterThan(0);
+        } else {
+          expect(moved.via).toEqual([]);
+        }
         const again = must(await adapter.moveTicket(fixture.board, ref, target, fixture.mapping), `moveTicket ${target} again`);
         expect(again.moved).toBe(false);
+        expect(again.via).toEqual([]);
         expect(must(await adapter.getTicket(fixture.board, ref), "getTicket").status.id).toBe(statusId);
       }
       expect((await fixture.other.moveTicket(fixture.board, ref, "started", fixture.mapping)).ok).toBe(false);

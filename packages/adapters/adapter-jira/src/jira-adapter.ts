@@ -10,6 +10,7 @@ import {
   sha256Hex,
   ticketFileList,
   TrackerAdapter,
+  transitionsTaken,
 } from "@ostra/adapter-sdk";
 import type {
   AdapterContext,
@@ -51,6 +52,8 @@ import type {
   TrackerUser,
   TrackerWebhookHint,
   TrackerWebhookRequest,
+  TrackerWorkflow,
+  TransitionTaken,
   WebhookVerification,
 } from "@ostra/adapter-sdk";
 import { externalTicketIdSchema, ticketKeySchema } from "@ostra/protocol";
@@ -161,16 +164,12 @@ export type JiraTokenCheck = {
 };
 
 /**
- * A board's workflow (`readWorkflow`), for the Boards page's mapping: the shape of the spec's
- * `TrackerWorkflow` (section 5.2), which ticket 02 adds to the shared interface. Its issue types'
- * workflows in one: each transition once per `(from, to, name)`.
+ * A board's workflow (`readWorkflow`), for the Boards page's mapping: the tracker contract's
+ * `TrackerWorkflow` (spec section 5.2, ticket 02). Its issue types' workflows in one: each
+ * transition once per `(from, to, name)`. `readable: false` when the token can't read workflows:
+ * the statuses alone, and each move finds its transitions per ticket.
  */
-export type JiraBoardWorkflow = {
-  /** `false`: the token can't read workflows. The statuses alone, and each move finds its transitions per ticket. */
-  readonly readable: boolean;
-  readonly statuses: readonly TrackerStatus[];
-  readonly transitions: readonly WorkflowTransition[];
-};
+export type JiraBoardWorkflow = TrackerWorkflow;
 
 const DEFAULT_GATEWAY = "https://api.atlassian.com";
 const DEFAULT_PAGE = 50;
@@ -221,6 +220,12 @@ export const JIRA_CAPABILITIES: TrackerCapabilities = {
   ticketFields: { acceptanceCriteria: false },
   // Milestone 9 (F-149): every attachment, inline in ADF or on the issue; remote links stay links.
   ticketFiles: "all",
+  // Milestone 11 (F-008, ticket 02): Jira's GitHub integration links a PR by the key in its branch
+  // and title, which ostra always writes, not by a magic word; Jira stores ADF, converted both ways
+  // here; the admin webhook takes a JQL filter.
+  magicWords: false,
+  richText: "adf",
+  jqlFilter: true,
 };
 
 /** The bytes copied onto an ArrayBuffer of their own, which every `BodyInit` typing accepts. */
@@ -548,7 +553,7 @@ export class JiraAdapter extends TrackerAdapter {
    * statuses, or any), for the mapping's `by …` lines and warnings (`planMapping`). Without
    * `read:workflow:jira`, `readable: false` and the statuses alone.
    */
-  async readWorkflow(board: BoardRef): Promise<AdapterResult<JiraBoardWorkflow>> {
+  override async readWorkflow(board: BoardRef): Promise<AdapterResult<JiraBoardWorkflow>> {
     const project = await this.#project(board);
     if (!project.ok) {
       return project;
@@ -739,10 +744,11 @@ export class JiraAdapter extends TrackerAdapter {
     const goal = mappedStatusId(mapping, target);
     if (found.value.fields.status.id === goal) {
       // Already there: nothing is written, so a retried step changes no history.
-      return ok({ moved: false, status: toStatus(found.value.fields.status) });
+      return ok({ moved: false, status: toStatus(found.value.fields.status), via: [] });
     }
+    // Milestone 11 (ticket 02): the transitions it took, in order, are its `via`.
     const walked = await this.#walk(found.value, goal);
-    return walked.ok ? ok({ moved: true, status: walked.value }) : walked;
+    return walked.ok ? ok({ moved: true, status: walked.value.status, via: walked.value.via }) : walked;
   }
 
   async comment(board: BoardRef, key: TicketKey, markdown: string): Promise<AdapterResult<{ readonly commentId: string }>> {
@@ -1324,9 +1330,9 @@ export class JiraAdapter extends TrackerAdapter {
    * `MAX_ROUTE_STEPS` of them (Q352): by the workflow's shortest way when the token reads
    * workflows, else one category step at a time. A transition its screen refuses (Jira's 400: a
    * field it needs) is routed around. A goal no route reaches is `conflict`, with the issue left
-   * where it was.
+   * where it was. The status reached, and the transitions taken (a refused one isn't).
    */
-  async #walk(issue: JiraIssue, goal: string): Promise<AdapterResult<TicketStatus>> {
+  async #walk(issue: JiraIssue, goal: string): Promise<AdapterResult<{ readonly status: TicketStatus; readonly via: readonly TransitionTaken[] }>> {
     const projectId = issue.fields.project.id;
     const issueTypeId = issue.fields.issuetype?.id;
     const read = issueTypeId === undefined ? { graph: null } : await this.#graph(projectId, issueTypeId);
@@ -1356,6 +1362,7 @@ export class JiraAdapter extends TrackerAdapter {
     }
     let current = toStatus(issue.fields.status);
     const visited = new Set<string>([current.id]);
+    const steps: AvailableTransition[] = [];
     let taken = 0;
     while (taken < MAX_ROUTE_STEPS) {
       const graph = graphNow();
@@ -1385,10 +1392,11 @@ export class JiraAdapter extends TrackerAdapter {
       }
       this.plumbing.logger.debug("jira.transition", { ticket: issue.id, transition: choice.id, to: choice.to.id });
       taken += 1;
+      steps.push(choice);
       current = { id: choice.to.id, name: choice.to.name, category: choice.to.category };
       visited.add(current.id);
       if (current.id === goal) {
-        return ok(current);
+        return ok({ status: current, via: transitionsTaken(steps) });
       }
     }
     return noRoute(current.id);

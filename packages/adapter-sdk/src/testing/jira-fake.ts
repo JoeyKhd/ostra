@@ -42,8 +42,11 @@ import type {
   TrackerUser,
 } from "../tracker/base.ts";
 import type { TrackerCapabilities } from "../tracker/capabilities.ts";
+import { routeTo, transitionsTaken } from "../tracker/workflow.ts";
+import type { TrackerWorkflow, WorkflowTransition } from "../tracker/workflow.ts";
 import { manualClock } from "./memory.ts";
 import type { TrackerFilesHooks, TrackerSuiteFixture } from "./tracker-suite.ts";
+import { secondSubjectOf } from "./tracker-workflow-cases.ts";
 import type { ManualClock } from "./memory.ts";
 
 // The Jira fake (ADR 0047, Q104): a test-only `TrackerAdapter` over an in-memory Jira site. It
@@ -290,6 +293,8 @@ export type JiraSite = {
   /** Moves an issue to another project: its key changes, its ID doesn't. */
   readonly moveIssue: (id: ExternalTicketId, projectId: string) => TicketKey;
   readonly statusOf: (id: ExternalTicketId) => string;
+  /** Milestone 11: a person moves an issue to a status in Jira's own UI, wherever it is. */
+  readonly setStatus: (id: ExternalTicketId, statusId: string) => void;
   /** A signed delivery about an issue, as Jira would send it. */
   readonly signedDelivery: (input: {
     readonly externalId: ExternalTicketId;
@@ -457,6 +462,11 @@ export const createJiraSite = (options: { readonly clock?: ManualClock; readonly
       return issue.key;
     },
     statusOf: (id) => issueOf(id).statusId,
+    setStatus: (id, statusId) => {
+      const issue = issueOf(id);
+      issue.statusId = statusId;
+      issue.updated = clock.now();
+    },
     signedDelivery: (input) => {
       const issue = issueOf(input.externalId);
       const body = {
@@ -564,6 +574,11 @@ export type JiraFakeAdapterOptions = {
   readonly site: JiraSite;
   /** The account the adapter's credential belongs to. Default: the site's app account. */
   readonly accountId?: string;
+  /**
+   * Milestone 11: whether the credential reads the workflow graph (Jira's `read:workflow:jira`).
+   * Default yes; without it `readWorkflow` answers the statuses alone.
+   */
+  readonly workflowAccess?: boolean;
 };
 
 /** A `TrackerAdapter` over an in-memory Jira site. Test-only. */
@@ -586,15 +601,22 @@ export class JiraFakeAdapter extends TrackerAdapter {
     ticketFields: { acceptanceCriteria: true },
     // Milestone 9 (F-149): every file, inline in ADF or attached; web links stay links.
     ticketFiles: "all",
+    // Milestone 11 (F-008): Jira links a PR by the key in its branch and title, not a magic word;
+    // it stores ADF, which the fake converts; its admin webhook takes a JQL filter.
+    magicWords: false,
+    richText: "adf",
+    jqlFilter: true,
   };
 
   readonly #site: JiraSite;
   readonly #accountId: string;
+  readonly #workflowAccess: boolean;
 
   constructor(options: JiraFakeAdapterOptions, context?: AdapterContext) {
     super(context);
     this.#site = options.site;
     this.#accountId = options.accountId ?? options.site.appAccountId;
+    this.#workflowAccess = options.workflowAccess ?? true;
   }
 
   health(): Promise<HealthReport> {
@@ -665,18 +687,18 @@ export class JiraFakeAdapter extends TrackerAdapter {
   listStatuses(board: BoardRef): Promise<AdapterResult<readonly TrackerStatus[]>> {
     return this.#read(() => {
       const project = this.#project(board);
+      return project.ok ? ok(this.#statuses()) : project;
+    });
+  }
+
+  /** Milestone 11 (F-008): the site's one workflow; the statuses alone without workflow access. */
+  override readWorkflow(board: BoardRef): Promise<AdapterResult<TrackerWorkflow>> {
+    return this.#read(() => {
+      const project = this.#project(board);
       if (!project.ok) {
         return project;
       }
-      return ok(
-        this.#site.statuses.map((status, position) => ({
-          id: status.id,
-          name: status.name,
-          category: categoryOf(status),
-          vendorType: status.category,
-          position,
-        })),
-      );
+      return ok(this.#workflowAccess ? this.#workflow() : { readable: false, statuses: this.#statuses(), transitions: [] });
     });
   }
 
@@ -755,10 +777,10 @@ export class JiraFakeAdapter extends TrackerAdapter {
     return this.#write<MoveResult>(ref, board, (issue) => {
       const goal = mappedStatusId(mapping, target);
       if (issue.statusId === goal) {
-        return ok({ moved: false, status: this.#status(issue) });
+        return ok({ moved: false, status: this.#status(issue), via: [] });
       }
       const walked = this.#walkTo(issue, goal);
-      return walked.ok ? ok({ moved: true, status: this.#status(issue) }) : walked;
+      return walked.ok ? ok({ moved: true, status: this.#status(issue), via: transitionsTaken(walked.value) }) : walked;
     });
   }
 
@@ -1071,29 +1093,38 @@ export class JiraFakeAdapter extends TrackerAdapter {
     return id;
   }
 
-  /** Walks the shortest path of transitions to `goal`, as Jira's API makes a client do. */
-  #walkTo(issue: JiraIssue, goal: string): AdapterResult<void> {
+  #statuses(): readonly TrackerStatus[] {
+    return this.#site.statuses.map((status, position) => ({ id: status.id, name: status.name, category: categoryOf(status), vendorType: status.category, position }));
+  }
+
+  /** The site's workflow, a global transition (no `from`) taken from any status. */
+  #workflow(): TrackerWorkflow {
+    const transitions: WorkflowTransition[] = this.#site.transitions.map((transition) => ({
+      id: transition.id,
+      name: transition.name,
+      from: transition.from.length === 0 ? "any" : transition.from,
+      to: transition.to,
+    }));
+    return { readable: true, statuses: this.#statuses(), transitions };
+  }
+
+  /**
+   * Walks the shortest route of transitions to `goal` (`routeTo`, at most three), one transition at
+   * a time, as Jira's API makes a client do: a status is never written. No route: `conflict`, and
+   * the issue stays where it was. The route's transitions, in order.
+   */
+  #walkTo(issue: JiraIssue, goal: string): AdapterResult<readonly WorkflowTransition[]> {
     if (!this.#site.statuses.some((status) => status.id === goal)) {
       return adapterError("invalid-input", "the mapping names a status this site doesn't have");
     }
-    const queue = [issue.statusId];
-    const seen = new Set(queue);
-    while (queue.length > 0) {
-      const at = queue.shift();
-      if (at === undefined || at === goal) break;
-      for (const transition of this.#site.transitions) {
-        const takeable = transition.from.length === 0 || transition.from.includes(at);
-        if (takeable && !seen.has(transition.to)) {
-          seen.add(transition.to);
-          queue.push(transition.to);
-        }
-      }
+    const route = routeTo(this.#workflow(), issue.statusId, goal);
+    if (route === null) {
+      return adapterError("conflict", "no route of transitions reaches the mapped status");
     }
-    if (!seen.has(goal)) {
-      return adapterError("conflict", "no transition path reaches the mapped status");
+    for (const transition of route) {
+      issue.statusId = transition.to;
     }
-    issue.statusId = goal;
-    return ok(undefined);
+    return ok(route);
   }
 }
 
@@ -1167,8 +1198,50 @@ export const createJiraFakeSuiteSubject = (
         return Promise.resolve();
       },
       files: jiraFilesHooks(site, board),
+      // Milestone 11 (F-008/c5): In Review is two transitions from To Do (Start, Review); Done is
+      // four from Won't Do (Reopen, Start, Review, Done), past the three a move may take.
+      workflow: {
+        setStatus: (externalId, statusId) => {
+          site.setStatus(externalId, statusId);
+          return Promise.resolve();
+        },
+        twoSteps: { from: "10000", target: "in-review" },
+        noRoute: { from: "10004", target: "done" },
+        globalTransition: "Won't do",
+        withoutWorkflowAccess: () => new JiraFakeAdapter({ site, workflowAccess: false }),
+      },
+      // Milestone 11 (F-152/c3): the organization's second Jira site, with its own secret.
+      second: jiraFakeSecondSubject(),
     },
   };
+};
+
+/** Milestone 11 (F-152/c3): a second site's connection in the same organization, for the two-site case. */
+const jiraFakeSecondSubject = () => {
+  const site = createJiraSite({ projectKey: "JIRA" });
+  const board = { externalId: site.projects[0]?.id ?? "" };
+  const adapter = new JiraFakeAdapter({ site });
+  return secondSubjectOf(adapter, {
+    board,
+    boardKey: "JIRA",
+    otherBoard: board,
+    mapping: { started: "10001", inReview: "10002", done: "10003" },
+    other: adapter,
+    webhookSecret: site.webhookSecret,
+    ownUserId: site.appAccountId,
+    integrationInstalled: false,
+    now: () => site.clock.now(),
+    advance: (ms) => {
+      site.clock.advance(ms);
+      return Promise.resolve();
+    },
+    seedTicket: (input) => Promise.resolve(site.createIssue(board.externalId, { summary: input.title })),
+    editTicket: () => Promise.resolve(),
+    moveToOtherBoard: () => Promise.reject(new Error("the second site has one project")),
+    signedDelivery: (input) => Promise.resolve(site.signedDelivery({ externalId: input.ticket.externalId, byAccountId: site.personAccountId, sentAt: input.sentAt })),
+    rateLimitNext: () => Promise.resolve(),
+    files: jiraFilesHooks(site, board),
+  });
 };
 
 // ---------- milestone 9: a ticket's files, as people put them on a Jira site (F-149) ----------

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { AdapterResult } from "@ostra/adapter-sdk";
-import { createFakeJira, defineTrackerContractSuite, fakeJiraSuiteFixture, memoryAdapterContext } from "@ostra/adapter-sdk/testing";
+import { checkTrackerParity, createFakeJira, defineTrackerContractSuite, fakeJiraSuiteFixture, memoryAdapterContext, secondSubjectOf } from "@ostra/adapter-sdk/testing";
 import type { FakeJira } from "@ostra/adapter-sdk/testing";
 import { ticketKeySchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -41,11 +41,38 @@ defineTrackerContractSuite({
   create: async () => {
     const fake = await createFakeJira();
     const other = await createFakeJira();
+    // Milestone 11 (F-152/c3): the organization's second Jira site, with its own token and secret.
+    const second = await createFakeJira();
+    const status = (name: string): string => {
+      const found = fake.statuses.find((one) => one.name === name);
+      if (found === undefined) throw new Error(`no status ${name}`);
+      return found.id;
+    };
+    // A token without `read:workflow:jira`: the statuses read, the graph doesn't.
+    const narrow = fake.mintToken(fake.serviceAccount.accountId, ["read:jira-work", "write:jira-work", "read:jira-user"]);
     return {
       adapter: adapterOn(fake, "gateway"),
-      fixture: fakeJiraSuiteFixture({ fake, other: adapterOn(other, "gateway"), mode: "gateway", webhookMaxAgeMs: JIRA_WEBHOOK_MAX_AGE_MS }),
+      fixture: {
+        ...fakeJiraSuiteFixture({ fake, other: adapterOn(other, "gateway"), mode: "gateway", webhookMaxAgeMs: JIRA_WEBHOOK_MAX_AGE_MS }),
+        // Milestone 11 (F-008/c5): In Review is two transitions from To Do (Start progress, Ready
+        // for review); Done is four from Won't Do (Reopen, Start progress, Ready for review, Done).
+        workflow: {
+          setStatus: (externalId, statusId) => {
+            fake.setStatus(externalId, statusId);
+            return Promise.resolve();
+          },
+          twoSteps: { from: status("To Do"), target: "in-review" },
+          noRoute: { from: status("Won't Do"), target: "done" },
+          globalTransition: "Won't do",
+          withoutWorkflowAccess: () => adapterOn(fake, "gateway", { token: narrow }),
+        },
+        second: secondSubjectOf(
+          adapterOn(second, "gateway"),
+          fakeJiraSuiteFixture({ fake: second, other: adapterOn(other, "gateway"), mode: "gateway", webhookMaxAgeMs: JIRA_WEBHOOK_MAX_AGE_MS }),
+        ),
+      },
       dispose: async () => {
-        await Promise.all([fake.close(), other.close()]);
+        await Promise.all([fake.close(), other.close(), second.close()]);
       },
     };
   },
@@ -118,6 +145,10 @@ describe("the Jira adapter", () => {
     expect(must(await adapterOn(fake, "gateway", { token: personToken, email: fake.person.email }).checkToken(), "a person's checkToken").account).toMatchObject({ serviceAccount: false, accountType: "atlassian" });
   });
 
+  it("F-008/c5: declares no magic word, ADF and the JQL filter, and reads its workflow, as the tracker parity table says", async () => {
+    expect(await checkTrackerParity(adapter, board())).toEqual([]);
+  });
+
   it("walks a ticket through its workflow's transitions, never writing a status, never through Won't Do, and round a screen that refuses", async () => {
     const mapping = { started: status("In Progress"), inReview: status("In Review"), done: status("Done") };
     const created = fake.createIssue({ summary: "Walk me" });
@@ -126,7 +157,16 @@ describe("the Jira adapter", () => {
     // The one straight way from Backlog to Done, Close, has a screen that needs a resolution:
     // Jira refuses it, and the move goes round by review.
     const moved = must(await adapter.moveTicket(board(), { externalId: created.id }, "done", mapping), "moveTicket");
-    expect(moved).toEqual({ moved: true, status: { id: status("Done"), name: "Done", category: "done" } });
+    // Milestone 11 (F-008/c5): the transitions it took, in order, are its `via`; the refused Close isn't one.
+    expect(moved).toEqual({
+      moved: true,
+      status: { id: status("Done"), name: "Done", category: "done" },
+      via: [
+        { id: "11", name: "Start progress" },
+        { id: "21", name: "Ready for review" },
+        { id: "41", name: "Done" },
+      ],
+    });
     const posts = fake.calls().slice(before).filter((call) => call.route.endsWith("/transitions") && call.route.startsWith("POST"));
     expect(posts).toHaveLength(4);
     expect(fake.calls().slice(before).some((call) => call.route.startsWith("PUT /rest/api/3/issue/"))).toBe(false);

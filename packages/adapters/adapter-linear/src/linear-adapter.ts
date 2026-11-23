@@ -277,6 +277,11 @@ export const LINEAR_CAPABILITIES: TrackerCapabilities = {
   // Milestone 9 (F-149): every file a ticket shows on Linear's file host, inline or attached; a
   // link attachment (a pull request, Figma) stays a link.
   ticketFiles: "all",
+  // Milestone 11 (F-008): a PR's body links the ticket with the board's magic word (`Closes`,
+  // `Refs`); Linear stores markdown; its webhooks can't be narrowed by a query.
+  magicWords: true,
+  richText: "markdown",
+  jqlFilter: false,
 };
 
 export class LinearAdapter extends TrackerAdapter {
@@ -540,10 +545,11 @@ export class LinearAdapter extends TrackerAdapter {
     const statusId = mappedStatusId(mapping, target);
     if (issue.value.state.id === statusId) {
       // Already there: nothing is written, so a retried step changes no history.
-      return ok({ moved: false, status: toStatus(issue.value.state) });
+      return ok({ moved: false, status: toStatus(issue.value.state), via: [] });
     }
+    // Linear writes the status directly: no transition is taken (milestone 11's `via`).
     const updated = await this.#setState(issue.value.id, statusId);
-    return updated.ok ? ok({ moved: true, status: updated.value }) : updated;
+    return updated.ok ? ok({ moved: true, status: updated.value, via: [] }) : updated;
   }
 
   async comment(board: BoardRef, key: TicketKey, markdown: string): Promise<AdapterResult<{ readonly commentId: string }>> {
