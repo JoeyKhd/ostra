@@ -150,6 +150,8 @@ const stackSchema = z.object({
   githubB: z.object({ login: z.string(), repo: z.string(), appId: z.string(), privateKey: z.string(), slug: z.string() }),
   /** Milestone 6 (ticket 34): the fake Linear, its admin's API key and its team. */
   linear: z.object({ apiUrl: z.string(), apiKey: z.string(), teamId: z.string(), teamKey: z.string() }),
+  /** Milestone 11 (F-152, F-008): the fake Jira's site, its service account's token and its PROJ. */
+  jira: z.object({ gatewayUrl: z.string(), siteUrl: z.string(), siteHost: z.string(), cloudId: z.string(), token: z.string(), serviceAccountId: z.string(), serviceAccountEmail: z.string(), projectId: z.string(), projectKey: z.string(), projectName: z.string() }),
   /** Milestone 3 (ticket 45): the fake Resend API and the key it takes, which the email spec types into the panel. */
   resend: z.object({ apiUrl: z.string(), apiKey: z.string() }),
   /** The server's data folder, holding its secrets key; `null` for an outside stack. */

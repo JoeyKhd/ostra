@@ -1,6 +1,6 @@
 # 15: Web: a project's Boards from any tracker
 
-Status: ready-for-agent
+Status: done
 Builder: web
 Blocked by: 10, 11
 Features: F-152, F-008, F-007, F-097
@@ -24,15 +24,18 @@ Built to the approved target, at its sizes, in both themes and at the phone widt
 
 ## Done when
 
-- [ ] The targets are approved, recorded under `## Comments` with the date and the maintainer's words.
-- [ ] Tests named for `F-152/c4`: a Playwright spec (`apps/web/e2e/31-boards-mixed.spec.ts`, run once at the milestone's end) attaches a Linear team and a Jira project from two connections to one project, each row with its mark and connection's name.
-- [ ] Tests named for `F-008/c5`: the Jira board's mapping shows each step's transition line and the unreachable warning from the fake Jira's workflow, and the "not readable" line without workflow access.
-- [ ] Tests named for `F-008/c7`: `Done is moved by` switches and its Jira-automation line shows.
-- [ ] Tests named for `F-152/c5`: a disconnected connection's board is paused, read only, with its line and link.
-- [ ] Screenshots at 1440 px and 390 px, both themes, compared with the targets, under `## Comments`.
-- [ ] Checks for `apps/web` pass (spec section 10).
-- [ ] Committed as `✨ attach boards from any tracker`.
+- [x] The targets are approved, recorded under `## Comments` with the date and the maintainer's words.
+- [x] Tests named for `F-152/c4`: a Playwright spec (`apps/web/e2e/31-boards-mixed.spec.ts`, run once at the milestone's end) attaches a Linear team and a Jira project from two connections to one project, each row with its mark and connection's name.
+- [x] Tests named for `F-008/c5`: the Jira board's mapping shows each step's transition line and the unreachable warning from the fake Jira's workflow, and the "not readable" line without workflow access.
+- [x] Tests named for `F-008/c7`: `Done is moved by` switches and its Jira-automation line shows.
+- [x] Tests named for `F-152/c5`: a disconnected connection's board is paused, read only, with its line and link.
+- [x] Screenshots at 1440 px and 390 px, both themes, compared with the targets, under `## Comments`.
+- [x] Checks for `apps/web` pass (spec section 10).
+- [x] Committed as `✨ attach boards from any tracker`.
 
 ## Comments
 
 - 2026-11-23, lead: the maintainer approved the m11 targets ("yes to all"), recorded in `context/brand/app-targets/m11-trackers/README.md`.
+- 2026-11-23, web (t15): built to `boards-mixed.md`: the attached rows with each kind's 18px mark and `<connection> · team|project`, the attach picker grouped by connection with attached/pending/failed rows and typing filter, the Jira mapping (category squares, per-step target status with its reach, `by …` lines, the unreachable warning with `Workflow in Jira ↗`, `Done is moved by`, the not-readable line, no magic row without `magicWords`), the panel's `Tracker`/`Workflow for`/`Transitions`, paused and failed rows with their lines, prompt tasks' marks, and New project's grouped tracker choice. Screenshots at 1440 and 390, both themes: `_lead/ui-check/m11/15/` (`boards-mixed-1440-*`, `boards-mixed-390-*`, `boards-attach-1440-*`).
+- 2026-11-23, web (t15), design gap: the m2 `project-new` target is missing from `context/brand/app-targets/m2/`, so New project's tracker choice reuses the existing screen's patterns (the `None`/`A board` radio group and a grouped select with each connection's mark), kept minimal; a target is still owed.
+- 2026-11-23, web (t15), checks: `boards-view.test.tsx` (27) and `new-project-view.test.ts` (2) pass; `messages.check.test.ts` (6) passes; `31-boards-mixed.spec.ts` passes on `--project desktop --project phone --no-deps`. Web typecheck of the touched files is clean; package-wide `tsc` is still red on `inbox-view.tsx` and the task fixtures, pre-existing on `main` and owned by tickets 12/13.

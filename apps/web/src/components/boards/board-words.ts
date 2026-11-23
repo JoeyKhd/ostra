@@ -2,17 +2,24 @@ import { t } from "@/lib/messages";
 import type { MessageKey } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
-// The boards page's pure parts (project-boards.md, F-007, F-031): the team's statuses grouped the
-// way Linear orders them, the mapping's problems, and what the next task will do on the ticket.
+// The boards page's pure parts (project-boards.md, F-007, F-031; boards-mixed.md, F-152, F-008): a
+// board's statuses grouped the way its tracker orders them, the mapping's problems, its transition
+// lines, and what the next task will do on the ticket.
 
 export type BoardsData = RouterOutputs["boards"]["get"];
 export type BoardView = BoardsData["boards"][number];
 export type BoardStatus = NonNullable<BoardView["statusGroups"]>[number]["statuses"][number];
 export type Mapping = NonNullable<BoardView["mapping"]>;
+export type Workflow = RouterOutputs["boards"]["workflow"];
+export type Attachable = RouterOutputs["boards"]["attachable"];
+export type AttachableConnection = Attachable["connections"][number];
 
-/** Linear's status types, in Linear's order; the pickers group by them. */
+/** Linear's status types, in Linear's order; its pickers group by them. */
 export const statusTypes = ["triage", "backlog", "unstarted", "started", "completed", "canceled"] as const;
 export type StatusType = (typeof statusTypes)[number] | "other";
+
+/** A board's tracker: Jira moves a ticket through its workflow's transitions; Linear writes a status. */
+export const isJira = (board: BoardView): boolean => board.connection.kind === "jira";
 
 /** Linear's type for a status; its `duplicate` type sits with the canceled ones. */
 export const statusTypeOf = (status: BoardStatus): StatusType =>
@@ -30,9 +37,21 @@ const typeLabel: Readonly<Record<StatusType, MessageKey>> = {
 
 export const statusTypeLabel = (type: StatusType): string => t(typeLabel[type]);
 
+/** Jira's three status categories, as its own screens name them. */
+export type Category = "open" | "started" | "done" | "cancelled";
+
+const categoryLabel: Readonly<Record<Category, MessageKey>> = {
+  open: "boards.category.open",
+  started: "boards.category.started",
+  done: "boards.category.done",
+  cancelled: "boards.category.cancelled",
+};
+
+export const categoryName = (category: Category): string => t(categoryLabel[category]);
+
 export type StatusGroup = { readonly type: StatusType; readonly statuses: readonly BoardStatus[] };
 
-/** Every status of the team, grouped by its type in Linear's order, each group by position. */
+/** Every status of a Linear team, grouped by its type in Linear's order, each group by position. */
 export const groupStatuses = (board: BoardView): readonly StatusGroup[] => {
   const all = (board.statusGroups ?? []).flatMap((group) => group.statuses);
   const order: readonly StatusType[] = [...statusTypes, "other"];
@@ -41,13 +60,25 @@ export const groupStatuses = (board: BoardView): readonly StatusGroup[] => {
     .filter((group) => group.statuses.length > 0);
 };
 
-/** A status's name, or its ID when the team no longer has it. */
+export type CategoryGroup = { readonly category: Category; readonly statuses: readonly BoardStatus[] };
+
+/** Every status of a Jira board, grouped by the category Jira sorts it into. */
+export const categoryGroups = (board: BoardView): readonly CategoryGroup[] =>
+  (board.statusGroups ?? [])
+    .map((group) => ({ category: group.category, statuses: [...group.statuses].sort((a, b) => a.position - b.position) }))
+    .filter((group) => group.statuses.length > 0);
+
+/** A status's name, or its ID when the board no longer has it. */
 export const statusName = (board: BoardView, id: string): string =>
   (board.statusGroups ?? []).flatMap((group) => group.statuses).find((status) => status.id === id)?.name ?? id;
 
-/** Whether the team still has a status (a gone one is shown struck through, in red). */
+/** Whether the board still has a status (a gone one is shown struck through, in red). */
 export const statusExists = (board: BoardView, id: string): boolean =>
   board.statusGroups === null || board.statusGroups.some((group) => group.statuses.some((status) => status.id === id));
+
+/** The category a status belongs to, for its square. */
+export const categoryOf = (board: BoardView, id: string): Category =>
+  (board.statusGroups ?? []).flatMap((group) => group.statuses).find((status) => status.id === id)?.category ?? "open";
 
 /** The step a status is mapped to, for the panel's list. */
 export const mappedStep = (mapping: Mapping | null, id: string): string => {
@@ -59,7 +90,7 @@ export const mappedStep = (mapping: Mapping | null, id: string): string => {
   return "–";
 };
 
-/** What stops a mapping from being saved: an empty Open, or a status the team no longer has. */
+/** What stops a mapping from being saved: an empty Open, or a status the board no longer has. */
 export const mappingProblems = (board: BoardView, mapping: Mapping): { readonly openEmpty: boolean; readonly gone: ReadonlySet<string> } => {
   const ids = [...mapping.open, mapping.started, mapping.inReview, mapping.done];
   return { openEmpty: mapping.open.length === 0, gone: new Set(ids.filter((id) => !statusExists(board, id))) };
@@ -72,13 +103,43 @@ export const mappingSavable = (board: BoardView, mapping: Mapping): boolean => {
 
 export const sameMapping = (a: Mapping | null, b: Mapping | null): boolean => JSON.stringify(a) === JSON.stringify(b);
 
+/** One step's `by …` lines and the statuses no route leaves toward its target (a Jira board). */
+export type StepReach = Extract<Workflow, { readonly readable: true }>["steps"][number];
+
+/** The workflow's step for one of the mapping's steps, or `undefined` (Linear, or not readable). */
+export const reachOf = (workflow: Workflow | undefined, step: "started" | "inReview" | "done"): StepReach | undefined => {
+  if (workflow === undefined) return undefined;
+  if (!workflow.readable) return undefined;
+  return workflow.steps.find((line) => line.step === step);
+};
+
+/** A step's first transition's name, for the next task's sentence; `null` when no route reaches it. */
+export const transitionOf = (workflow: Workflow | undefined, step: "started" | "inReview" | "done"): string | null => {
+  const reach = reachOf(workflow, step);
+  return reach?.by[0]?.transition.name ?? null;
+};
+
 /** One sentence per step: what the next task does on the ticket, from the (unsaved) mapping. */
-export const nextTaskLines = (board: BoardView, mapping: Mapping): readonly { readonly text: string; readonly status: string }[] => {
+export type NextLine = { readonly text: string; readonly status: string; readonly transition: string | null };
+
+export const nextTaskLines = (board: BoardView, mapping: Mapping, workflow?: Workflow): readonly NextLine[] => {
   const name = (id: string) => statusName(board, id);
+  const jira = isJira(board);
+  const transition = (step: "started" | "inReview" | "done") => (jira ? transitionOf(workflow, step) : null);
+  const line = (step: "started" | "inReview" | "done", key: MessageKey, fallback: MessageKey): NextLine => {
+    const by = transition(step);
+    return { text: t(by === null ? fallback : key), status: name(mapping[step]), transition: by };
+  };
   return [
-    { text: t("boards.next.started"), status: name(mapping.started) },
-    { text: mapping.inReview === mapping.started ? t("boards.next.inReviewSame") : t("boards.next.inReview"), status: name(mapping.inReview) },
-    { text: mapping.doneBy === "integration" ? t("boards.next.doneIntegration") : t("boards.next.doneOstra"), status: name(mapping.done) },
+    line("started", "boards.next.jiraStarted", "boards.next.started"),
+    mapping.inReview === mapping.started
+      ? { text: t("boards.next.inReviewSame"), status: name(mapping.inReview), transition: null }
+      : jira
+        ? line("inReview", "boards.next.jiraInReview", "boards.next.inReview")
+        : { text: t("boards.next.inReview"), status: name(mapping.inReview), transition: null },
+    mapping.doneBy === "integration"
+      ? { text: t(jira ? "boards.next.jiraDoneIntegration" : "boards.next.doneIntegration"), status: name(mapping.done), transition: null }
+      : line("done", "boards.next.jiraDoneOstra", "boards.next.doneOstra"),
   ];
 };
 
@@ -97,7 +158,7 @@ export const magicSample = (mapping: Mapping, key: string | null): string => `${
 
 /**
  * "Make a ticket for every prompt task" on the Boards page (F-097/c2, prompt-tickets.md): no board
- * to name, off, on with the board that takes the tickets, or on but paused while the tracker's
+ * to name, off, on with the board that takes the tickets, or on but paused while the board's own
  * connection isn't active (the board keeps the setting; no ticket is made until it's back).
  */
 export type PromptTicketsState =
@@ -110,5 +171,5 @@ export const promptTicketsState = (view: BoardsData): PromptTicketsState => {
   if (view.boards.length === 0) return { kind: "none" };
   const board = view.boards.find((item) => item.ticketsForPromptTasks);
   if (board === undefined) return { kind: "off" };
-  return view.connection?.state === "active" ? { kind: "on", board } : { kind: "paused", board };
+  return board.connection.state === "active" ? { kind: "on", board } : { kind: "paused", board };
 };

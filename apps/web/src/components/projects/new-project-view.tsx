@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightIcon, ArrowUpRightIcon, CircleAlertIcon, LoaderCircleIcon, LockIcon, SearchIcon } from "lucide-react";
+import { ArrowRightIcon, ArrowUpRightIcon, CircleAlertIcon, LoaderCircleIcon, LockIcon, SearchIcon, SquareKanbanIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -11,17 +11,19 @@ import { providerIdSchema } from "@ostra/protocol";
 
 import { installationSettingsUrl } from "@/components/github/github-view";
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
+import { TrackerMark, trackerMarkAt } from "@/components/trackers/tracker-mark";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { plural, t } from "@/lib/messages";
 import { useTRPC, useTRPCClient } from "@/lib/trpc";
+import type { RouterOutputs } from "@/lib/trpc";
 
 import { EnvironmentDraft } from "./environment-draft";
 import type { DraftRepo } from "./environment-draft";
@@ -37,6 +39,18 @@ export const slugOf = (name: string): string =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 64)
     .replace(/-+$/g, "");
+
+type TeamsData = RouterOutputs["boards"]["teams"];
+
+/** The connection and board a picker's `<connectionId>:<externalId>` names. */
+const boardOf = (connections: TeamsData["connections"], value: string | null): { readonly connectionId: string; readonly externalId: string } | undefined => {
+  if (value === null) return undefined;
+  for (const connection of connections) {
+    const item = connection.items.find((one) => `${connection.id}:${one.externalId}` === value);
+    if (item !== undefined) return { connectionId: connection.id, externalId: item.externalId };
+  }
+  return undefined;
+};
 
 /** The repos whose full name holds the filter, ignoring case. */
 export const filterRepos = <T extends { readonly fullName: string }>(repos: readonly T[], query: string): readonly T[] => {
@@ -104,14 +118,16 @@ export const NewProjectView = () => {
   const me = useQuery(trpc.me.get.queryOptions());
   const organizationAdmin = me.data?.organization?.role === "admin";
   const [keys, setKeys] = useState<KeysChoice>(defaultKeysChoice);
-  // The tracker (project-new.md, "Tracker"): none, or a Linear team, attached once the project exists.
-  const teams = useQuery(trpc.boards.teams.queryOptions());
-  const [tracker, setTracker] = useState<"none" | "linear">("none");
-  const [team, setTeam] = useState<string | null>(null);
+  // The tracker (project-new.md, "Tracker"; boards-mixed.md, F-152/c4): none, or a board from any
+  // connection, grouped as the attach picker groups them, attached once the project exists.
+  const teams = useQuery({ ...trpc.boards.teams.queryOptions(), enabled: organizationAdmin });
+  const [tracker, setTracker] = useState<"none" | "board">("none");
+  const [board, setBoard] = useState<string | null>(null);
   const create = useMutation(
     trpc.projects.create.mutationOptions({
       onSuccess: async ({ projectId }) => {
-        if (tracker === "linear" && team !== null) await client.boards.attach.mutate({ projectId, teamExternalId: team });
+        const picked = boardOf(teams.data?.connections ?? [], board);
+        if (picked !== undefined) await client.boards.attach.mutate({ projectId, connectionId: picked.connectionId, externalId: picked.externalId });
         // F-135: its own list, when an organization admin picked one; a save sends the version its preview read.
         if (organizationAdmin && keys.own) {
           const mode = { kind: "own" as const, providerIds: [...keys.providerIds].map((id) => providerIdSchema.parse(id)) };
@@ -169,6 +185,7 @@ export const NewProjectView = () => {
   const draftRepo: DraftRepo | null = chosen === null ? null : { installationId: chosen.group.installationId, fullName: chosen.fullName, defaultBranch: chosen.defaultBranch };
   const [onlyGroup] = groups.data ?? [];
   const single = groups.data?.length === 1 ? onlyGroup : undefined;
+  const connections = teams.data?.connections ?? [];
   const busy = create.isPending;
 
   const pick = (key: string, repoName: string, checked: boolean) => {
@@ -287,52 +304,66 @@ export const NewProjectView = () => {
             </FormSection>
           ) : null}
 
-          <FormSection title={t("projects.tracker")} note={<span className="font-sans">{t("projects.optional")}</span>}>
-            <RadioGroup
-              value={tracker}
-              onValueChange={(value) => { setTracker(value === "linear" ? "linear" : "none"); }}
-              aria-label={t("projects.tracker")}
-              className="rows"
-            >
-              <label className="flex h-[38px] cursor-pointer items-center gap-3 px-3">
-                <RadioGroupItem value="none" />
-                <span className="text-text">{t("projects.trackerNone")}</span>
-                <span className="truncate text-faint">{t("projects.trackerNoneHelp")}</span>
-              </label>
-              <div className="flex min-h-[38px] items-center gap-3 px-3">
-                <label className={cn("flex min-w-0 items-center gap-3", teams.data === null || teams.data === undefined ? "" : "cursor-pointer")}>
-                  <RadioGroupItem value="linear" disabled={teams.data === null || teams.data === undefined} />
-                  <span className="text-text">{t("projects.trackerLinear")}</span>
-                  <span className="truncate text-faint">{t("projects.trackerLinearHelp")}</span>
+          {organizationAdmin ? (
+            <FormSection title={t("projects.tracker")} note={<span className="font-sans">{t("projects.optional")}</span>}>
+              <RadioGroup
+                value={tracker}
+                onValueChange={(value) => { setTracker(value === "board" ? "board" : "none"); }}
+                aria-label={t("projects.tracker")}
+                className="rows"
+              >
+                <label className="flex h-[38px] cursor-pointer items-center gap-3 px-3">
+                  <RadioGroupItem value="none" />
+                  <span className="text-text">{t("projects.trackerNone")}</span>
+                  <span className="truncate text-faint">{t("projects.trackerNoneHelp")}</span>
                 </label>
-                {teams.data === null ? (
-                  <Link href="/organization/linear" className="ml-auto inline-flex shrink-0 items-center gap-1 text-teal hover:underline">
-                    {t("projects.connectLinear")}
-                    <ArrowRightIcon aria-hidden className="size-[13px] stroke-[1.75]" />
-                  </Link>
-                ) : teams.data !== undefined && tracker === "linear" ? (
-                  <Select value={team ?? ""} onValueChange={setTeam}>
-                    <SelectTrigger aria-label={t("projects.trackerTeam")} className="ml-auto h-[30px] w-[200px] shrink-0">
-                      <SelectValue placeholder={t("projects.trackerPickTeam")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {teams.data.map((one) => (
-                        <SelectItem key={one.externalId} value={one.externalId}>
-                          {t("projects.trackerTeamValue", { name: one.name })}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : null}
-              </div>
-            </RadioGroup>
-            {teams.error === null ? null : <ErrorLine>{errorText(teams.error)}</ErrorLine>}
-          </FormSection>
+                <div className="flex min-h-[38px] items-center gap-3 px-3">
+                  <label className={cn("flex min-w-0 items-center gap-3", connections.length === 0 ? "" : "cursor-pointer")}>
+                    <RadioGroupItem value="board" disabled={connections.length === 0} />
+                    <span className="text-text">{t("projects.trackerBoard")}</span>
+                    <span className="truncate text-faint">{t("projects.trackerBoardHelp")}</span>
+                  </label>
+                  {tracker === "board" ? (
+                    <Select value={board ?? ""} onValueChange={setBoard}>
+                      <SelectTrigger aria-label={t("projects.trackerBoard")} className="ml-auto h-[30px] w-[240px] shrink-0">
+                        <SelectValue placeholder={t("projects.trackerPickBoard")} />
+                      </SelectTrigger>
+                      <SelectContent align="end" className="w-[300px]">
+                        {connections.map((connection) => (
+                          <SelectGroup key={connection.id}>
+                            <SelectLabel className="flex items-center gap-2">
+                              <TrackerMark kind={connection.kind} size={trackerMarkAt.attachGroup.size} label={false} />
+                              <span className="min-w-0 truncate text-xs font-medium text-faint">{connection.name}</span>
+                              <span className="ml-auto font-mono text-[11.5px] font-normal text-faint">{t(connection.kind === "jira" ? "boards.attach.projects" : "boards.attach.teams")}</span>
+                            </SelectLabel>
+                            {connection.items.map((item) => (
+                              <SelectItem key={item.externalId} value={`${connection.id}:${item.externalId}`}>
+                                <SquareKanbanIcon aria-hidden />
+                                <span className="truncate">{item.name}</span>
+                                <span className="font-mono text-sm text-muted">· {item.key}</span>
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                </div>
+              </RadioGroup>
+              {teams.error === null ? null : <ErrorLine>{errorText(teams.error)}</ErrorLine>}
+              {connections.length === 0 ? (
+                <Link href="/organization/trackers" className="mt-2 inline-flex items-center gap-1 text-teal hover:underline">
+                  {t("projects.connectTracker")}
+                  <ArrowRightIcon aria-hidden className="size-[13px] stroke-[1.75]" />
+                </Link>
+              ) : null}
+            </FormSection>
+          ) : null}
 
           <div className="mt-[26px] pt-1">
             {create.error === null ? null : <ErrorLine>{errorText(create.error)}</ErrorLine>}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-              <Button type="submit" variant="primary" size="lg" disabled={busy || slug === "" || chosen === null || (tracker === "linear" && team === null)}>
+              <Button type="submit" variant="primary" size="lg" disabled={busy || slug === "" || chosen === null || (tracker === "board" && boardOf(connections, board) === undefined)}>
                 {busy ? <LoaderCircleIcon aria-hidden className="size-[13px] animate-spin" /> : null}
                 {busy ? t("projects.creating") : t("projects.create")}
               </Button>

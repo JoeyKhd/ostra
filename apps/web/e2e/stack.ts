@@ -114,7 +114,7 @@ const main = async (): Promise<void> => {
   // The stub model endpoints and the fake GitHub the panel and core talk to through
   // OSTRA_GITHUB_API_URL (ticket 37), shared with an outside stack's run (`fakes.ts`).
   const fakes = await startFakes();
-  const { github, linear, resend } = fakes;
+  const { github, linear, jira, resend } = fakes;
 
   // The specs read the database's address and the fake GitHub's Apps from here (gitignored).
   // The second stack (OSTRA_ALLOW_DEFAULT_PASSWORD, playwright.config.ts) keeps its own.
@@ -123,6 +123,7 @@ const main = async (): Promise<void> => {
     databaseUrl,
     github,
     linear,
+    jira,
     resend,
     dataDir,
   );
@@ -150,6 +151,7 @@ const main = async (): Promise<void> => {
       OSTRA_CATALOG_FETCH: "false",
       OSTRA_GITHUB_API_URL: github.apiUrl,
       OSTRA_LINEAR_API_URL: linear.apiUrl,
+      OSTRA_JIRA_API_URL: jira.gatewayUrl,
       OSTRA_RESEND_API_URL: resend.url,
       ...emailSettings,
       // The stub model endpoint above listens on loopback, which the server refuses unless told.
@@ -176,6 +178,7 @@ const main = async (): Promise<void> => {
       OSTRA_CATALOG_FETCH: "false",
       OSTRA_GITHUB_API_URL: github.apiUrl,
       OSTRA_LINEAR_API_URL: linear.apiUrl,
+      OSTRA_JIRA_API_URL: jira.gatewayUrl,
       OSTRA_RESEND_API_URL: resend.url,
       ...emailSettings,
       OSTRA_MODEL_ENDPOINT_ALLOW_PRIVATE: "true",

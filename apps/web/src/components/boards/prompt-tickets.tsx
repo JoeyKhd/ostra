@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowRightIcon, SquareKanbanIcon, TriangleAlertIcon } from "lucide-react";
+import { ArrowRightIcon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useId } from "react";
 import type { ReactNode } from "react";
 
 import type { BoardId } from "@ostra/protocol";
 
+import { TrackerMark, trackerMarkAt } from "@/components/trackers/tracker-mark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cn";
@@ -21,10 +22,10 @@ import type { BoardView, BoardsData } from "./board-words";
 // with several, a picker names it. Both apply at once, as "Start from Linear" does: `Save mapping`
 // stays the mapping's. Members read it; nothing here waits on anyone, so nothing is amber.
 
-/** A board as the picker and its read-only twin name it: the kanban mark, the team, ` · ` and the key in mono. */
+/** A board as the picker and its read-only twin name it: its tracker's mark, the name, ` · ` and the key in mono. */
 const BoardName = ({ board }: { readonly board: BoardView }) => (
   <>
-    <SquareKanbanIcon aria-hidden className="text-faint" />
+    <TrackerMark kind={board.connection.kind} size={trackerMarkAt.boardSelect.size} label={false} />
     <span className="truncate">{board.name}</span>
     {board.key === null ? null : <span className="font-mono text-sm text-muted">· {board.key}</span>}
   </>
@@ -68,7 +69,7 @@ export const PromptTickets = ({ view, selected, onSet, pending, error, organizat
             {organizationAdmin ? (
               <>
                 {" "}
-                <Link href="/organization/linear" className="inline-flex items-center gap-1 whitespace-nowrap text-teal hover:underline">
+                <Link href="/organization/trackers" className="inline-flex items-center gap-1 whitespace-nowrap text-teal hover:underline">
                   {t("boards.promptTickets.reconnect")}
                   <ArrowRightIcon aria-hidden className="size-[14px] stroke-[1.75]" />
                 </Link>
