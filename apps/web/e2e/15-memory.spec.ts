@@ -145,11 +145,12 @@ test("F-111/c1: Remember this on an accepted @ostra comment makes a proposal in 
   const { projectId, taskId } = await seed();
   await signIn(page);
   await page.goto(`/tasks/${taskId}`);
+  // Milestone 10 (ticket 12): the comment is its message's outlined bubble, named by its login on GitHub.
+  await expect(page.locator('[data-part="bubble"][data-from="github"] [data-part="bubble-by"]')).toContainText("ostra-test-member on GitHub");
   const row = page.locator('[data-part="pr-comment"]');
-  await expect(row).toContainText("ostra-test-member asked through an @ostra comment on the pull request");
-  await expect(row.getByRole("link", { name: "Open the comment" })).toHaveAttribute("href", /\/pull\/3#issuecomment-31$/);
+  await expect(row.getByRole("link", { name: "Open on GitHub" })).toHaveAttribute("href", /\/pull\/3#issuecomment-31$/);
   await row.locator('[data-action="remember-this"]').click();
-  const form = row.getByTestId("pr-comment-remember");
+  const form = page.getByTestId("pr-comment-remember");
   await form.getByLabel("Title").fill("Changelog lines start with an ISO date");
   await form.getByLabel("What the next task should know").fill("Every line added to CHANGELOG.md starts with the date as YYYY-MM-DD.");
   await form.getByRole("button", { name: "Propose" }).click();

@@ -1,7 +1,7 @@
 "use client";
 
-import { ChevronDownIcon, CircleAlertIcon, ImageOffIcon, LoaderCircleIcon, PaperclipIcon, RotateCcwIcon, TicketIcon } from "lucide-react";
-import { Fragment, useLayoutEffect, useRef, useState } from "react";
+import { ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, ImageOffIcon, LoaderCircleIcon, PaperclipIcon, RotateCcwIcon, TicketIcon } from "lucide-react";
+import { Fragment, useState } from "react";
 import type { ImgHTMLAttributes, ReactNode } from "react";
 
 import type { TicketAttachmentView, TicketContextView, TicketRoundView } from "@ostra/api";
@@ -13,7 +13,7 @@ import { PropRow } from "@/components/shell/page-frame";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import { formatAge } from "@/lib/format";
+import { formatAge, formatClock } from "@/lib/format";
 import { plural, t } from "@/lib/messages";
 import { AgentMarkdown } from "@/task/renderers";
 
@@ -21,7 +21,7 @@ import { FileChipLink, LinkChip, MissingChip } from "./file-chip";
 import { FileThumb, MissingThumb, MoreThumb } from "./file-thumb";
 import { extensionOf, stripOf } from "./file-words";
 import { imageName, LeftOutList } from "./message-files";
-import { attachmentsCountText, contextMetaText, contextRowText, failureText, nameJoiners, shownAttachments, shownComments, ticketCounts } from "./ticket-context-words";
+import { attachmentsCountText, contextRowText, failureText, nameJoiners, shownAttachments, shownComments, ticketCounts } from "./ticket-context-words";
 
 // "What the agent got" (ticket-context.md; F-149, F-150): a ticket task's first message, before the
 // agent's first turn, from `tasks.ticketContext`'s first round. The ticket's description (three
@@ -57,22 +57,16 @@ const Toggle = ({ open, onToggle, children }: { readonly open: boolean; readonly
 );
 
 /**
- * The description, clamped to three lines (four on a phone) with `Show all` when it's longer. A
- * picture in it that ostra stored shows as its name in teal, opening the viewer.
+ * The description, clamped to three lines (four on a phone) while the bubble shows its summary,
+ * whole once it shows it all. A picture in it that ostra stored shows as its name in teal, opening
+ * the viewer.
  */
-const Description = ({ text, pictures, onOpen }: { readonly text: string; readonly pictures: ReadonlyMap<string, MessageFileView>; readonly onOpen: ((fileId: MessageFileId) => void) | null }) => {
-  const [open, setOpen] = useState(false);
-  const [long, setLong] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const element = box.current;
-    if (element === null || open) return undefined;
-    const measure = () => { setLong(element.scrollHeight > element.clientHeight + 1); };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => { observer.disconnect(); };
-  }, [open, text]);
+const Description = ({ text, pictures, onOpen, clamp }: {
+  readonly text: string;
+  readonly pictures: ReadonlyMap<string, MessageFileView>;
+  readonly onOpen: ((fileId: MessageFileId) => void) | null;
+  readonly clamp: boolean;
+}) => {
   const image = ({ src, alt }: ImgHTMLAttributes<HTMLImageElement>): ReactNode => {
     const file = typeof src === "string" ? pictures.get(src) : undefined;
     if (file === undefined || onOpen === null) return <span className="text-faint">[{alt ?? t("task.image")}]</span>;
@@ -83,16 +77,12 @@ const Description = ({ text, pictures, onOpen }: { readonly text: string; readon
     );
   };
   return (
-    <>
-      <div ref={box} className={cn("mt-[3px] text-body text-text [&_p:first-child]:mt-0", !open && "line-clamp-3 max-sm:line-clamp-4")} data-part="ticket-description">
-        <AgentMarkdown text={text} image={image} />
-      </div>
-      {long || open ? (
-        <Toggle open={open} onToggle={() => { setOpen((now) => !now); }}>
-          {open ? t("task.ticketContext.showLess") : t("task.ticketContext.showAll")}
-        </Toggle>
-      ) : null}
-    </>
+    <div
+      className={cn("text-body text-text [&_.agent-md_:where(p,ul,ol)]:my-0 [&_.agent-md_:where(p,ul,ol)+:where(p,ul,ol)]:mt-1.5", clamp && "line-clamp-3 max-sm:line-clamp-4")}
+      data-part="ticket-description"
+    >
+      <AgentMarkdown text={text} image={image} />
+    </div>
   );
 };
 
@@ -232,7 +222,7 @@ const LastLine = ({ prompt, imagesAsFilesFor }: { readonly prompt: string | null
   );
 };
 
-export const TicketContextMessage = ({ view, tracker, agent, now, retry, fileOf, onOpenImage }: {
+export const TicketContextMessage = ({ view, tracker, agent, now, retry, fileOf, onOpenImage, by = null, at = null, title = null, defaultOpen = false }: {
   readonly view: TicketContextView;
   /** The tracker's name, as the key line has it: `Linear`. */
   readonly tracker: string;
@@ -243,7 +233,15 @@ export const TicketContextMessage = ({ view, tracker, agent, now, retry, fileOf,
   /** A file of the task by its ID (`tasks.files`): a Retry's fetched file, a description's picture. */
   readonly fileOf: (fileId: MessageFileId) => MessageFileView | undefined;
   readonly onOpenImage: ((fileId: MessageFileId) => void) | null;
+  /** Milestone 10 (ticket 12): the member the first message is written as, and its time, over the bubble. */
+  readonly by?: string | null;
+  readonly at?: number | null;
+  /** The ticket's title, the bubble's 600 line (a ticket task's title is its ticket's). */
+  readonly title?: string | null;
+  /** Opened at first: everything the agent got, not only its summary. */
+  readonly defaultOpen?: boolean;
 }) => {
+  const [open, setOpen] = useState(defaultOpen);
   const round = view.rounds[0] ?? null;
   const attachments = round === null ? [] : shownAttachments(round, fileOf);
   const counts = round === null ? null : ticketCounts({ attachments, links: round.links, comments: round.comments });
@@ -254,47 +252,71 @@ export const TicketContextMessage = ({ view, tracker, agent, now, retry, fileOf,
       return file === undefined ? [] : [[link.url, file] as const];
     }),
   );
+  const time = at ?? round?.at ?? null;
+  const summary = counts === null ? null : contextRowText(counts);
   return (
-    <div id="ticket-context" className="flex scroll-mt-24 gap-3 py-2.5" data-part="ticket-context" data-state={round === null ? "fetching" : "read"}>
-      <span className="mt-0.5 inline-grid size-7 shrink-0 place-items-center rounded-full border border-line-2 text-muted">
-        <TicketIcon aria-hidden className="size-[14px] stroke-[1.75]" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <span className="font-semibold">{t("task.ticketContext.title")}</span>
-          <span className="font-mono text-sm text-faint">{contextMetaText({ at: round?.at ?? null, ticketKey: view.ticketKey, tracker })}</span>
+    // Milestone 10 (F-151, parts.md part 2): "What the agent got" is the thread's first bubble (`.bubble.got`), 82% wide, filled.
+    <div id="ticket-context" className="mb-[18px] mt-6 flex scroll-mt-24 flex-col items-end" data-part="ticket-context" data-state={round === null ? "fetching" : "read"} role="group" aria-label={t("task.ticketContext.title")}>
+      {by === null && time === null ? null : (
+        <div className="mx-1 mb-[5px] flex items-baseline justify-end gap-x-1.5 text-[12.5px] text-faint" data-part="bubble-by">
+          {by === null ? null : <span className="font-medium text-muted">{by}</span>}
+          {time === null ? null : <span className="font-mono text-xs">{formatClock(time)}</span>}
         </div>
-        {round === null || counts === null ? (
+      )}
+      <div className="w-[82%] min-w-0 rounded-2xl bg-sel px-3.5 py-[11px] text-body leading-[1.55] text-text" data-part="bubble-got">
+        <p className="mb-1 flex min-w-0 flex-wrap items-center gap-x-[7px] text-[12.5px] text-muted" data-part="ticket-source">
+          <TicketIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75] text-faint" />
+          <span className="font-mono text-xs text-text-2">{view.ticketKey}</span>
+          <span>{t("task.ticketContext.from", { tracker })}</span>
+        </p>
+        {title === null || title === "" ? null : <p className="font-semibold [overflow-wrap:anywhere]">{title}</p>}
+        {round === null || counts === null || summary === null ? (
           <p className="mt-1 flex items-center gap-2 text-sm text-faint" data-testid="ticket-context-fetching">
-            <LoaderCircleIcon aria-hidden className="size-[11px] animate-spin" />
+            <LoaderCircleIcon aria-hidden className="size-[11px] animate-spin motion-reduce:animate-none" />
             {t("task.ticketContext.fetching")}
           </p>
         ) : (
           <>
-            {round.description === null || round.description.trim() === "" ? null : (
-              <Section label={t("task.ticketContext.description")}>
-                <Description text={round.description} pictures={pictures} onOpen={onOpenImage} />
-              </Section>
-            )}
-            {counts.total === 0 ? null : (
-              <Section label={t("task.ticketContext.attachmentsLabel")} count={attachmentsCountText(counts)}>
-                <Files attachments={attachments} links={round.links} ticketKey={view.ticketKey} agent={agent} onOpenImage={onOpenImage} />
-                <LeftOutList notes={leftOut} scope="ticket" limits={view.limits} tracker={tracker} />
-                <Failed attachments={attachments} round={round} tracker={tracker} retry={retry} />
-              </Section>
-            )}
-            {round.filesNotFetched ? (
-              <p className="mt-2.5 flex items-center gap-2 text-[13.5px] text-muted" data-testid="ticket-files-not-fetched">
-                <ImageOffIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75] text-faint" />
-                {t("task.ticketContext.notOffered", { tracker })}
-              </p>
+            {round.description === null || round.description.trim() === "" ? null : <Description text={round.description} pictures={pictures} onOpen={onOpenImage} clamp={!open} />}
+            <p className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-1 text-sm text-faint" data-part="ticket-more">
+              <PaperclipIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" />
+              <span className={cn(summary.failed && "text-red")}>{summary.text}</span>
+              <span aria-hidden>·</span>
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={() => { setOpen((now) => !now); }}
+                className="inline-flex items-center gap-0.5 text-teal hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal"
+                data-action="show-it-all"
+              >
+                {open ? t("task.ticketContext.showLess") : t("task.ticketContext.showItAll")}
+                <ChevronRightIcon aria-hidden className={cn("size-[13px] stroke-[1.75]", open && "rotate-90")} />
+              </button>
+            </p>
+            {open ? (
+              <>
+                {counts.total === 0 ? null : (
+                  <Section label={t("task.ticketContext.attachmentsLabel")} count={attachmentsCountText(counts)}>
+                    <Files attachments={attachments} links={round.links} ticketKey={view.ticketKey} agent={agent} onOpenImage={onOpenImage} />
+                    <LeftOutList notes={leftOut} scope="ticket" limits={view.limits} tracker={tracker} />
+                  </Section>
+                )}
+                {round.filesNotFetched ? (
+                  <p className="mt-2.5 flex items-center gap-2 text-[13.5px] text-muted" data-testid="ticket-files-not-fetched">
+                    <ImageOffIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75] text-faint" />
+                    {t("task.ticketContext.notOffered", { tracker })}
+                  </p>
+                ) : null}
+                {round.comments.length === 0 ? null : (
+                  <Section label={t("task.ticketContext.commentsLabel")} count={String(round.comments.length)}>
+                    <Comments comments={round.comments} now={now} />
+                  </Section>
+                )}
+                <LastLine prompt={view.prompt} imagesAsFilesFor={round.imagesAsFilesFor} />
+              </>
             ) : null}
-            {round.comments.length === 0 ? null : (
-              <Section label={t("task.ticketContext.commentsLabel")} count={String(round.comments.length)}>
-                <Comments comments={round.comments} now={now} />
-              </Section>
-            )}
-            <LastLine prompt={view.prompt} imagesAsFilesFor={round.imagesAsFilesFor} />
+            {/* What didn't load keeps its place, with Retry for the driver, open or not. */}
+            <Failed attachments={attachments} round={round} tracker={tracker} retry={retry} />
           </>
         )}
       </div>

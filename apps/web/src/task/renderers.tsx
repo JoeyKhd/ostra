@@ -5,8 +5,6 @@ import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import {
   AppWindowIcon,
   ArchiveIcon,
-  BookmarkPlusIcon,
-  MessageSquareIcon,
   BrainIcon,
   HistoryIcon,
   LayersIcon,
@@ -42,20 +40,16 @@ import { monthWord } from "@/components/tasks/budget-reason";
 import { RowState } from "@/components/tasks/subagent-marks";
 import { TicketFilesRow } from "@/components/tasks/attachments/thread-files";
 import { callCount, nodeDurationMs, shortDuration, stateWord, subagentLabel } from "@/components/tasks/subagent-words";
-import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
-import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
-import { Input, Textarea } from "@/components/ui/input";
 import { NeedsYou } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
 import { formatDuration } from "@/lib/format";
 import { t } from "@/lib/messages";
 
-import { EffortMarker } from "./effort-marks";
 import { filesOutsideText } from "./files-outside-words";
 import { restoredDetail, savedDetail } from "./marker-words";
 import { useDataPart, useSubagentOwner, useSubagentStartedBy, useTaskContext, useToolPart } from "./task-context";
 import type { ToolLikePart } from "./task-context";
+import { Divider } from "./thread/divider";
 import { DiffBlock, OutputBlock } from "./thread/step-output";
 
 // Renderers keyed by ACP `kind`, never by an agent's tool name, so every agent renders alike
@@ -614,7 +608,8 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
         </div>
       );
     case "data-pr-comment":
-      return <PrCommentRow data={part.data} />;
+      // Milestone 10 (F-151, ticket 12): an `@ostra` comment is its message's outlined bubble (`thread/pr-comment.tsx`).
+      return null;
     case "data-ticket-files":
       // Milestone 9 (ticket 16): gone once the ticket's files came as message files ("What the agent got").
       return <TicketFilesRow paths={part.data.paths} line={(icon, children) => <Line icon={icon} tone="muted">{children}</Line>} />;
@@ -637,7 +632,7 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
         </Line>
       );
     case "data-effort":
-      return <EffortMarker data={part.data} name={memberName(part.data.memberId)} />;
+      return <Divider divider={{ kind: "effort", change: part.data }} now={part.data.at} />;
     case "data-system": {
       const event = part.data.event;
       let text: string;
@@ -719,69 +714,6 @@ const HeldRow = ({ at, scope }: { readonly at: number; readonly scope: "organiza
       <Line icon={<PauseIcon />} tone="muted">
         {scope === "project" && projectName !== undefined ? t("task.heldProject", { project: projectName, month }) : t("task.heldOrganization", { month })}
       </Line>
-    </div>
-  );
-};
-
-type PrCommentData = Extract<TaskDataPart, { type: "data-pr-comment" }>["data"];
-
-/**
- * An accepted `@ostra` comment on the task's PR (F-053), with "Remember this" (F-111): the member
- * writes the proposal in their own words, since the comment's text is untrusted and stays in the
- * member message. The proposal waits in Memory, Proposals for a decision.
- */
-export const PrCommentRow = ({ data }: { readonly data: PrCommentData }) => {
-  const { rememberPrComment } = useTaskContext();
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [state, setState] = useState<RememberResult | "pending" | null>(null);
-  const where = data.path === null ? null : data.line === null ? data.path : `${data.path}:${String(data.line)}`;
-  const proposed = state !== null && state !== "pending" && state.kind === "proposed";
-  const refused = state !== null && state !== "pending" && state.kind === "refused" ? state.message : null;
-  const fieldId = `pr-comment-${String(data.seq)}`;
-  return (
-    <div data-part="pr-comment" data-seq={data.seq}>
-      <Line icon={<MessageSquareIcon />} tone="muted">
-        <span>{t("task.prComment", { login: data.login })}</span>
-        {where === null ? null : <span className="min-w-0 truncate font-mono text-sm text-faint">{where}</span>}
-        <SafeLink href={data.url}>{t("task.prCommentOpen")}</SafeLink>
-        {rememberPrComment === undefined || open ? null : proposed ? (
-          <span className="text-sm text-muted" data-testid="remembered">{t("changes.remembered")}</span>
-        ) : (
-          <button type="button" data-action="remember-this" className="inline-flex items-center gap-1 text-sm text-teal hover:underline" onClick={() => { setOpen(true); }}>
-            <BookmarkPlusIcon aria-hidden className="size-[13px]" />
-            {t("changes.rememberThis")}
-          </button>
-        )}
-      </Line>
-      {open && rememberPrComment !== undefined ? (
-        <form
-          className="mb-2 ml-8 mt-1 max-w-[560px] rounded-md border border-line-2 bg-surface p-3"
-          data-testid="pr-comment-remember"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setState("pending");
-            void rememberPrComment(data.seq, { title: title.trim(), body: body.trim() }).then((result) => {
-              setState(result);
-              if (result.kind === "proposed") setOpen(false);
-            });
-          }}
-        >
-          <Field id={`${fieldId}-title`} label={t("task.prCommentTitle")}>
-            <Input id={`${fieldId}-title`} value={title} maxLength={120} onChange={(event) => { setTitle(event.target.value); }} />
-          </Field>
-          <Field id={`${fieldId}-body`} label={t("task.prCommentBody")} help={t("task.prCommentHelp")} error={refused}>
-            <Textarea id={`${fieldId}-body`} value={body} rows={3} maxLength={4096} onChange={(event) => { setBody(event.target.value); }} />
-          </Field>
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" variant="primary" disabled={state === "pending" || title.trim() === "" || body.trim() === ""}>
-              {state === "pending" ? t("task.prCommentProposing") : t("task.prCommentPropose")}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => { setOpen(false); setState(null); }}>{t("common.cancel")}</Button>
-          </div>
-        </form>
-      ) : null}
     </div>
   );
 };

@@ -271,7 +271,6 @@
       "findings": "Findings round {n} of {limit}",
       "changes": "Changes requested on GitHub",
       "changesBy": "Changes requested by {name} on GitHub",
-      "automatic": "automatic turn",
       "noFailing": "The failing CI jobs weren't recorded.",
       "failed": "failed",
       "timedOut": "timed out",
@@ -288,8 +287,6 @@
         "one": "{n} nit listed, not required.",
         "other": "{n} nits listed, not required."
       },
-      "openReview": "Open the review",
-      "changesSent": "Sent {name}'s review: its comment and its line comments.",
       "heldProject": "Held: the project's budget for this month is reached. It starts when the budget allows.",
       "heldOrganization": "Held: the organization's budget for this month is reached. It starts when the budget allows.",
       "releasedProject": "Held {duration}: the project's budget for {month} was reached.",
@@ -301,9 +298,7 @@
       "noPush": "The turn ended without a push.",
       "pushedFailed": "{agent} pushed {sha}. CI failed again: {check}.",
       "pushedFailedNoCheck": "{agent} pushed {sha}. CI failed again.",
-      "pushed": "{agent} pushed {sha}.",
-      "capped": "Not started: a round limit was reached.",
-      "cappedSpend": "Not started: the task reached its spend cap."
+      "pushed": "{agent} pushed {sha}."
     },
     "cap": {
       "titleCi": "Needs you · CI round limit",
@@ -2363,13 +2358,12 @@
     },
     "ticketContext": {
       "title": "What the agent got",
-      "meta": "{time} · {key} from {tracker}",
+      "from": "from {tracker} · what the agent got",
       "fetching": "Fetching the ticket's attachments and comments…",
-      "description": "Description",
       "attachmentsLabel": "Attachments",
       "commentsLabel": "Comments",
       "countOf": "{n} of {of}",
-      "showAll": "Show all",
+      "showItAll": "Show it all",
       "showLess": "Show less",
       "showMore": "Show {n} more",
       "linkName": "{title}, link, opens in a new tab",
@@ -2403,7 +2397,6 @@
       "attachments": "{n} attachments",
       "commentsOne": "{n} comment",
       "comments": "{n} comments",
-      "metaKey": "{key} from {tracker}",
       "failedTried": "{tracker} didn't give them: ostra tried {times}, the last at {time}.",
       "loadedOne": "{n} attachment loaded",
       "loaded": "{n} attachments loaded",
@@ -2644,10 +2637,10 @@
       "spend-cap": "The task reached its spend cap. The session stopped."
     },
     "ticketFiles": "Ticket files ready",
-    "reopenTag": "reopened",
+    "reopenTag": "reopened the task",
     "replayedTag": "replayed",
     "tookOver": "{name} took over",
-    "held": "Held",
+    "held": "held",
     "heldProject": "Held: {project}’s budget for {month} is reached",
     "heldOrganization": "Held: the organization’s budget for {month} is reached",
     "released": "Released: the budget has room again, so the held work goes on",
@@ -2697,10 +2690,6 @@
         "one": "{n} nit listed",
         "other": "{n} nits listed"
       },
-      "severity": {
-        "blocking": "blocking",
-        "nit": "nit"
-      },
       "changesRequested": "requested changes on the pull request",
       "lineComments": {
         "one": "{n} line comment",
@@ -2708,7 +2697,6 @@
       },
       "planApproved": "approved the plan",
       "planApprovedEdited": "approved the plan with edits",
-      "planShown": "The plan as approved",
       "questionAnswer": "answered the agent’s question",
       "approval": {
         "allow_once": "approved a request",
@@ -2724,26 +2712,15 @@
           "one": "{n} PR",
           "other": "{n} PRs"
         },
-        "files": {
-          "one": "{n} file changed",
-          "other": "{n} files changed"
-        },
-        "lines": "+{added} −{removed}",
-        "round": "round {n} of {of}",
         "compared": "{repo}#{n}: base {base}, head {head}",
         "noTicket": "The task has no ticket: the review reads the change on its own.",
         "criteria": "Acceptance criteria"
       },
       "refine": {
         "mark": "Refine {key}",
-        "markNoKey": "Refine the ticket",
-        "description": "The ticket’s description"
-      },
-      "linearComment": "Linear comment on {key}",
-      "linearCommentNoKey": "Linear comment"
+        "markNoKey": "Refine the ticket"
+      }
     },
-    "prComment": "{login} asked through an @ostra comment on the pull request",
-    "prCommentOpen": "Open the comment",
     "prCommentTitle": "Title",
     "prCommentBody": "What the next task should know",
     "prCommentHelp": "In your words: the comment's text stays out of memory unless you write it here. A member decides in Memory, Proposals.",
@@ -3040,6 +3017,38 @@
       "archive": "archive {size}",
       "notYet": "not yet"
     },
+    "bubble": {
+      "automatic": "automatic",
+      "onGitHub": "{login} on GitHub",
+      "github": "GitHub",
+      "prComment": "PR comment",
+      "changesRequested": "changes requested",
+      "askedForChanges": "asked for changes",
+      "fixChecks": {
+        "one": "asked to fix {n} check",
+        "other": "asked to fix {n} checks"
+      },
+      "linearComment": "from a comment on {key}",
+      "linearCommentNoKey": "from a Linear comment",
+      "aiReview": {
+        "one": "AI review of PR #{n}",
+        "many": "AI review of {n} PRs",
+        "round": ", round {n} of {of}",
+        "files": {
+          "one": "{files} file, {lines}",
+          "other": "{files} files, {lines}"
+        },
+        "reads": "the PR's commits",
+        "readsMany": "the PRs' commits",
+        "readsTicket": "the PR's commits and {key}",
+        "readsCriteria": "the PR's commits, {key} and its criteria",
+        "got": "What the agent got",
+        "hideGot": "Hide what the agent got"
+      },
+      "automaticTurn": "automatic turn {k} of {limit}",
+      "log": "log",
+      "openOnGitHub": "Open on GitHub"
+    },
     "receipt": {
       "answered": "{name} answered {choice}",
       "quoted": "“{words}”",
@@ -3205,8 +3214,6 @@
       "reasoning": "Reasoning",
       "reasoningTokens": "{n} tokens",
       "reasoningTip": "Counted inside out. Priced as output.",
-      "marker": "{name} set effort to {level}",
-      "markerDuringTurn": "{name} set effort to {level}, from the next turn",
       "ranAt": "Ran at {level}: this model has no {asked}.",
       "ranAtDefault": "Ran at the default: this model takes no effort level.",
       "usageReasoning": "{n} reasoning"

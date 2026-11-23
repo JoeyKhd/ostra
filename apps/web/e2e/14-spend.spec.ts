@@ -83,7 +83,7 @@ test("F-037/c1,c4: an admin sets a project budget below the spend, a new task in
   await page.goto(`/tasks/${world.idleTaskId}`);
   await page.getByLabel("Message the agent").fill("Also add a line about tests");
   await page.locator('[data-action="send"]').click();
-  await expect(page.getByTestId("message-held")).toHaveText("Held", { timeout: 15_000 });
+  await expect(page.getByTestId("message-held")).toHaveText("held", { timeout: 15_000 });
   await expect(page.locator('[data-part="held"]')).toContainText(`Held: budgets’s budget for ${MONTH} is reached`);
   expect((await readBudget(world.idleTaskId)).held).toEqual([{ origin: "message", released: false }]);
 

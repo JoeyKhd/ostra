@@ -32,10 +32,6 @@ export const ticketCounts = (round: { readonly attachments: readonly TicketAttac
 export const attachmentsCountText = (counts: ReturnType<typeof ticketCounts>): string =>
   counts.given === counts.total ? String(counts.total) : t("task.ticketContext.countOf", { n: counts.given, of: counts.total });
 
-/** The header's facts: `14:02 · CALC-170 from Linear`. */
-export const contextMetaText = (input: { readonly at: number | null; readonly ticketKey: string; readonly tracker: string }): string =>
-  input.at === null ? t("task.ticketContext.metaKey", { key: input.ticketKey, tracker: input.tracker }) : t("task.ticketContext.meta", { time: formatClock(input.at), key: input.ticketKey, tracker: input.tracker });
-
 /** `once`, `twice`, `three times`, `{n} times`. */
 const timesText = (n: number): string => {
   switch (n) {

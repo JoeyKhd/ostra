@@ -1,9 +1,12 @@
 import {
   approvalRuleIdSchema,
+  CI_FILES_DIR,
   clientMessageIdSchema,
   diffCommentIdSchema,
   messageFileIdSchema,
   questionIdSchema,
+  markedBlock,
+  ROUND_DATA_LINE,
   roundPrompt,
   sessionIdSchema,
   subagentIdSchema,
@@ -332,7 +335,19 @@ const roundLimit = cell("asks-6", "ce26", "10:50:00", (log, task) => {
 /** Cell 1: a CI round: ostra's outlined message, the agent's turn, and its push once CI passed. */
 const ciRound = cell("messages-1", "ce31", "10:31:00", (log, task) => {
   log.add({ kind: "round.started", round: "ci", number: 1, automatic: true });
-  say(log, sam.id, 0xce31_01, roundPrompt("fix-ci", { quotes: [{ label: "ci-check", text: "unit-tests: failed" }] }), { intent: "fix-ci" });
+  // As core's `fixCiPrompt` writes it: each failing job, its conclusion and its log's tail under `.ostra/ci/`.
+  say(
+    log,
+    sam.id,
+    0xce31_01,
+    roundPrompt("fix-ci", {
+      quotes: [
+        { label: "failing-check", text: `unit-tests (failure): ${CI_FILES_DIR}/test.log` },
+        { label: "failing-check", text: `lint (failure): ${CI_FILES_DIR}/lint.log` },
+      ],
+    }),
+    { intent: "fix-ci" },
+  );
   const turnId = task.turn(1);
   const steps = startTurn(log, turnId);
   steps.read("ci/test.log", 120);
@@ -354,7 +369,19 @@ const ciRound = cell("messages-1", "ce31", "10:31:00", (log, task) => {
 /** Cell 2: a findings round the budget held for 9 minutes. */
 const heldRound = cell("messages-2", "ce32", "10:40:00", (log, task) => {
   log.add({ kind: "round.started", round: "findings", number: 1, automatic: true });
-  say(log, sam.id, 0xce32_01, roundPrompt("fix-findings", { quotes: [{ label: "finding", text: "The store keeps 51 results." }] }), { intent: "fix-findings", delivery: "queued" });
+  // As core's `fixFindingsPrompt` writes it: each finding's place, its title and its body; the nits listed.
+  say(
+    log,
+    sam.id,
+    0xce32_01,
+    roundPrompt("fix-findings", {
+      quotes: [
+        { label: "finding", text: `${sceneWorld.repo} src/history/store.ts:9 (head)\nThe store keeps 51 results\n\nThe spec says the last 50.` },
+        { label: "nit", text: `${sceneWorld.repo} src/history/panel.tsx:18 (head)\nName the limit\n\nHISTORY_LIMIT reads better than MAX.` },
+      ],
+    }),
+    { intent: "fix-findings", delivery: "queued" },
+  );
   log.add({ kind: "turn.held", origin: "automatic-round", budgetId: eventFixtures["turn.held"].budgetId, scope: "project" });
   log.at("10:49:00");
   log.add({ kind: "turn.released", budgetId: eventFixtures["turn.held"].budgetId });
@@ -364,8 +391,16 @@ const heldRound = cell("messages-2", "ce32", "10:40:00", (log, task) => {
 
 /** Cell 3: a PR comment that asks ostra, from GitHub. */
 const prComment = cell("messages-3", "ce33", "15:02:00", (log) => {
-  log.add({ kind: "pr.comment_received", url: `${calc192.pr.url}#discussion_r42`, login: "sam-rivera", path: "src/history/panel.tsx", line: 42 });
-  say(log, sam.id, 0xce33_01, "@ostra the panel should keep the selection when a result is added.", { intent: "pr-comment", delivery: "queued" });
+  // As core's `prCommentPrompt` writes it, then `pr.comment_received` in the same transaction.
+  const url = `${calc192.pr.url}#discussion_r42`;
+  const text = [
+    `sam-rivera asked you something on the file in the first block, line 42 (${url}). Do what it asks, then say what you changed.`,
+    ROUND_DATA_LINE,
+    markedBlock("pr-comment-location", "src/history/panel.tsx"),
+    markedBlock("pr-comment", "@ostra the Use button needs a label for screen readers."),
+  ].join("\n\n");
+  say(log, sam.id, 0xce33_01, text, { intent: "pr-comment", delivery: "queued" });
+  log.add({ kind: "pr.comment_received", url, login: "sam-rivera", path: "src/history/panel.tsx", line: 42 });
   return undefined;
 });
 

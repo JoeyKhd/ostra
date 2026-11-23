@@ -11,8 +11,9 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { sampleReview } from "@ostra/adapter-sdk/testing";
 import { createDb } from "@ostra/db";
-import { appendServerEvent, toStoredDiff } from "@ostra/domain";
-import { repoFullNameSchema, sessionIdSchema, organizationIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
+import { appendServerEvent, fixCiPrompt, fixFindingsPrompt, toStoredDiff } from "@ostra/domain";
+import { clientMessageIdSchema, memberIdSchema, repoFullNameSchema, sessionIdSchema, organizationIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
+import type { SessionId, TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
 const args = z.strictObject({ databaseUrl: z.string(), projectId: z.string() }).parse(JSON.parse(process.argv[2] ?? "{}"));
@@ -106,8 +107,27 @@ const openNit = await db.finding.create({
 });
 await db.taskReviewer.create({ data: { organizationId, projectId, taskRepoId: taskRepo.id, githubUserId: "9001", login: "demo-gh", memberId: admin.id, source: "requested", lastReviewState: null } });
 await db.taskReviewer.create({ data: { organizationId, projectId, taskRepoId: taskRepo.id, teamSlug: "fake-org/frontend", source: "codeowners" } });
-await db.taskRound.create({ data: { organizationId, projectId, taskId: reviewed.taskId, kind: "ci", number: 1, automatic: true, causeRef: `${head1}.1`, state: "started", createdAt: new Date(Date.now() - 29 * 60_000) } });
-await db.taskRound.create({ data: { organizationId, projectId, taskId: reviewed.taskId, kind: "findings", number: 1, automatic: true, causeRef: run1.id, state: "started", createdAt: new Date(Date.now() - 19 * 60_000) } });
+/**
+ * Milestone 10 (ticket 12): a round's message, written with its round as `start-round.ts` does, which
+ * the thread draws as ostra's outlined bubble with its round (a capped round has none).
+ */
+const roundMessage = async (taskId: TaskId, sessionId: SessionId, at: number, intent: "fix-ci" | "fix-findings", text: string): Promise<void> => {
+  await db.$transaction((tx) =>
+    appendServerEvent(tx, { organizationId, projectId, taskId, sessionId, at, event: { kind: "user.message", memberId: memberIdSchema.parse(admin.id), clientMessageId: clientMessageIdSchema.parse(randomUUID()), text, delivery: "queued", intent } }),
+  );
+};
+const ciAt = Date.now() - 29 * 60_000;
+const findingsAt = Date.now() - 19 * 60_000;
+await db.taskRound.create({ data: { organizationId, projectId, taskId: reviewed.taskId, kind: "ci", number: 1, automatic: true, causeRef: `${head1}.1`, state: "started", createdAt: new Date(ciAt) } });
+await roundMessage(reviewed.taskId, reviewed.sessionId, ciAt, "fix-ci", fixCiPrompt([{ name: "test", conclusion: "failure", logFile: `${log.id}.log` }]));
+await db.taskRound.create({ data: { organizationId, projectId, taskId: reviewed.taskId, kind: "findings", number: 1, automatic: true, causeRef: run1.id, state: "started", createdAt: new Date(findingsAt) } });
+await roundMessage(
+  reviewed.taskId,
+  reviewed.sessionId,
+  findingsAt,
+  "fix-findings",
+  fixFindingsPrompt([{ repo: repo.fullName, path: "src/version.ts", line: 2, side: "new", severity: "blocking", title: "Read the version at build time", body: "`process.env` isn't defined in the browser bundle." }]),
+);
 await db.needsYouItem.create({ data: { organizationId, projectId, taskId: reviewed.taskId, reason: "waiting_for_reviewer", audience: "reviewer" } });
 
 // ---- the task at the CI round limit ----
@@ -118,7 +138,9 @@ const cappedRepo = await db.taskRepo.create({
 });
 await db.ciRun.create({ data: { organizationId, projectId, taskRepoId: cappedRepo.id, headSha: cappedHead, state: "failed", checks: [{ name: "e2e", conclusion: "failure", externalId: "9" }], logBlobIds: [{ name: "e2e", blobId: log.id }], completedAt: new Date() } });
 for (const [number, state] of [[1, "started"], [2, "started"], [3, "capped"]] as const) {
-  await db.taskRound.create({ data: { organizationId, projectId, taskId: capped.taskId, kind: "ci", number, automatic: true, causeRef: `${cappedHead}.${String(number)}`, state } });
+  const at = Date.now() - (4 - number) * 10 * 60_000;
+  await db.taskRound.create({ data: { organizationId, projectId, taskId: capped.taskId, kind: "ci", number, automatic: true, causeRef: `${cappedHead}.${String(number)}`, state, createdAt: new Date(at) } });
+  if (state === "started") await roundMessage(capped.taskId, capped.sessionId, at, "fix-ci", fixCiPrompt([{ name: "e2e", conclusion: "failure", logFile: `${log.id}.log` }]));
 }
 await db.$transaction((tx) => appendServerEvent(tx, { organizationId, projectId, taskId: capped.taskId, sessionId: capped.sessionId, at: Date.now(), event: { kind: "round.capped", round: "ci", reason: "rounds" } }));
 await db.needsYouItem.create({ data: { organizationId, projectId, taskId: capped.taskId, reason: "round_cap", audience: "driver" } });

@@ -87,11 +87,12 @@ export const MissingThumb = ({ name }: { readonly name: string }) => (
 );
 
 /** The `+{n}` tile after five thumbnails, as milestone 8 draws it: it opens the viewer on the sixth. */
-export const MoreThumb = ({ more, onOpen }: { readonly more: number; readonly onOpen: (() => void) | null }) => (
+export const MoreThumb = ({ more, onOpen, size = THUMB_HEIGHT }: { readonly more: number; readonly onOpen: (() => void) | null; readonly size?: number }) => (
   <button
     type="button"
     disabled={onOpen === null}
-    className="grid size-[110px] shrink-0 place-items-center rounded-[6px] border border-control-line bg-surface font-mono text-ui text-muted hover:border-faint focus-visible:outline-2 focus-visible:outline-teal"
+    className="grid shrink-0 place-items-center rounded-[6px] border border-control-line bg-surface font-mono text-ui text-muted hover:border-faint focus-visible:outline-2 focus-visible:outline-teal"
+    style={{ width: size, height: size }}
     aria-label={t("task.attachments.more", { n: more })}
     onClick={onOpen ?? undefined}
   >

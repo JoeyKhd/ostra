@@ -6,7 +6,10 @@ import { memberIdSchema } from "@ostra/protocol";
 import type { EffortChangeData } from "@ostra/task-view";
 
 import { t } from "@/lib/messages";
-import { EffortMarker, TurnUsage, clampText, effortMarkerText, turnUsageText } from "@/task/effort-marks";
+import { TurnUsage, clampText, turnUsageText } from "@/task/effort-marks";
+import { createTaskIndexStore, TaskContext } from "@/task/task-context";
+import { Divider } from "@/task/thread/divider";
+import { dividerWords } from "@/task/thread/words";
 
 import { ReasoningRow, TaskEffortRow, taskEffortView } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
@@ -91,10 +94,16 @@ describe("the task's effort in the thread", () => {
 
   it("F-137/c8: the marker names who set which level, and from the next turn only during one", () => {
     const data: EffortChangeData = { from: "xhigh", to: "low", memberId: memberIdSchema.parse("01900000-0000-7000-8000-00000000a001"), duringTurn: true, at: Date.UTC(2026, 10, 19, 14, 11) };
-    expect(effortMarkerText(data, "Alex Kim")).toBe("Alex Kim set effort to Low, from the next turn");
-    expect(effortMarkerText({ ...data, duringTurn: false }, "Alex Kim")).toBe("Alex Kim set effort to Low");
-    const html = renderToStaticMarkup(<EffortMarker data={data} name="Alex Kim" />);
-    expect(html).toContain('data-part="effort"');
+    // Milestone 10 (ticket 12): the marker is a divider, `sliders-horizontal` and the time.
+    const context = { nameOf: () => "Alex Kim", agent: "OpenCode", now: data.at };
+    expect(dividerWords({ kind: "effort", change: data }, t, context).text).toBe("Alex Kim set effort to Low, from the next turn");
+    expect(dividerWords({ kind: "effort", change: { ...data, duringTurn: false } }, t, context).text).toBe("Alex Kim set effort to Low");
+    const html = renderToStaticMarkup(
+      <TaskContext.Provider value={{ store: createTaskIndexStore(), memberName: () => "Alex Kim", agent: { name: "OpenCode", model: null }, approvalSummary: () => null }}>
+        <Divider divider={{ kind: "effort", change: data }} now={data.at} />
+      </TaskContext.Provider>,
+    );
+    expect(html).toContain('data-divider="effort"');
     expect(html).toMatch(/\d\d:\d\d/);
   });
 });

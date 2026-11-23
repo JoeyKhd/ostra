@@ -889,11 +889,81 @@ export const resultWords = (result: TurnResult, tr: Translate, push: PushContext
   }
 };
 
+// ---- a member's message and ostra's (parts.md part 2, ticket 12) ----------------------------
+
+/** `{login} on GitHub`: a PR comment's or a review's author; `GitHub` when its login isn't in view. */
+export const githubAuthorWords = (login: string | null, tr: Translate): string => (login === null ? tr("task.bubble.github") : tr("task.bubble.onGitHub", { login }));
+
+/** An AI review's head: `AI review of PR #483` (its 600 part) and `, round 2 of 3`. */
+export const aiReviewHeadWords = (prs: readonly number[], round: { readonly number: number; readonly of: number }, tr: Translate): { readonly title: string; readonly round: string } => {
+  const [only] = prs;
+  return {
+    title: prs.length === 1 && only !== undefined ? tr("task.bubble.aiReview.one", { n: only }) : tr("task.bubble.aiReview.many", { n: prs.length }),
+    round: tr("task.bubble.aiReview.round", { n: round.number, of: round.of }),
+  };
+};
+
+/** What an AI review reads: `3 files, +203 −6 · the PR's commits, CALC-192 and its criteria`, its counts mono. */
+export const aiReviewReadsWords = (
+  input: { readonly files: number; readonly added: number; readonly removed: number; readonly prs: number; readonly ticketKey: string | null; readonly criteria: boolean },
+  tr: Translate,
+): Segment[] => {
+  const size = fill(tr(input.files === 1 ? "task.bubble.aiReview.files.one" : "task.bubble.aiReview.files.other"), {
+    files: [code(String(input.files), "inherit")],
+    lines: [code(`+${String(input.added)} −${String(input.removed)}`, "inherit")],
+  });
+  const reads =
+    input.prs > 1
+      ? tr("task.bubble.aiReview.readsMany")
+      : input.ticketKey === null || input.ticketKey === ""
+        ? tr("task.bubble.aiReview.reads")
+        : tr(input.criteria ? "task.bubble.aiReview.readsCriteria" : "task.bubble.aiReview.readsTicket", { key: input.ticketKey });
+  return [...size, seg(` · ${reads}`)];
+};
+
+/** `automatic turn 1 of 4`: the turns ostra started by itself since a person last acted, of the limit. */
+export const automaticTurnWords = (k: number, limit: number, tr: Translate): string => tr("task.bubble.automaticTurn", { k, limit });
+
+/**
+ * A findings round's line (parts.md part 2): `Sent 1 blocking finding: The store keeps 51 results.
+ * 1 nit listed, not required.`, the titles `--text` (milestone 6's words, three titles at most).
+ */
+export const findingsSentSegments = (findings: readonly { readonly severity: "blocking" | "nit"; readonly title: string }[], tr: Translate): Segment[] => {
+  const blocking = findings.filter((finding) => finding.severity === "blocking");
+  const nits = findings.length - blocking.length;
+  const more = blocking.length > 3 ? tr("review.round.andMore", { n: blocking.length - 3 }) : "";
+  const titles = [seg(`${blocking.slice(0, 3).map((finding) => finding.title).join(", ")}${more}`, "text")];
+  const sent = blocking.length === 0 ? [seg(tr("review.round.sentNone"))] : fill(tr(blocking.length === 1 ? "review.round.sent.one" : "review.round.sent.other", { n: blocking.length }), { titles });
+  return nits === 0 ? sent : [...sent, seg(` ${counted(tr, nits, "review.round.nits.one", "review.round.nits.other")}`)];
+};
+
+/** How a late answer's prompt marks a member's own words (`Something else…`) after its field's label. */
+const OWN_WORDS = " (in their own words)";
+
+/**
+ * A late answer's words, from the answers its prompt carried (`Label: value` a line, a member's
+ * own words marked): each value, own words quoted, `, `-joined.
+ */
+export const lateAnswersWords = (answers: string, tr: Translate): string =>
+  answers
+    .split("\n")
+    .flatMap((line) => {
+      const colon = line.indexOf(": ");
+      if (colon === -1) return line.trim() === "" ? [] : [line.trim()];
+      const value = line.slice(colon + 2);
+      return [line.slice(0, colon).endsWith(OWN_WORDS) ? tr("task.receipt.quoted", { words: value }) : value];
+    })
+    .join(", ");
+
 // ---- receipts and dividers (parts.md part 12) -----------------------------------------------
 
 /** A settled need, in its block's place. */
 export type ReceiptInput =
   | { readonly kind: "question"; readonly question: QuestionData }
+  /** A late answer whose question isn't in view: who answered, and the answers its message carried. */
+  | { readonly kind: "answered"; readonly by: MemberId; readonly answers: string }
+  /** A late approval's answer (sent as a reopen): milestone 3's receipt words, and what it asked. */
+  | { readonly kind: "approval"; readonly by: MemberId; readonly decision: "allow_once" | "allow_task" | "deny"; readonly request: string | null; readonly reason: string | null }
   | { readonly kind: "plan-approved"; readonly by: MemberId; readonly edited: boolean }
   | { readonly kind: "plan-changes"; readonly by: MemberId }
   | { readonly kind: "plan-unanswered" }
@@ -934,6 +1004,20 @@ export const receiptWords = (receipt: ReceiptInput, tr: Translate, nameOf: NameO
         default:
           return status satisfies never;
       }
+    }
+    case "answered":
+      return { words: fill(tr("task.receipt.answered"), { name: nameOf(receipt.by), choice: [seg(lateAnswersWords(receipt.answers, tr), "subject")] }), settled: true, action: null };
+    case "approval": {
+      const name = nameOf(receipt.by);
+      const head =
+        receipt.decision === "allow_once"
+          ? tr("taskAnswers.receipt.once", { name })
+          : receipt.decision === "allow_task"
+            ? tr("taskAnswers.receipt.task", { name })
+            : receipt.reason === null || receipt.reason === ""
+              ? tr("taskAnswers.receipt.denied", { name })
+              : tr("taskAnswers.receipt.deniedWhy", { name, reason: receipt.reason });
+      return { words: [seg(head), ...(receipt.request === null ? [] : [seg(" · "), code(receipt.request)])], settled: true, action: null };
     }
     case "plan-approved":
       return { words: [seg(tr(receipt.edited ? "task.receipt.planApprovedEdited" : "task.receipt.planApproved", { name: nameOf(receipt.by) }))], settled: true, action: tr("task.receipt.showPlan") };

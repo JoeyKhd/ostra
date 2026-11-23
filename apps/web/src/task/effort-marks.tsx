@@ -1,14 +1,14 @@
-import { InfoIcon, SlidersHorizontalIcon } from "lucide-react";
+import { InfoIcon } from "lucide-react";
 
-import type { EffortChangeData, TaskMessageMeta } from "@ostra/task-view";
+import type { TaskMessageMeta } from "@ostra/task-view";
 
 import { effortLabel } from "@/components/effort/effort-words";
-import { formatClock, formatTokens } from "@/lib/format";
+import { formatTokens } from "@/lib/format";
 import { t } from "@/lib/messages";
 
 // The thread's reasoning-effort marks (F-137, F-084; task-effort.md, "The thread"): each turn's
-// usage line with its level and reasoning tokens, the clamp's line under it, and the marker for
-// `effort.changed`, in time order among the thread's items.
+// usage line with its level and reasoning tokens, and the clamp's line under it. Milestone 10
+// (ticket 12): the marker for `effort.changed` is a divider (`thread/divider.tsx`).
 
 /** `Max · 48k in · 9.1k out · 6.4k reasoning`: the level is left out at `Default`, the reasoning when none was reported. */
 export const turnUsageText = (meta: Pick<TaskMessageMeta, "effort" | "usage">): string | null => {
@@ -47,17 +47,3 @@ export const TurnUsage = ({ meta }: { readonly meta: TaskMessageMeta }) => {
     </>
   );
 };
-
-/** `Alex Kim set effort to Low, from the next turn`: the tail only when a turn was running. */
-export const effortMarkerText = (data: EffortChangeData, name: string): string =>
-  t(data.duringTurn ? "tasks.effort.markerDuringTurn" : "tasks.effort.marker", { name, level: effortLabel(data.to) });
-
-export const EffortMarker = ({ data, name }: { readonly data: EffortChangeData; readonly name: string }) => (
-  <div data-part="effort" data-level={data.to} className="flex min-h-7 min-w-0 items-center text-ui text-muted">
-    <span className="flex w-8 shrink-0 pl-1.5 text-muted">
-      <SlidersHorizontalIcon aria-hidden className="size-[15px] stroke-[1.75]" />
-    </span>
-    <span className="min-w-0">{effortMarkerText(data, name)}</span>
-    <span className="ml-3 shrink-0 font-mono text-sm text-faint">{formatClock(data.at)}</span>
-  </div>
-);

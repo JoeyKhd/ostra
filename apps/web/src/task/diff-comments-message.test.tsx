@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { diffCommentIdSchema, markedBlock } from "@ostra/protocol";
 
 import { UserMessageText } from "./agent-message-view";
-import { MessageIntentMark, SentDiffCommentsContext, sentBySeq } from "./diff-comments-message";
+import { SentDiffCommentsContext, sentBySeq, useDiffCommentsTag } from "./diff-comments-message";
 import type { SentDiffComments } from "./diff-comments-message";
 
 // F-072 (ticket 46; task-changes.md, "In the Activity tab"): the message "Send 2 comments to the
@@ -33,6 +33,9 @@ const listed = [
   { commentId: diffCommentIdSchema.parse("0196f1a0-0000-7000-8000-000000000024"), path: "README.md", line: 5, quoted: null, body: "Sent earlier.", sentInSeq: 7 },
 ];
 
+/** The bubble's tag after the time, as the bubble reads it. */
+const Tag = ({ seq: at }: { readonly seq: number }) => <span>{useDiffCommentsTag(at)}</span>;
+
 const render = (sent: SentDiffComments, node: ReactNode): string => renderToStaticMarkup(<SentDiffCommentsContext.Provider value={sent}>{node}</SentDiffCommentsContext.Provider>);
 
 describe("a diff-comments message in the thread (F-072)", () => {
@@ -49,11 +52,11 @@ describe("a diff-comments message in the thread (F-072)", () => {
     expect(body).toContain("A calculator.");
     expect(body).not.toContain("Still a draft.");
     expect(body).not.toContain("Sent earlier.");
-    expect(render(sent, <MessageIntentMark intent="diff-comments" seq={seq} />)).toContain("2 comments on the diff");
+    expect(render(sent, <Tag seq={seq} />)).toContain("2 comments on the diff");
 
     // Until the comments are read, the header keeps the intent's tag and the body stays empty.
     expect(render(null, <UserMessageText text={prompt} intent="diff-comments" diffSeq={seq} agentMessage={null} />)).toBe("");
-    expect(render(null, <MessageIntentMark intent="diff-comments" seq={seq} />)).toContain("from diff comments");
+    expect(render(null, <Tag seq={seq} />)).toContain("from diff comments");
 
     // Any other member message is its own text.
     expect(render(sent, <UserMessageText text="Rename it back." intent={undefined} diffSeq={3} agentMessage={null} />)).toContain("Rename it back.");

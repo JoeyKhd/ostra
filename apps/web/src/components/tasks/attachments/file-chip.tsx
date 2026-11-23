@@ -122,10 +122,12 @@ const chipClass = "group flex h-[52px] min-w-0 max-w-[320px] items-center gap-2.
  * with `text extracted` and its tooltip on a document ostra read. Once the task's retention
  * removed it, it keeps its name and loses its link.
  */
-export const FileChipLink = ({ file, agent }: { readonly file: ThreadFile; readonly agent: string }) => {
+export const FileChipLink = ({ file, agent, inBubble = false }: { readonly file: ThreadFile; readonly agent: string; readonly inBubble?: boolean }) => {
+  // Milestone 10 (parts.md part 2): above a member's bubble, 48px tall on `--bg`.
+  const size = inBubble ? "h-12 bg-bg max-sm:max-w-full" : undefined;
   if (file.downloadPath === null) {
     return (
-      <span className={cn(chipClass, "border-dashed border-control-line")} data-file={file.fileId} data-state="removed">
+      <span className={cn(chipClass, "border-dashed border-control-line", size)} data-file={file.fileId} data-state="removed">
         <FileTile name={file.name} tone="missing" />
         <FileText name={file.name} meta={<span className="font-sans">{t("task.files.removed")}</span>} cut={THREAD_NAME_CHARS} muted />
       </span>
@@ -136,7 +138,7 @@ export const FileChipLink = ({ file, agent }: { readonly file: ThreadFile; reado
       href={file.downloadPath}
       download={file.name}
       aria-label={chipName(file)}
-      className={cn(chipClass, "text-inherit hover:border-line-3 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal")}
+      className={cn(chipClass, "text-inherit hover:border-line-3 hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal", size)}
       data-file={file.fileId}
       data-text={file.text}
     >

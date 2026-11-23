@@ -1,16 +1,16 @@
 import { createContext, useContext } from "react";
 
-import type { MessageIntent } from "@ostra/protocol";
-
-import { cn } from "@/lib/cn";
 import { plural, t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
+
+import { Quoted } from "./thread/quoted";
 
 // F-072 (ticket 46; task-changes.md, "In the Activity tab"): "Send N comments to the agent" writes one
 // member message whose text is the agent's prompt, each comment fenced as data. That text is for the
 // agent only: the thread draws the message from the comments it carried, the rows whose `sentInSeq`
-// is the message's sequence (`diff.comments.list`). Its header reads `{n} comments on the diff`
-// after the time, and its body lists each `{path}:{line}`, the quoted line and the comment, as plain text.
+// is the message's sequence (`diff.comments.list`). Its bubble's tag reads `{n} comments on the
+// diff` after the time, and its body quotes each `{path}:{line}`, the quoted line and the comment,
+// as plain text (milestone 10, parts.md part 2).
 // Every other message ostra writes for the agent is drawn by `agent-message-view.tsx`.
 
 type ApiComment = RouterOutputs["diff"]["comments"]["list"]["comments"][number];
@@ -56,45 +56,33 @@ const signOf = (kind: NonNullable<SentDiffComment["quoted"]>["kind"]): string =>
 };
 
 /**
- * A member message's intent in its header, after the time. Diff comments read ` · {n} comments on the
- * diff` once their comments are read; until then, and for any other intent, the intent's tag.
+ * A diff-comments message's tag after its time (parts.md part 2): `{n} comments on the diff` once
+ * its comments are read; until then, the intent's words.
  */
-export const MessageIntentMark = ({ intent, seq }: { readonly intent: Exclude<MessageIntent, "message">; readonly seq: number | undefined }) => {
-  const sent = useSentAt(intent === "diff-comments" ? seq : undefined);
-  if (sent !== null && sent.length > 0) {
-    return (
-      <span className="font-mono text-sm text-faint" data-tag="intent" data-intent={intent}>
-        <span> · </span>
-        {plural(sent.length, "task.diffComments.one", "task.diffComments.other")}
-      </span>
-    );
-  }
-  // Diff comments sit right after the time, in its span: the tag keeps the header's gap by itself.
-  return (
-    <span className={cn("rounded-sm border border-line-2 px-1.5 text-xs text-muted", intent === "diff-comments" && "ml-2")} data-tag="intent" data-intent={intent}>
-      {t(`taskAnswers.intent.${intent}`)}
-    </span>
-  );
+export const useDiffCommentsTag = (seq: number | undefined): string => {
+  const sent = useSentAt(seq);
+  return sent !== null && sent.length > 0 ? plural(sent.length, "task.diffComments.one", "task.diffComments.other") : t("taskAnswers.intent.diff-comments");
 };
 
-/** The comments a diff-comments message carried: each one's `{path}:{line}`, the quoted line and its text. */
+/**
+ * The comments a diff-comments message carried, each a quoted item in the bubble: its
+ * `{path}:{line}`, the quoted line (mono `--muted`, one line) and the comment.
+ */
 export const SentDiffCommentsList = ({ seq }: { readonly seq: number | undefined }) => {
   const sent = useSentAt(seq);
   if (sent === null || sent.length === 0) return null;
   return (
-    <ol data-part="diff-comments" className="mt-1 flex flex-col gap-2">
+    <div data-part="diff-comments">
       {sent.map((comment) => (
-        <li key={comment.commentId} data-diff-comment={comment.commentId} className="border-l-2 border-line-2 pl-3">
-          <div className="font-mono text-xs text-muted [overflow-wrap:anywhere]">{`${comment.path}:${String(comment.line)}`}</div>
-          {comment.quoted === null || comment.quoted.text.trim() === "" ? null : (
-            <div className="whitespace-pre-wrap font-mono text-xs text-faint [overflow-wrap:anywhere]">
-              {signOf(comment.quoted.kind)}
-              {comment.quoted.text}
-            </div>
-          )}
-          <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{comment.body}</p>
-        </li>
+        <Quoted
+          key={comment.commentId}
+          data-diff-comment={comment.commentId}
+          place={`${comment.path}:${String(comment.line)}`}
+          line={comment.quoted === null || comment.quoted.text.trim() === "" ? null : `${signOf(comment.quoted.kind)}${comment.quoted.text}`}
+        >
+          {comment.body}
+        </Quoted>
       ))}
-    </ol>
+    </div>
   );
 };

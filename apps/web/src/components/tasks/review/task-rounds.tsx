@@ -1,24 +1,24 @@
 "use client";
 
-import { CheckIcon, HandIcon, LoaderCircleIcon, PauseCircleIcon, RefreshCcwIcon, XIcon } from "lucide-react";
+import { CheckIcon, HandIcon, LoaderCircleIcon, PauseCircleIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
-import { formatClock } from "@/lib/format";
 import { t } from "@/lib/messages";
 
 import { taskStateLine } from "../task-words";
 import type { TaskReason, TaskLimit, TaskState } from "../task-words";
 
-import { capBody, capTitle, findingsSentWords, releasedHoldText, roundName, roundOutcomeText, stagesOf } from "./review-words";
+import { capBody, capTitle, roundOutcomeText, stagesOf } from "./review-words";
 import type { CapKind, Limits, Stage, SubState, TaskRound } from "./review-words";
 
 // The task page in review (app-targets/m6/task-rounds.md; F-035, F-101, F-105, ticket 35): the
-// stage line under the status, "automatic turns N of 4", a card per round (what ostra sent the agent
-// by itself, and why), the cap's needs-you with "Keep working", and the panel's Rounds group.
+// stage line under the status, "automatic turns N of 4", each round's outcome, the cap's needs-you
+// with "Keep working", and the panel's Rounds group. Milestone 10 (ticket 12): what a round sent
+// the agent by itself, and why, is its message's outlined bubble in the thread.
 
 type Count = { readonly used: number; readonly limit: number };
 
@@ -63,75 +63,6 @@ export const StageLine = ({ subState, aiReview, counts, needsYou, held }: {
   );
 };
 
-/** One round as a card: its name, its turn, and what it sent. */
-export const RoundCard = ({ round, limits, reviewHref, taskId }: { readonly round: TaskRound; readonly limits: Limits; readonly reviewHref: string; readonly taskId: string }) => {
-  const body = (() => {
-    switch (round.cause.kind) {
-      case "ci":
-        return round.cause.failing.length === 0 ? (
-          <p className="text-sm text-muted">{t("review.round.noFailing")}</p>
-        ) : (
-          <ul>
-            {round.cause.failing.slice(0, 5).map((check) => (
-              <li key={`${check.repo}-${check.name}`} className="flex min-h-[26px] items-center gap-2 text-sm">
-                <XIcon aria-hidden className="size-[13px] shrink-0 text-red" />
-                <span className="font-mono text-text">{check.name}</span>
-                <span className="text-faint">{check.conclusion === "timed_out" ? t("review.round.timedOut") : check.conclusion === "cancelled" ? t("review.round.cancelled") : t("review.round.failed")}</span>
-                {check.logFile === null ? (
-                  <span className="text-faint">{t("review.round.noLog")}</span>
-                ) : (
-                  <Link href={`/tasks/${taskId}?tab=checks`} className="font-mono text-teal hover:underline" data-log={check.logFile}>{check.logFile}</Link>
-                )}
-              </li>
-            ))}
-            {round.cause.failing.length > 5 ? <li className="text-xs text-faint">{t("review.round.notSent", { n: round.cause.failing.length - 5 })}</li> : null}
-          </ul>
-        );
-      case "findings":
-        return (
-          <p className="text-sm text-muted">
-            {findingsSentWords(round.cause.findings)}{" "}
-            <Link href={reviewHref} className="text-teal hover:underline">{t("review.round.openReview")}</Link>
-          </p>
-        );
-      case "changes-requested":
-        return <p className="text-sm text-muted">{t("review.round.changesSent", { name: round.cause.by?.name ?? t("taskPage.someone") })}</p>;
-      default:
-        return round.cause satisfies never;
-    }
-  })();
-  return (
-    <div className="flex gap-3" data-round={round.kind} data-number={round.number} data-state={round.state}>
-      <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full border border-line-2 text-muted">
-        <RefreshCcwIcon className="size-[14px] stroke-[1.75]" />
-      </span>
-      <div className="min-w-0 flex-1 rounded-lg border border-line px-3.5 py-2.5">
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="text-ui font-semibold text-text">{roundName(round, limits)}</span>
-          <span className="font-mono text-xs text-faint">
-            {formatClock(round.createdAt)}
-            {round.automatic ? ` · ${t("review.round.automatic")}` : ""}
-          </span>
-        </div>
-        <div className="mt-1">{body}</div>
-        {round.state === "held" ? (
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-faint">
-            <PauseCircleIcon aria-hidden className="size-[13px]" />
-            {round.heldReason?.scope === "organization" ? t("review.round.heldOrganization") : t("review.round.heldProject")}
-          </p>
-        ) : round.hold !== null && releasedHoldText(round.hold) !== null ? (
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-faint" data-testid="round-released">
-            <PauseCircleIcon aria-hidden className="size-[13px]" />
-            {releasedHoldText(round.hold)}
-          </p>
-        ) : round.state === "capped" ? (
-          <p className="mt-1.5 text-xs text-faint">{round.cappedReason === "spend-cap" ? t("review.round.cappedSpend") : t("review.round.capped")}</p>
-        ) : null}
-      </div>
-    </div>
-  );
-};
-
 /** The rounds in the thread, oldest first, then the cap's needs-you when the task stopped at one. */
 export const RoundsInThread = ({ taskId, rounds, limits, cap, capInput, isDriver, driver, keep, onTakeOver }: {
   readonly taskId: string;
@@ -146,19 +77,19 @@ export const RoundsInThread = ({ taskId, rounds, limits, cap, capInput, isDriver
   readonly onTakeOver: () => void;
 }) => {
   const reviewHref = `/tasks/${taskId}/review`;
-  if (rounds.length === 0 && cap === null) return null;
+  // Milestone 10 (F-151, ticket 12): each round is its message's outlined bubble in the thread (what it
+  // sent, its round of its limit, its hold); its outcome stays here until the push's result line
+  // carries the CI verdict (ticket 14). A round the cap stopped never ran: the cap's needs-you says so.
+  const outcomes = rounds.flatMap((round) => {
+    const outcome = round.state === "capped" ? null : roundOutcomeText(round.outcome, capInput.agent);
+    return outcome === null ? [] : [{ key: `${round.kind}-${String(round.number)}-${String(round.createdAt)}`, outcome }];
+  });
+  if (outcomes.length === 0 && cap === null) return null;
   return (
     <div className="mt-4 space-y-3" data-testid="task-rounds">
-      {/* A round the cap stopped never ran: the cap's needs-you below says so, not a card. */}
-      {rounds.filter((round) => round.state !== "capped").map((round) => {
-        const outcome = roundOutcomeText(round.outcome, capInput.agent);
-        return (
-          <div key={`${round.kind}-${String(round.number)}-${String(round.createdAt)}`} className="space-y-1.5">
-            <RoundCard round={round} limits={limits} reviewHref={reviewHref} taskId={taskId} />
-            {outcome === null ? null : <p className="pl-10 text-ui text-muted" data-testid="round-outcome">{outcome}</p>}
-          </div>
-        );
-      })}
+      {outcomes.map(({ key, outcome }) => (
+        <p key={key} className="text-ui text-muted" data-testid="round-outcome">{outcome}</p>
+      ))}
       {cap === null ? null : (
         <div className={cn("border-l-2 pl-3", isDriver ? "border-amber" : "border-line-2")} role="region" aria-label={capTitle(cap)} data-testid="round-cap" data-cap={cap}>
           <p className={cn("flex items-center gap-1.5 text-sm font-semibold", isDriver ? "text-amber-text" : "text-muted")}>

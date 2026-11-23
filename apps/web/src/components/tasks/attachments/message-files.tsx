@@ -58,6 +58,9 @@ export const SkippedList = ({ skipped }: { readonly skipped: readonly { readonly
     </div>
   );
 
+/** A thumbnail's height above a member's bubble (parts.md part 2; milestone 8's strip is 110px). */
+const BUBBLE_THUMB_HEIGHT = 84;
+
 /** A picture's button name: `Image history-panel-mock.png from Sam Rivera, open`. */
 export const imageName = (name: string, from: string): string => t("task.files.openImage", { name, from });
 
@@ -81,20 +84,25 @@ export const MessageFiles = ({ files, author, agent, model, imagesNotSent, leftO
   const { shown, more } = stripOf(images);
   const sixth = images[shown.length];
   return (
-    <div data-part="message-files">
-      {images.length === 0 ? null : (
-        <div className="mt-2.5 flex items-end gap-3 overflow-x-auto pb-1" data-testid="message-images">
-          {shown.map((file) => (
-            <FileThumb key={file.fileId} src={file.downloadPath} name={imageName(file.name, author)} onOpen={onOpenImage === null ? null : () => { onOpenImage(file.fileId); }} />
-          ))}
-          {more === 0 ? null : <MoreThumb more={more} onOpen={onOpenImage === null || sixth === undefined ? null : () => { onOpenImage(sixth.fileId); }} />}
-        </div>
-      )}
-      {others.length === 0 ? null : (
-        <div className="mt-2.5 flex flex-wrap gap-2 max-sm:flex-col" data-testid="message-file-chips">
-          {others.map((file) => (
-            <FileChipLink key={file.fileId} file={file} agent={agent} />
-          ))}
+    // Milestone 10 (F-151, parts.md part 2): above the member's bubble, right-aligned, 8px apart: pictures as 84px thumbnails, then the chips at 48px on `--bg`.
+    <div data-part="message-files" className="flex flex-col items-end">
+      {images.length + others.length === 0 ? null : (
+        <div className="flex flex-wrap items-end justify-end gap-2" data-testid="message-strip">
+          {images.length === 0 ? null : (
+            <div className="contents" data-testid="message-images">
+              {shown.map((file) => (
+                <FileThumb key={file.fileId} src={file.downloadPath} name={imageName(file.name, author)} height={BUBBLE_THUMB_HEIGHT} onOpen={onOpenImage === null ? null : () => { onOpenImage(file.fileId); }} />
+              ))}
+              {more === 0 ? null : <MoreThumb more={more} size={BUBBLE_THUMB_HEIGHT} onOpen={onOpenImage === null || sixth === undefined ? null : () => { onOpenImage(sixth.fileId); }} />}
+            </div>
+          )}
+          {others.length === 0 ? null : (
+            <div className="contents" data-testid="message-file-chips">
+              {others.map((file) => (
+                <FileChipLink key={file.fileId} file={file} agent={agent} inBubble />
+              ))}
+            </div>
+          )}
         </div>
       )}
       {imagesNotSent === null || images.length === 0 ? null : (

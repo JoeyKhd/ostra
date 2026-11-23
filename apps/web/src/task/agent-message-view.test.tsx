@@ -23,12 +23,13 @@ import { foldTaskEvents } from "@ostra/task-view";
 import type { TaskUIMessage } from "@ostra/task-view";
 import { calc192, review483, review483Prompt, s3, sceneWorld } from "@ostra/task-view/testing";
 
-import { agentMessageOf, agentMessageSummary, AgentMessageMark, isAutomatic, UserMessageText } from "./agent-message-view";
+import { agentMessageOf, agentMessageSummary, agentMessageTag, isAutomatic, reviewedText, UserMessageText } from "./agent-message-view";
 
 // F-072's fix for every message ostra writes for the agent: the thread draws a member message from
 // what it carried, read from its blocks, never its prompt. Each case folds the message as the log
-// holds it, reads it as the thread does, and draws its header's mark, its body and the subagents
-// window's line: each holds the data and none holds a fence or ostra's instructions.
+// holds it, reads it as the thread does, and draws its bubble's tag (milestone 10, parts.md part 2),
+// its body and the subagents window's line: each holds the data and none holds a fence or ostra's
+// instructions.
 
 const sessionId = sessionIdSchema.parse("01900000-0000-7000-8000-0000000000e9");
 const memberId = memberIdSchema.parse("01900000-0000-7000-8000-0000000000b9");
@@ -48,7 +49,7 @@ const drawn = (text: string, intent: MessageIntent | undefined) => {
   const metaIntent = message.metadata?.author?.intent;
   return {
     read,
-    mark: read === null ? "" : renderToStaticMarkup(<AgentMessageMark message={read} intent={metaIntent} />),
+    mark: read === null ? "" : (agentMessageTag(read) ?? ""),
     body: renderToStaticMarkup(<UserMessageText text={text} intent={metaIntent} diffSeq={4} agentMessage={read} />),
     summary: read === null ? "" : agentMessageSummary(read),
   };
@@ -67,7 +68,7 @@ const expectNoPrompt = (shown: ReturnType<typeof drawn>, instructions: readonly 
 describe("a message ostra wrote for the agent, in the thread", () => {
   it("an @ostra comment shows the comment and its line, escaped, never the prompt", () => {
     const shown = drawn(prCommentPrompt({ login: "sam", text: "Rename it <b>back</b>.", url: "https://github.com/o/r/pull/12#discussion_r1", path: "src/calc.ts", line: 14 }), "pr-comment");
-    expect(shown.mark).toContain("@ostra comment on the pull request");
+    expect(shown.mark).toBe("PR comment");
     expect(shown.body).toContain('data-kind="pr-comment"');
     expect(shown.body).toContain("src/calc.ts:14");
     expect(shown.body).toContain("Rename it &lt;b&gt;back&lt;/b&gt;.");
@@ -83,7 +84,7 @@ describe("a message ostra wrote for the agent, in the thread", () => {
       ]),
       "fix-checks",
     );
-    expect(shown.mark).toContain("2 failing checks to fix");
+    expect(shown.mark).toBe("asked to fix 2 checks");
     expect(shown.body).toContain('data-kind="fix-checks"');
     expect(shown.body).toContain("lint");
     expect(shown.body).toContain("failed");
@@ -111,15 +112,19 @@ describe("a message ostra wrote for the agent, in the thread", () => {
 
   it("a request for plan changes shows the member's request as they wrote it", () => {
     const shown = drawn(planRevisionPrompt("Split step 2 & keep <the> tests."), "plan-revision");
-    expect(shown.mark).toContain("asked for changes to the plan");
-    expect(shown.body).toContain("Split step 2 &amp; keep &lt;the&gt; tests.");
+    expect(shown.mark).toBe("asked for changes");
+    // The member's own words are Markdown, as the agent's prose: no raw HTML.
+    expect(shown.body).toContain("Split step 2 &amp; keep");
+    expect(shown.body).not.toContain("<the>");
     expectNoPrompt(shown, ["Stay in planning", "Write the revised plan"]);
   });
 
   it("a CI round is ostra's, and shows each failing check and its conclusion", () => {
     const shown = drawn(fixCiPrompt([{ name: "test (linux)", conclusion: "failure", logFile: "0196.log" }, { name: "status", conclusion: "timed_out", logFile: null }]), "fix-ci");
     expect(shown.read === null ? false : isAutomatic(shown.read)).toBe(true);
-    expect(shown.mark).toContain("CI failed: 2 jobs");
+    expect(shown.mark).toBe("automatic");
+    // Before `tasks.rounds` is read, the round's head counts its failing jobs.
+    expect(shown.body).toContain("CI failed: 2 jobs");
     expect(shown.body).toContain("test (linux)");
     expect(shown.body).toContain("failed");
     expect(shown.body).toContain("timed out");
@@ -135,12 +140,10 @@ describe("a message ostra wrote for the agent, in the thread", () => {
       "fix-findings",
     );
     expect(shown.read === null ? false : isAutomatic(shown.read)).toBe(true);
-    expect(shown.mark).toContain("AI review: 1 blocking finding, 1 nit listed");
-    expect(shown.body).toContain("blocking");
-    expect(shown.body).toContain("Off by one");
-    expect(shown.body).toContain("o/api src/b.ts:9 (head)");
-    expect(shown.body).toContain("The loop stops early.");
-    expect(shown.body).toContain('data-item="nit"');
+    expect(shown.mark).toBe("automatic");
+    // parts.md part 2: what it sent, in milestone 6's words, the titles `--text`; the findings themselves are the review's.
+    expect(shown.body).toContain("AI review: 1 blocking finding, 1 nit listed");
+    expect(shown.body.replace(/<[^>]+>/g, "")).toContain("Sent 1 blocking finding: Off by one. 1 nit listed, not required.");
     expect(shown.summary).toBe("AI review: 1 blocking finding, 1 nit listed: Off by one");
     expectNoPrompt(shown, ["found blocking problems", "Fix each blocking finding", "you don&#x27;t have to act"]);
   });
@@ -148,36 +151,35 @@ describe("a message ostra wrote for the agent, in the thread", () => {
   it("changes requested shows the reviewer's comment and their line comments", () => {
     const shown = drawn(changesRequestedPrompt({ reviewBody: "Please split this.", comments: [{ path: "src/a.ts", line: 4, body: "Why here?" }] }), "changes-requested");
     expect(shown.read === null ? true : isAutomatic(shown.read)).toBe(false);
-    expect(shown.mark).toContain("requested changes on the pull request");
+    expect(shown.mark).toBe("changes requested");
     expect(shown.body).toContain("Please split this.");
     expect(shown.body).toContain("src/a.ts:4");
     expect(shown.body).toContain("Why here?");
     expectNoPrompt(shown, ["A reviewer requested changes", "Make the changes they asked for"]);
   });
 
-  it("a reopen with no intent: the approved plan, a late answer, an expired approval's answer", () => {
+  it("a reopen with no intent: the approved plan, a late answer, an expired approval's answer (receipts in the thread, F-151)", () => {
     const plan = drawn(approvedPlanPrompt({ text: "1. Read the code\n2. Fix it", edited: true }), undefined);
-    expect(plan.mark).toContain("approved the plan with edits");
-    expect(plan.body).toContain("1. Read the code");
+    expect(plan.read).toMatchObject({ kind: "plan-approved", edited: true, plan: "1. Read the code\n2. Fix it" });
+    expect(plan.mark).toBe("");
+    expect(plan.summary).toBe("approved the plan with edits");
     expectNoPrompt(plan, ["Planning is over", "carry out the plan"]);
 
     const answered = drawn(lateQuestionAnswerPrompt({ question: "Which format?", fields: [{ id: "f", label: "Format" }], answers: { f: "ISO 8601" } }), undefined);
-    expect(answered.mark).toContain("answered the agent’s question");
-    expect(answered.body).toContain("Which format?");
-    expect(answered.body).toContain("Format: ISO 8601");
+    expect(answered.read).toMatchObject({ kind: "question-answer", question: "Which format?", answers: "Format: ISO 8601" });
+    expect(answered.summary).toBe("Format: ISO 8601");
     expectNoPrompt(answered, ["Your last turn ended", "carry on with their answers"]);
 
     const denied = drawn(expiredApprovalAnswerPrompt({ decision: "deny", subject: "rm -rf build", reason: "Not on this box." }), undefined);
-    expect(denied.mark).toContain("denied a request");
-    expect(denied.body).toContain("rm -rf build");
-    expect(denied.body).toContain("Not on this box.");
+    expect(denied.read).toMatchObject({ kind: "approval-answer", decision: "deny", request: "rm -rf build", reason: "Not on this box." });
+    expect(denied.summary).toBe("denied a request: rm -rf build");
     expectNoPrompt(denied, ["Your last turn ended", "Carry on without the request"]);
   });
 
   it("the closing turn is ostra's, in the panel's words", () => {
     const shown = drawn(CLOSING_TURN_PROMPT, "message");
     expect(shown.read === null ? false : isAutomatic(shown.read)).toBe(true);
-    expect(shown.mark).toContain("closing turn");
+    expect(shown.mark).toBe("automatic");
     expect(shown.body).toContain("as memory proposals");
     expectNoPrompt(shown, ["Before this session ends", "memory_propose", "don&#x27;t push"]);
   });
@@ -195,45 +197,42 @@ describe("a message ostra wrote for the agent, in the thread", () => {
   };
   const ticket = { key: "OST-42", title: "Add a theme switch", description: "Dark & light." };
 
-  it("F-100: an AI review's first prompt is ostra's: the header names its PR and links it, the body its repo, branch and a folded summary, never the prompt", () => {
+  it("F-100: an AI review's first prompt is ostra's: its PR and round, its size and what it reads against, and What the agent got, never the prompt", () => {
     const shown = drawn(reviewPrompt({ ticket, acceptanceCriteria: "- It persists", pullRequests: [pr], round: { number: 2, of: 3 } }), undefined);
     expect(shown.read === null ? false : isAutomatic(shown.read)).toBe(true);
-    expect(shown.mark).toContain("AI review of ");
-    expect(shown.mark).toContain('href="https://github.com/ostra-test/test1/pull/12"');
-    expect(shown.mark).toContain(">PR #12</a>");
+    expect(shown.mark).toBe("automatic");
     expect(shown.body).toContain('data-kind="ai-review"');
-    expect(shown.body).toContain(">ostra-test/test1</span>");
-    expect(shown.body).toContain(">ostra/a1b2c3d4-add-a-theme-switch</span>");
-    // Folded: the size and the round in its line, what it reads against inside.
-    expect(shown.body).toContain("<details");
-    expect(shown.body).toContain("3 files changed, +40 −12 · round 2 of 3");
-    expect(shown.body).toContain("ostra-test/test1#12: base bbbbbbbbbbbb, head cccccccccccc");
-    expect(shown.body).toContain("OST-42 Add a theme switch");
-    expect(shown.body).toContain("Dark &amp; light.");
-    expect(shown.body).toContain("Acceptance criteria\n- It persists");
+    const words = shown.body.replace(/<[^>]+>/g, "");
+    // parts.md part 2: `AI review of PR #483` 600, `, round 2 of 3`; the size and what it reads; `What the agent got ›`.
+    expect(words).toContain("AI review of PR #12, round 2 of 3");
+    expect(words).toContain("3 files, +40 −12 · the PR&#x27;s commits, OST-42 and its criteria");
+    expect(shown.body).toContain('data-action="what-the-agent-got"');
+    expect(shown.body).toContain('aria-expanded="false"');
     expect(shown.summary).toBe("AI review of PR #12: ostra-test/test1");
     expectNoPrompt(shown, ["Your task is", "read-only", "submit_review", "Mark a finding blocking", "If you find nothing", "Its title and description are below"]);
+    // What the agent got: the PR's commits, then the ticket and its criteria as they were quoted.
+    const got = shown.read?.kind === "ai-review" ? reviewedText(shown.read) : "";
+    expect(got).toContain("ostra-test/test1#12: base bbbbbbbbbbbb, head cccccccccccc");
+    expect(got).toContain("OST-42 Add a theme switch");
+    expect(got).toContain("Dark & light.");
+    expect(got).toContain("Acceptance criteria\n- It persists");
 
-    // The first review says no round; several PRs are counted in the header, and each links from the body.
+    // A review with no ticket reads the PR's commits alone; several PRs are counted.
     const first = drawn(reviewPrompt({ ticket: null, acceptanceCriteria: null, pullRequests: [pr], round: { number: 1, of: 3 } }), undefined);
-    expect(first.body).toContain("3 files changed, +40 −12</summary>");
-    expect(first.body).toContain("The task has no ticket");
+    expect(first.body.replace(/<[^>]+>/g, "")).toContain("3 files, +40 −12 · the PR&#x27;s commits");
+    expect(first.read?.kind === "ai-review" ? reviewedText(first.read) : "").toContain("The task has no ticket");
     const both = drawn(reviewPrompt({ ticket, acceptanceCriteria: null, pullRequests: [pr, { ...pr, repo: "ostra-test/test2", number: 4, url: "https://github.com/ostra-test/test2/pull/4", files: 1, additions: 2, deletions: 1 }], round: { number: 1, of: 3 } }), undefined);
-    expect(both.mark).toContain("AI review of 2 PRs");
-    expect(both.mark).not.toContain("<a");
-    expect(both.body).toContain('href="https://github.com/ostra-test/test2/pull/4"');
-    expect(both.body).toContain("4 files changed, +42 −13");
+    expect(both.body.replace(/<[^>]+>/g, "")).toContain("AI review of 2 PRs, round 1 of 3");
+    expect(both.body.replace(/<[^>]+>/g, "")).toContain("4 files, +42 −13 · the PRs&#x27; commits");
   });
 
   it("F-099: a refine task's first prompt is ostra's: the ticket's key and title, the repos it reads and its folded description", () => {
     const shown = drawn(refinePrompt({ ticket, repos: [{ fullName: "ostra-test/test1", checkoutDir: "test1" }] }), undefined);
     expect(shown.read === null ? false : isAutomatic(shown.read)).toBe(true);
-    expect(shown.mark).toContain("Refine OST-42");
+    expect(shown.mark).toBe("automatic");
     expect(shown.body).toContain('data-kind="refine"');
-    expect(shown.body).toContain("Add a theme switch");
-    expect(shown.body).toContain(">ostra-test/test1</li>");
-    expect(shown.body).toContain("The ticket’s description");
-    expect(shown.body).toContain("Dark &amp; light.");
+    // parts.md part 2: its summary, as `agentMessageSummary` gives it.
+    expect(shown.body.replace(/<[^>]+>/g, "")).toContain("Refine OST-42: Add a theme switch");
     expect(shown.summary).toBe("Refine OST-42: Add a theme switch");
     expectNoPrompt(shown, ["Your task is", "checked out in", "submit_draft", "end your turn", "The ticket is OST-42"]);
   });
@@ -242,7 +241,10 @@ describe("a message ostra wrote for the agent, in the thread", () => {
     const own = drawn(`Use <ostra-data> here & <i>now</i>`, undefined);
     expect(own.read).toBeNull();
     expect(own.body).toContain('data-part="user-text"');
-    expect(own.body).toContain("Use &lt;ostra-data&gt; here &amp; &lt;i&gt;now&lt;/i&gt;");
+    // Markdown as the agent's prose (milestone 10): no raw HTML reaches the page.
+    expect(own.body).toContain("here &amp;");
+    expect(own.body).not.toContain("<ostra-data>");
+    expect(own.body).not.toContain("<i>");
     // An intent set by hand on plain words (an older log's: `tasks.send` takes only plain words now) is still the member's words.
     const handSet = drawn("Merge main into the branch", "update-branch");
     expect(handSet.read).toBeNull();

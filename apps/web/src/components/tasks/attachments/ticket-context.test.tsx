@@ -81,7 +81,7 @@ const context = (first: TicketRoundView | null, over: Partial<TicketContextView>
 
 const none = () => undefined;
 const render = (shown: TicketContextView, retry: { readonly run: () => void; readonly pending: boolean } | null = null) =>
-  renderToStaticMarkup(<TicketContextMessage view={shown} tracker="Linear" agent="OpenCode" now={at + 60_000} retry={retry} fileOf={none} onOpenImage={null} />);
+  renderToStaticMarkup(<TicketContextMessage view={shown} tracker="Linear" agent="OpenCode" now={at + 60_000} retry={retry} fileOf={none} onOpenImage={null} defaultOpen />);
 
 describe("the ticket's counts", () => {
   it("counts files and links as attachments, and says how many of all when some didn't make it", () => {
@@ -127,6 +127,24 @@ describe("the ticket's counts", () => {
 });
 
 describe("What the agent got", () => {
+  it("F-151/c1: is the thread's first bubble: the member and the time over it, the key and the tracker, the title, the description and a summary with Show it all", () => {
+    const html = renderToStaticMarkup(
+      <TicketContextMessage view={context(round())} tracker="Linear" agent="OpenCode" now={at + 60_000} retry={null} fileOf={none} onOpenImage={null} by="Priya Shah" at={at} title="Fix the percent rounding" />,
+    );
+    expect(html).toContain('data-part="bubble-got"');
+    expect(html).toContain(">Priya Shah<");
+    expect(html).toContain(">CALC-170<");
+    expect(html).toContain("from Linear · what the agent got");
+    expect(html).toContain(">Fix the percent rounding<");
+    expect(html).toContain("Percent mode rounds half-cents down.");
+    expect(html).toContain("4 attachments · 3 comments");
+    expect(html).toContain('data-action="show-it-all"');
+    expect(html).toContain('aria-expanded="false"');
+    // Its files, comments and where it all is wait behind Show it all.
+    expect(html).not.toContain("Finance confirmed: half up.");
+    expect(html).not.toContain("Show the prompt");
+  });
+
   it("shows the description, the files with their text, the link not fetched, the comments and where it all is", () => {
     const html = render(context(round()));
     expect(html).toContain("What the agent got");

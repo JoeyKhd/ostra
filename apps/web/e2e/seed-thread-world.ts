@@ -23,7 +23,7 @@ import { postgresChangeNotices, seedMember } from "@ostra/domain";
 import { APP_SCREENSHOT_CONTENT_TYPE, organizationIdSchema, projectIdSchema, storedEventSchema, taskIdSchema } from "@ostra/protocol";
 import type { StoredEvent } from "@ostra/protocol";
 import { eventFixtures } from "@ostra/protocol/testing";
-import { calc192, calc192Spend, review483Spend, s1, s1Working, s2, s3, s5Approved, s5Plan, sceneMembers, sceneWorld } from "@ostra/task-view/testing";
+import { calc192, calc192Spend, review483Spend, s1, s1Working, s2, s3, s5Approved, s5Plan, sceneMembers, sceneWorld, stateCells } from "@ostra/task-view/testing";
 import type { Scene } from "@ostra/task-view/testing";
 import { z } from "zod";
 
@@ -403,8 +403,130 @@ const s2Task = await seedScene(s2, {
   pr: { number: calc192.pr.number, url: calc192.pr.url, title: calc192.pr.title, headSha: calc192.pushSha, jobs },
 });
 const s3Task = await seedScene(s3, { title: "Review of PR #483", branch: "pending", key: null, kind: "review", state: "done", reviewOf: s2Task, spend: byTurn(review483Spend), session: "ended" });
-const s5PlanTask = await seedScene(s5Plan, { title: "Keyboard shortcuts for the keypad", branch: "ostra/calc-196-keypad-shortcuts-1", key: "CALC-196", kind: "code", state: "needs_you", needsYouReason: "plan", spend: new Map(), session: "waiting" });
-const s5ApprovedTask = await seedScene(s5Approved, { title: "Keyboard shortcuts for the keypad", branch: "ostra/calc-196-keypad-shortcuts-2", key: "CALC-196", kind: "code", state: "running", spend: new Map(), session: "running" });
+const s5PlanTask = await seedScene(s5Plan, { title: "Add keyboard shortcuts to the keypad", branch: "ostra/calc-196-keypad-shortcuts-1", key: "CALC-196", kind: "code", state: "needs_you", needsYouReason: "plan", spend: new Map(), session: "waiting" });
+const s5ApprovedTask = await seedScene(s5Approved, { title: "Add keyboard shortcuts to the keypad", branch: "ostra/calc-196-keypad-shortcuts-2", key: "CALC-196", kind: "code", state: "running", spend: new Map(), session: "running" });
+
+// ---- ticket 12: S5 came from Linear, and the messages sheet's cells -----------------------------
+
+// S5's `CALC-196` is a Linear ticket: its read at the start is "What the agent got", the first bubble.
+const linear =
+  (await db.connection.findFirst({ where: { organizationId, kind: "linear" }, orderBy: { createdAt: "asc" } })) ??
+  (await db.connection.create({ data: { organizationId, kind: "linear", appId: `e2e-thread-linear-${args.tag}`, state: "active", credentialKind: "api_key", externalWorkspaceKey: "ostra-test" } }));
+const board = await db.board.create({
+  data: { ...place, connectionId: linear.id, externalId: `thread-team-${args.tag}`, name: "Calculator", key: "CALC", statusMap: { open: ["s-todo"], started: "s-progress", inReview: "s-review", done: "s-done", doneBy: "ostra", magicWord: "Closes" } },
+});
+const fromLinear = async (taskId: string, scene: Scene, n: number): Promise<void> => {
+  const first = scene.events.find((stored) => stored.event.kind === "user.message");
+  if (first === undefined) throw new Error("a scene from a ticket starts with a message");
+  const description = "Power users want to type sums without the mouse: digits and operators from the keyboard, Enter for equals, Esc to clear, and ⌘Z to undo the last key.";
+  const comments = [
+    { author: "Dana Ortiz", at: first.at - 86_400_000, body: "The tooltips should name each key's shortcut.", edited: false },
+    { author: "Priya Shah", at: first.at - 3_600_000, body: "Undo only needs the last key, not a full history.", edited: false },
+  ];
+  const ticket = await db.ticket.create({
+    data: {
+      ...place,
+      boardId: board.id,
+      connectionId: linear.id,
+      externalId: `thread-calc-196-${String(n)}-${args.tag}`,
+      key: "CALC-196",
+      title: "Add keyboard shortcuts to the keypad",
+      description,
+      statusId: "s-progress",
+      statusName: "In Progress",
+      statusCategory: "started",
+      priority: 2,
+      labels: ["feature"],
+      url: "https://linear.app/ostra-test/issue/CALC-196",
+      open: true,
+      trackerUpdatedAt: new Date(first.at),
+    },
+  });
+  await db.task.update({ where: { id: taskId }, data: { source: "ticket", ticketId: ticket.id, boardId: board.id } });
+  // The read draws nothing in the thread (the fold leaves it to `tasks.ticketContext`), so it can follow the scene.
+  const seq = (scene.events.at(-1)?.seq ?? 0) + 1;
+  const session = await db.session.findFirstOrThrow({ where: { taskId }, orderBy: { startedAt: "asc" } });
+  const read = { kind: "ticket.context_read", round: 1, reason: "start", description, comments, links: [], files: [], leftOut: [], failed: [] };
+  await db.event.create({ data: { ...place, taskId, seq, sessionId: session.id, sessionSeq: null, leaseEpoch: null, kind: read.kind, payload: read, occurredAt: new Date(first.at) } });
+  await db.taskTicketRead.create({
+    data: {
+      ...place,
+      taskId,
+      round: 1,
+      reason: "start",
+      descriptionSha256: sha256(new TextEncoder().encode(description)),
+      comments: comments.map((comment, i) => ({ id: `c-${String(i)}`, updatedAt: new Date(comment.at).toISOString() })),
+      fileKeys: [],
+      eventSeq: first.seq,
+    },
+  });
+  await db.task.update({ where: { id: taskId }, data: { eventSeq: seq } });
+};
+await fromLinear(s5PlanTask, s5Plan, 1);
+await fromLinear(s5ApprovedTask, s5Approved, 2);
+
+/** When a cell's message of `intent` was written, and its number: its round was made with it. */
+const messageAt = (scene: Scene, intent: string): { readonly at: number; readonly seq: number } => {
+  const found = scene.events.find((stored) => stored.event.kind === "user.message" && stored.event.intent === intent);
+  if (found === undefined) throw new Error(`no ${intent} message in ${scene.name}`);
+  return { at: found.at, seq: found.seq };
+};
+const repoOf = async (taskId: string): Promise<string> => (await db.taskRepo.findFirstOrThrow({ where: { taskId } })).id;
+const cellShape = (n: number, state: "running" | "in_review", session: "running" | "idle"): TaskShape => ({
+  title: "Add a history panel",
+  branch: `${sceneWorld.branch}-cell-${String(n)}`,
+  key: "CALC-192",
+  kind: "code",
+  state,
+  // A task in review is at a stage of the loop (`task_sub_state_only_in_review`).
+  ...(state === "in_review" ? { subState: "ci_running" as const } : {}),
+  spend: new Map(),
+  session,
+});
+
+// Cell 1: a CI round, its two failing jobs with their logs' tails.
+const cell1 = stateCells.messages[1];
+const cell1Task = await seedScene(cell1, cellShape(1, "in_review", "idle"));
+{
+  const head = "4be21c0".padEnd(40, "0");
+  const logs = [];
+  for (const name of ["unit-tests", "lint"]) logs.push({ name, blobId: await storeBlob(cell1Task, "ci-log", "text/plain", new TextEncoder().encode(`${name}: 1 failed\n`)) });
+  await db.ciRun.create({
+    data: { ...place, taskRepoId: await repoOf(cell1Task), headSha: head, state: "failed", firstSeenAt: new Date(messageAt(cell1, "fix-ci").at - 60_000), checks: [{ name: "unit-tests", conclusion: "failure", externalId: "2001" }, { name: "lint", conclusion: "failure", externalId: "2002" }], logBlobIds: logs },
+  });
+  await db.taskRound.create({ data: { ...place, taskId: cell1Task, kind: "ci", number: 1, automatic: true, causeRef: `${head}.1`, state: "started", createdAt: new Date(messageAt(cell1, "fix-ci").at) } });
+}
+
+// Cell 2: a findings round, the second automatic turn, that the project's budget held for 9 minutes until Priya raised it.
+const cell2 = stateCells.messages[2];
+const cell2Task = await seedScene(cell2, cellShape(2, "running", "running"));
+{
+  const { at } = messageAt(cell2, "fix-findings");
+  await db.taskRound.create({ data: { ...place, taskId: cell2Task, kind: "ci", number: 1, automatic: true, causeRef: `${"9a03d1e".padEnd(40, "0")}.1`, state: "started", createdAt: new Date(at - 20 * 60_000) } });
+  await db.taskRound.create({ data: { ...place, taskId: cell2Task, kind: "findings", number: 1, automatic: true, causeRef: randomUUID(), state: "started", createdAt: new Date(at) } });
+  const budget = await db.budget.create({ data: { ...place, monthlyMicroUsd: 200_000_000n } });
+  await db.heldTurn.create({ data: { ...place, taskId: cell2Task, origin: "automatic_round", budgetId: budget.id, heldAt: new Date(at), releasedAt: new Date(at + 9 * 60_000) } });
+  await db.auditEntry.create({ data: { organizationId, projectId: project.id, actorKind: "member", actorId: priya, action: "budget.set", entity: "budget", entityId: budget.id, createdAt: new Date(at + 9 * 60_000 - 10_000) } });
+}
+
+// Cell 3: an @ostra comment on the PR; cell 4: two comments on the diff, sent; cell 5: between turns.
+const cell3 = stateCells.messages[3];
+const cell3Task = await seedScene(cell3, cellShape(3, "in_review", "idle"));
+const cell4 = stateCells.messages[4];
+const cell4Task = await seedScene(cell4, cellShape(4, "in_review", "idle"));
+{
+  const { seq } = messageAt(cell4, "diff-comments");
+  const taskRepoId = await repoOf(cell4Task);
+  const comments = [
+    { path: "src/history/panel.tsx", line: 18, body: "Mono here, like the display." },
+    { path: "src/history/store.ts", line: 9, body: "Name it HISTORY_LIMIT." },
+  ];
+  for (const comment of comments) {
+    await db.diffComment.create({ data: { ...place, taskId: cell4Task, taskRepoId, memberId: sam, ...comment, side: "new", headSha: "4be21c0".padEnd(40, "0"), state: "sent", sentInSeq: seq } });
+  }
+}
+const cell5 = stateCells.messages[5];
+const cell5Task = await seedScene(cell5, cellShape(5, "running", "running"));
 
 console.log(
   JSON.stringify({
@@ -412,6 +534,8 @@ console.log(
     projectId: project.id,
     tasks: { "s1-working": s1WorkingTask, s1: s1Task, s2: s2Task, s3: s3Task, "s5-plan": s5PlanTask, "s5-approved": s5ApprovedTask },
     now: { "s1-working": s1Working.now, s1: s1.now, s2: s2.now, s3: s3.now, "s5-plan": s5Plan.now, "s5-approved": s5Approved.now },
+    cells: { "messages-1": cell1Task, "messages-2": cell2Task, "messages-3": cell3Task, "messages-4": cell4Task, "messages-5": cell5Task },
+    cellNow: { "messages-1": cell1.now, "messages-2": cell2.now, "messages-3": cell3.now, "messages-4": cell4.now, "messages-5": cell5.now },
   }),
 );
 await db.$disconnect();

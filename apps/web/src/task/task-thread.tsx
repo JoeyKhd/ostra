@@ -8,11 +8,11 @@ import {
 } from "@assistant-ui/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { clientMessageIdSchema } from "@ostra/protocol";
-import type { TaskId, TaskKind } from "@ostra/protocol";
+import type { SessionId, TaskId, TaskKind } from "@ostra/protocol";
 import type { MemberId } from "@ostra/protocol";
 import { foldTaskEvents, turnOrdinalsOf, turnSpendOf, visibleLiveText } from "@ostra/task-view";
 import type { OptimisticMessage, TaskUIMessage } from "@ostra/task-view";
@@ -31,13 +31,15 @@ import { agentMessageOf, agentMessageSummary, isAutomatic } from "./agent-messag
 import { toThreadMessageLike } from "./convert";
 import { SentDiffCommentsContext, sentBySeq } from "./diff-comments-message";
 import type { TaskStreamState } from "./stream-state";
-import { createTaskIndexStore, indexMessages, TaskContext, useTaskMessage } from "./task-context";
+import { createTaskIndexStore, indexMessages, TaskContext, useTaskContext, useTaskMessage } from "./task-context";
 import type { TaskContextValue } from "./task-context";
+import { answersOf } from "./thread/answers";
 import { Bubble } from "./thread/bubble";
 import { Composer } from "./thread/composer";
 import type { ComposerFiles, SentFiles } from "./thread/composer";
 import { showsInterrupt } from "./thread/composer-words";
 import type { ComposerWords } from "./thread/composer-words";
+import { Divider } from "./thread/divider";
 import { ThreadParts } from "./thread/thread-context";
 import type { ThreadPartsValue } from "./thread/thread-context";
 import { TurnItems } from "./thread/turn-items";
@@ -55,8 +57,10 @@ import type { HeadCi } from "./thread/words";
  * part (`thread/turn-items.tsx`). No avatar, no header, no token line: the run's line carries the
  * turn's time, and its numbers are in the opened run's footer, the time's tooltip and the panel.
  */
-export const MessageView = memo(({ id, fallbackRole }: { readonly id: string; readonly fallbackRole: string }) => {
+export const MessageView = memo(({ id, fallbackRole, dayAt = null }: { readonly id: string; readonly fallbackRole: string; readonly dayAt?: number | null }) => {
   const own = useTaskMessage(id);
+  const { memberName } = useTaskContext();
+  const taskTitle = useContext(ThreadParts)?.taskTitle ?? null;
   const role = own?.role ?? fallbackRole;
   const meta = own?.metadata;
   const attachments = useThreadAttachments();
@@ -64,25 +68,33 @@ export const MessageView = memo(({ id, fallbackRole }: { readonly id: string; re
   const agentMessage = useMemo(() => (own === undefined ? null : agentMessageOf(own)), [own]);
   // F-149: a ticket task's first message is "What the agent got", drawn from the ticket's context.
   const ticketStart = attachments?.ticketContext?.rounds[0]?.messageSeq;
+  // Milestone 10 (ticket 12): a day divider before the first message of a new day (`Yesterday`, `Mon 17 Nov`).
+  const day = dayAt === null ? null : <Divider divider={{ kind: "day", at: dayAt }} now={Date.now()} />;
   if (role === "user" && ticketStart !== undefined && ticketStart !== null && meta?.firstSeq === ticketStart && attachments !== null) {
     return (
-      <div data-message-id={id} data-role="ticket-context" data-first-seq={meta.firstSeq} data-last-seq={meta.lastSeq}>
-        <ThreadTicketContext taskId={attachments.taskId} now={Date.now()} />
-      </div>
+      <>
+        {day}
+        <div data-message-id={id} data-role="ticket-context" data-first-seq={meta.firstSeq} data-last-seq={meta.lastSeq}>
+          <ThreadTicketContext taskId={attachments.taskId} now={Date.now()} by={meta.author === undefined ? null : memberName(meta.author.memberId)} at={meta.at ?? null} title={taskTitle} />
+        </div>
+      </>
     );
   }
   return (
-    <MessagePrimitive.Root
-      data-message-id={id}
-      data-role={role}
-      data-turn-state={meta?.turnState}
-      data-optimistic={meta?.optimistic === true ? "true" : undefined}
-      data-first-seq={meta?.firstSeq}
-      data-last-seq={meta?.lastSeq}
-      className="rounded-md data-[event-focus=true]:bg-sel"
-    >
-      {own === undefined ? null : role === "user" ? <Bubble message={own} agentMessage={agentMessage} /> : <TurnItems message={own} />}
-    </MessagePrimitive.Root>
+    <>
+      {day}
+      <MessagePrimitive.Root
+        data-message-id={id}
+        data-role={role}
+        data-turn-state={meta?.turnState}
+        data-optimistic={meta?.optimistic === true ? "true" : undefined}
+        data-first-seq={meta?.firstSeq}
+        data-last-seq={meta?.lastSeq}
+        className="rounded-md data-[event-focus=true]:bg-sel"
+      >
+        {own === undefined ? null : role === "user" ? <Bubble message={own} agentMessage={agentMessage} /> : <TurnItems message={own} />}
+      </MessagePrimitive.Root>
+    </>
   );
 });
 MessageView.displayName = "MessageView";
@@ -93,11 +105,12 @@ MessageView.displayName = "MessageView";
  */
 const TicketContextAtStart = ({ taskId }: { readonly taskId: TaskId }) => {
   const attachments = useThreadAttachments();
+  const title = useContext(ThreadParts)?.taskTitle ?? null;
   const view = attachments?.ticketContext ?? null;
   if (view === null) return null;
   const first = view.rounds[0];
   if (first !== undefined && first.messageSeq !== null) return null;
-  return <ThreadTicketContext taskId={taskId} now={Date.now()} />;
+  return <ThreadTicketContext taskId={taskId} now={Date.now()} title={title} />;
 };
 
 export type TaskThreadProps = {
@@ -153,13 +166,30 @@ export type TaskThreadProps = {
   readonly mcpServers?: readonly string[];
   readonly capMicroUsd?: number | null;
   readonly ciOf?: (repoId: string) => HeadCi | null;
+  /** Ticket 12: the task's runner now (its active lease's), for how its last session came back; and its title, for "What the agent got". */
+  readonly runnerName?: string | null;
+  readonly title?: string;
+};
+
+/** The first message of each day after the first (the day divider's place, milestone 2's rule), with its time. */
+export const dayBreaksOf = (messages: readonly TaskUIMessage[]): ReadonlyMap<string, number> => {
+  const breaks = new Map<string, number>();
+  let previous: string | null = null;
+  for (const message of messages) {
+    const at = message.metadata?.at;
+    if (at === undefined) continue;
+    const day = new Date(at).toDateString();
+    if (previous !== null && day !== previous) breaks.set(message.id, at);
+    previous = day;
+  }
+  return breaks;
 };
 
 const NO_TURNS: readonly UsageTurn[] = [];
 const NO_NAMES: readonly string[] = [];
 const noCi = (): HeadCi | null => null;
 
-export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi, runnerName = null, title }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -304,9 +334,15 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
     [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, openSubagents, approvalCard, approvalReceipt, approvalLostRace, questionCard, projectName, ticketKey],
   );
 
+  // Ticket 12: what members answered (the plan's receipts and markers, late answers), read from the log;
+  // the runner the task's last session came back on; and a day divider where the day changes.
+  const answers = useMemo(() => answersOf(log.events), [log.events]);
+  const lastSession = useMemo(() => messages.findLast((message) => message.metadata?.sessionId !== undefined)?.metadata?.sessionId, [messages]);
+  const runnerOf = useCallback((sessionId: SessionId | undefined) => (sessionId !== undefined && sessionId === lastSession ? runnerName : null), [lastSession, runnerName]);
+  const dayBreaks = useMemo(() => dayBreaksOf(messages), [messages]);
   const threadParts = useMemo<ThreadPartsValue>(
-    () => ({ taskKind, workspace: { taskId, checkoutDirs, mcpServers }, project: projectName ?? "", capMicroUsd, ciOf }),
-    [taskKind, taskId, checkoutDirs, mcpServers, projectName, capMicroUsd, ciOf],
+    () => ({ taskKind, workspace: { taskId, checkoutDirs, mcpServers }, project: projectName ?? "", capMicroUsd, ciOf, answers, runnerOf, ...(title === undefined ? {} : { taskTitle: title }) }),
+    [taskKind, taskId, checkoutDirs, mcpServers, projectName, capMicroUsd, ciOf, answers, runnerOf, title],
   );
 
   // F-138: the member's message the turn answered, for the main agent's pane of the window.
@@ -377,7 +413,7 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
                   </div>
                 ) : null}
                 {hasEarlier ? null : <TicketContextAtStart taskId={taskId} />}
-                <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} />}</ThreadPrimitive.Messages>
+                <ThreadPrimitive.Messages>{({ message }) => <MessageView id={message.id} fallbackRole={message.role} dayAt={dayBreaks.get(message.id) ?? null} />}</ThreadPrimitive.Messages>
                 {tail}
               </div>
             </ThreadPrimitive.Viewport>

@@ -62,10 +62,11 @@ test("F-102/c1,c4, F-111/c1, F-035/c1: a reviewer reads the PR with its findings
   await expect(stages.locator('[data-stage="fixing_ci"]')).toHaveAttribute("data-state", "done");
   await expect(stages.locator('[data-stage="fixing_findings"]')).toHaveAttribute("data-state", "done");
   await expect(page.getByTestId("automatic-turns")).toContainText("2 of 4");
-  const rounds = page.getByTestId("task-rounds");
-  await expect(rounds.locator('[data-round="ci"]')).toContainText("CI round 1 of 2");
-  await expect(rounds.locator('[data-round="ci"]')).toContainText(world.logFile);
-  await expect(rounds.locator('[data-round="findings"]')).toContainText("Sent 1 blocking finding: Read the version at build time.");
+  // Milestone 10 (ticket 12): each round is its message's outlined bubble in the thread, ostra's own.
+  const rounds = page.locator('[data-part="thread-column"]');
+  await expect(rounds.locator('[data-part="bubble"][data-round="ci"]')).toContainText("CI round 1 of 2");
+  await expect(rounds.locator(`[data-part="bubble"][data-round="ci"] [data-log="${world.logFile}"]`)).toHaveCount(1);
+  await expect(rounds.locator('[data-part="bubble"][data-round="findings"]')).toContainText("Sent 1 blocking finding: Read the version at build time.");
   await expect(page.getByTestId("rounds-group")).toContainText("2 of 4");
   await shoot(page, "task-rounds-review");
 
@@ -157,7 +158,7 @@ test("F-101/c4: at the CI round limit the driver sees the cap and Keep working s
   await expect(cap).toContainText("Needs you · CI round limit");
   await expect(cap).toContainText("e2e still fails");
   await expect(page.getByTestId("task-doing")).toContainText("Needs you · round limit");
-  await expect(page.getByTestId("task-rounds").locator('[data-round="ci"]')).toHaveCount(2);
+  await expect(page.locator('[data-part="thread-column"] [data-part="bubble"][data-round="ci"]')).toHaveCount(2);
   await shoot(page, "task-rounds");
   await cap.locator('[data-action="keep-working"]').click();
   await expect(cap).toHaveCount(0);

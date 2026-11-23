@@ -69,8 +69,17 @@ const useFileOf = (): ((fileId: MessageFileId) => MessageFileView | undefined) =
   return (fileId) => files.find((file) => file.fileId === fileId);
 };
 
-/** "What the agent got" in the thread, from the task's ticket context. */
-export const ThreadTicketContext = ({ taskId, now }: { readonly taskId: TaskId; readonly now: number }) => {
+/**
+ * "What the agent got" in the thread, from the task's ticket context: the first bubble (milestone
+ * 10), with the member its message is written as and its time over it, and the ticket's title.
+ */
+export const ThreadTicketContext = ({ taskId, now, by = null, at = null, title = null }: {
+  readonly taskId: TaskId;
+  readonly now: number;
+  readonly by?: string | null;
+  readonly at?: number | null;
+  readonly title?: string | null;
+}) => {
   const context = useAttachments();
   const { agent } = useTaskContext();
   const fileOf = useFileOf();
@@ -91,8 +100,11 @@ export const ThreadTicketContext = ({ taskId, now }: { readonly taskId: TaskId; 
         retry={view.isDriver && (view.canRetry || retry.pending) ? { run: retry.run, pending: retry.pending } : null}
         fileOf={fileOf}
         onOpenImage={context === null ? null : context.openFile}
+        by={by}
+        at={at}
+        title={title}
       />
-      {retry.error === null ? null : <p role="alert" className="ml-10 text-sm text-red">{retry.error}</p>}
+      {retry.error === null ? null : <p role="alert" className="-mt-3 mb-3 text-right text-sm text-red">{retry.error}</p>}
       <p className="sr-only" aria-live="polite" data-testid="ticket-retry-live">
         {retried === null || retry.pending ? "" : loaded > 0 ? plural(loaded, "task.ticketContext.loadedOne", "task.ticketContext.loaded") : t("task.ticketContext.loadedNone")}
       </p>

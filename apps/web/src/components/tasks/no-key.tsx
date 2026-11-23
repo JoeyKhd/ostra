@@ -165,7 +165,7 @@ export const KeyRow = ({ providerName, projectName }: { readonly providerName: s
 export const HeldNoKey = ({ noKey }: { readonly noKey: NoKey }) => {
   const [before = "", middle = "", after = ""] = t("noKey.held").split(/\{model\}|\{project\}/);
   return (
-    <p className="flex items-start gap-2 py-1 pl-10 text-sm text-muted" data-testid="held-no-key">
+    <p className="flex items-start gap-2 py-1 text-sm text-muted" data-testid="held-no-key">
       <PauseIcon aria-hidden className="mt-[3px] size-[13px] shrink-0 stroke-[1.75] text-faint" />
       <span>
         {before}

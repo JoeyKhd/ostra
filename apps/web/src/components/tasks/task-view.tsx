@@ -754,7 +754,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           questionCard={questionCard}
           tail={
             <>
-              {heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan === null ? roundsTail : (
+              {/* Milestone 10 (ticket 12): an answered plan is its receipt in the plan turn's place, not the tail's. */}
+              {heldNoKey ? <HeldNoKey noKey={noKey} /> : data.plan?.approved !== null ? roundsTail : (
                 <div>
                   <PlanBlock key={`${data.plan.turnId}:${String(data.plan.proposedAt)}`} taskId={taskId} plan={data.plan} agent={agentName} isDriver={isDriver} driver={driverName} onTakeOver={takeOverNow} takingOver={takeOver.isPending} />
                 </div>
@@ -800,6 +801,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           mcpServers={data.agent?.mcpServers ?? noServers}
           capMicroUsd={data.spend.unit === "usd" ? data.spend.cap : null}
           ciOf={ciOf}
+          runnerName={data.runner?.name ?? null}
+          title={data.title}
         />
         )}
       </div>
