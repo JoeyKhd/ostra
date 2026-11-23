@@ -1,6 +1,6 @@
 # 16: Web: Home's tracker step and the ticket chips
 
-Status: in-review
+Status: done
 Builder: web
 Blocked by: 09, 10, 11
 Features: F-152, F-008, F-076
@@ -25,7 +25,7 @@ Built to the approved targets, at their sizes, in both themes and at the phone w
 
 - [x] The targets are approved, recorded under `## Comments` with the date and the maintainer's words.
 - [x] Tests named for `F-152/c7`: Home's step 4 in its five states for both kinds, as component tests (`setup-steps.test.tsx`), and a Playwright case in `apps/web/e2e/02-setup.spec.ts` asserting step 4's words, both marks, `Skip for now` and the link to `/organization/trackers`.
-- [ ] Tests named for `F-152/c7`, the other half: "connecting Jira ticks it". **Blocked on ticket 13 (2026-11-23):** Trackers (t12) lists connections and its picker leads to a connection's page, which draws no Jira connect steps yet (t13 writes them), so there is no site/token/webhook flow to drive. The step's own assertions are already in `02-setup.spec.ts`; add the connect case when t13 lands.
+- [x] Tests named for `F-152/c7`, the other half: "connecting Jira ticks it" — `02-setup.spec.ts` goes from Home's step to Trackers' empty picker, connects the fake Jira through t13's three steps (site, token read-back, polling `Finish`) and finds the step done, naming the connection. Run: 5 passed (desktop).
 - [x] Tests named for `F-152/c4`: `apps/web/e2e/32-ticket-chips.spec.ts` (with its `chips` scenario in `e2e/seed-boards-mixed.ts`) shows a Linear and a Jira ticket in the Inbox with their marks and tooltips, a Jira task's header, Ticket group and On Jira rows, the sidebar's line, a search result and New task's line; run: 1 passed (desktop).
 - [x] Tests named for `F-008/c6`: a Jira ticket's sub-task count and status square show where the target draws them (component test and the Playwright spec above).
 - [x] Screenshots at 1440 px and 390 px, both themes, compared with the targets, under `## Comments`: `_lead/ui-check/m11/16/`, twelve files.
@@ -44,3 +44,5 @@ Built to the approved targets, at their sizes, in both themes and at the phone w
 - 2026-11-23, web (t16), screenshots at 1440 and 390, dark and light, under `C:/Users/santi/ow/_lead/ui-check/m11/16/`: `ticket-chips-inbox` (marks, tooltips, sub-task chip, `Open in Jira`), `ticket-chips-task` (key line, Ticket group, On Jira, sidebar), `setup-checklist` (a fresh organization's step 4). The Inbox's key column was widened (96px at md, 92px at xl) so the 14px mark and the key both fit; the title cell still truncates early at 1440 with the double sidebar (noted by t15), and this ticket changes nothing else there.
 - 2026-11-23, web (t16), Playwright commands and results: `OSTRA_E2E_PORT=3200 pnpm --filter @ostra/web test:e2e -- e2e/32-ticket-chips.spec.ts --project desktop --project phone --no-deps` → 1 passed (37.7s; the phone project skips the `@desktop-only` spec by tag); `OSTRA_E2E_PORT=3200 npx playwright test e2e/02-setup.spec.ts --project desktop --no-deps` → 4 passed (39.0s). The `chips` seed also creates a second organization with no tracker (Home's step 4) and its task's title/ticket search entries, and the spec shoots the phone pages in one context.
 - 2026-11-23, web (t16), one copy gap against `ticket-chips.md`: an "On Jira" move reads `Moved the ticket · by Start progress`; the target's `Moved to In Progress` needs the move's target status, which `TicketWrite` stores only as the write's payload, not in `tasks.get`'s `move` view. Small follow-up in the API.
+- 2026-11-23, web (t16), t13 unblocked the last box: rebased onto `origin/main` (d76de8e3). `02-setup.spec.ts` gains `F-152/c7: connecting Jira through Trackers' steps ticks Home's step 4` — the step's action to `/organization/trackers`, the empty picker's Jira tile and `Continue with Jira`, step 1's site and `Find the site`, step 2's service-account token, four read-back lines and `Save and continue`, step 3's polling (the stack answers on loopback, so the real mode) and `Finish`, then Home's step 4 `data-done="true"`, `Connected`, the Jira mark and the connection's name, with no `Skip for now` and no action left (the docs link stays, `Docs: Connect a tracker`). No route interception: the connection is made for real against the stack's fake Jira. Commit `93542de8`.
+- 2026-11-23, web (t16), checks after the rebase: `npx tsc --noEmit` clean, `npx next build` exit 0, `OSTRA_E2E_PORT=3200 npx playwright test e2e/02-setup.spec.ts --project desktop --no-deps` → **5 passed (39.2s)**. Status: done.
