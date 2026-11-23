@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
+import { askBeforeLeaving } from "@/lib/leave-guard";
 import { t } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
@@ -134,7 +135,8 @@ export const UserMenu = ({ me, sheet = false, tabIndex, onFocus }: { readonly me
         <DropdownMenuItem
           disabled={busy}
           onSelect={() => {
-            void signOut();
+            // Signing out leaves the page: one that holds something it can't show again asks first.
+            askBeforeLeaving(() => { void signOut(); });
           }}
         >
           <LogOutIcon aria-hidden /> {t("shell.signOut")}

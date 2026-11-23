@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronsUpDownIcon, EllipsisIcon, ListFilterIcon, LockIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -12,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
+import { useGuardedRouter } from "@/lib/use-leave-guard";
 
 import type { PanelMode } from "../context-panel";
 import { HeadButton, PanelFrame } from "../context-panel";
@@ -94,7 +94,7 @@ export const SwitcherMenu = ({ trigger, projects, admin, onNavigate }: { readonl
  */
 export const ProjectPanel = ({ projectId, mode, onNavigate }: { readonly projectId: string; readonly mode: PanelMode; readonly onNavigate: () => void }) => {
   const trpc = useTRPC();
-  const router = useRouter();
+  const router = useGuardedRouter();
   const shell = useShellState();
   const density = useDensity();
   const admin = shell.me.organization?.role === "admin";

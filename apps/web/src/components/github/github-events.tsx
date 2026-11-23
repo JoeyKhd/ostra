@@ -1,8 +1,8 @@
 "use client";
 
 import { ArrowRightIcon, ArrowUpRightIcon, ClockIcon, InfoIcon, LockIcon, XIcon } from "lucide-react";
-import { useEffect, useId, useRef } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useRef } from "react";
+import type { ReactNode } from "react";
 
 import { PropRow } from "@/components/shell/page-frame";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
@@ -22,7 +22,7 @@ import { appSettingsLinks, eventsState, eventsToTick } from "./github-orgs-words
 // public address has no webhook and takes no events. GitHub has no call that adds them, so the App's
 // panel says which state it's in (the Events row), and once the address is public `Turn on` asks
 // core for the App's webhook address and a fresh secret, shown once, with the events to tick in the
-// App's settings on GitHub. Leaving that result before `Done` asks first.
+// App's settings on GitHub. Leaving that result before `Done` asks first (`@/lib/leave-guard`).
 
 /** Turn on's result, or `Which ones` reopening its events list without a new secret. */
 export type ShownOnce =
@@ -217,7 +217,7 @@ export type ShownOnceViewProps = {
   readonly events: readonly string[];
   readonly phone: boolean;
   readonly onDone: () => void;
-  /** `Esc`: the result asks before it goes, while it holds a secret. */
+  /** `Esc`, wherever the focus is: the result asks before it goes, while it holds a secret. */
   readonly onEscape: () => void;
 };
 
@@ -236,11 +236,19 @@ export const ShownOnceView = ({ app, shown, events, phone, onDone, onEscape }: S
   const replaced = shown.kind === "secret" && shown.replaced;
   const toTick = shown.kind === "secret" ? eventsToTick(shown.events, app.missingEvents, shown.replaced) : (app.missingEvents ?? events);
   const total = shown.kind === "secret" ? shown.events.length : events.length;
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key !== "Escape" || event.defaultPrevented) return;
-    event.preventDefault();
-    onEscape();
-  };
+  // `Esc` is "leave" wherever the focus is while the result shows, not only inside it: `Stay` gives
+  // the focus back to the row that asked. A dialog's own `Esc` (Radix's, which prevents the
+  // default) closes that dialog only.
+  const escape = useEffectEvent(onEscape);
+  useEffect(() => {
+    const keyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      event.preventDefault();
+      escape();
+    };
+    document.addEventListener("keydown", keyDown);
+    return () => { document.removeEventListener("keydown", keyDown); };
+  }, []);
   const step2 = toTick.length === 0 ? null : (
     <Step n={shown.kind === "secret" ? 2 : 1} title={t("githubOrgs.events.once.step2")} link={links === null ? null : { href: links.permissions, label: t("githubOrgs.events.once.permissions") }}>
       <p className="mt-px text-sm text-muted">
@@ -256,7 +264,7 @@ export const ShownOnceView = ({ app, shown, events, phone, onDone, onEscape }: S
     </Step>
   );
   return (
-    <div data-testid="shown-once" data-kind={shown.kind} onKeyDown={onKeyDown}>
+    <div data-testid="shown-once" data-kind={shown.kind}>
       <h3 ref={heading} tabIndex={-1} className="text-xs font-medium leading-[normal] text-faint outline-none">
         {replaced ? t("githubOrgs.events.once.eyebrowNew") : t("githubOrgs.events.once.eyebrow")}
       </h3>
@@ -348,32 +356,3 @@ export const ReplaceDialog = ({ app, open, onCancel, onReplace }: { readonly app
     ) : null}
   </AlertDialog>
 );
-
-/**
- * While the result holds a secret, a link elsewhere in the panel and the browser's own leave ask
- * first (github-events.md: "Leaving the result any other way … asks first").
- */
-export const useLeaveGuard = (holding: boolean, onLeaveAttempt: (href: string) => void): void => {
-  useEffect(() => {
-    if (!holding) return undefined;
-    const beforeUnload = (event: BeforeUnloadEvent): void => { event.preventDefault(); };
-    const click = (event: MouseEvent): void => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const anchor = target.closest("a[href]");
-      if (!(anchor instanceof HTMLAnchorElement) || anchor.target === "_blank") return;
-      const url = new URL(anchor.href, window.location.href);
-      if (url.origin !== window.location.origin) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onLeaveAttempt(`${url.pathname}${url.search}`);
-    };
-    window.addEventListener("beforeunload", beforeUnload);
-    document.addEventListener("click", click, true);
-    return () => {
-      window.removeEventListener("beforeunload", beforeUnload);
-      document.removeEventListener("click", click, true);
-    };
-  }, [holding, onLeaveAttempt]);
-};

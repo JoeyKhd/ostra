@@ -3,13 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { LockIcon, PlusIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
+import { useGuardedRouter } from "@/lib/use-leave-guard";
 
 import type { PanelMode } from "../context-panel";
 import { HeadButton, PanelFrame, PanelTitle } from "../context-panel";
@@ -59,7 +59,7 @@ export const ProjectRowLink = ({ project, waiting, onNavigate, end }: { readonly
  */
 export const ProjectsPanel = ({ mode, onNavigate }: { readonly mode: PanelMode; readonly onNavigate: () => void }) => {
   const trpc = useTRPC();
-  const router = useRouter();
+  const router = useGuardedRouter();
   const shell = useShellState();
   const admin = shell.me.organization?.role === "admin";
   const projects = useQuery(trpc.projects.list.queryOptions());

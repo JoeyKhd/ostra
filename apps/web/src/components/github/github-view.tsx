@@ -9,7 +9,7 @@ import {
   PlusIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import type { ReactNode, SubmitEvent } from "react";
 
@@ -25,8 +25,9 @@ import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
+import { useLeaveGuard } from "@/lib/use-leave-guard";
 
-import { EventsRow, LeaveDialog, MadeWithoutNote, ReplaceDialog, ShownOnceSheet, ShownOnceView, useLeaveGuard } from "./github-events";
+import { EventsRow, LeaveDialog, MadeWithoutNote, ReplaceDialog, ShownOnceSheet, ShownOnceView } from "./github-events";
 import type { ShownOnce } from "./github-events";
 import {
   AddOrganizationGroup,
@@ -369,7 +370,6 @@ type Leaving = { readonly run: () => void };
 export const GitHubView = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const router = useRouter();
   const params = useSearchParams();
   const phone = usePhone();
   const me = useQuery(trpc.me.get.queryOptions());
@@ -420,7 +420,8 @@ export const GitHubView = () => {
     else next();
   }, [holdingSecret]);
   const choosePanel = (next: Panel | null) => { leaveThen(() => { setPanel(next); }); };
-  useLeaveGuard(holdingSecret, useCallback((href: string) => { setLeaving({ run: () => { router.push(href); } }); }, [router]));
+  // Every other way out of the page (a link, the shell's keys and palette, Back) asks first too.
+  useLeaveGuard(holdingSecret, useCallback((go: () => void) => { setLeaving({ run: go }); }, []));
   const webhookPossible = request.data === undefined ? undefined : request.data.webhookPossible && !refusedPublic;
   const startTurnOn = (connectionId: GitHubApp["connectionId"]) => {
     turnOn.reset();

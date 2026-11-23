@@ -188,7 +188,10 @@ test("F-006/c4: Turn on's result shows the App's webhook address, the secret onc
   const { github } = await readStack();
   await rewrite(page, { "github.connections": withoutWebhook(github.slug), "github.appRequest": publicAddress(true) });
   await answerTurnOn(page, { base: "https://ostra.example.com", replaced: false });
-  await page.goto("/organization/github");
+  // Reached from another of the panel's pages, so Back stays in the panel (Next's own history).
+  await page.goto("/organization/members");
+  await page.locator('a[href="/organization/github"]').first().click();
+  await expect(page).toHaveURL(/\/organization\/github$/);
   const { slug, section } = await stackApp(page);
 
   // The note's Turn them on selects the App and starts Turn on; the panel widens to hold the result.
@@ -218,7 +221,8 @@ test("F-006/c4: Turn on's result shows the App's webhook address, the secret onc
   await expect(shown.getByTestId("events-to-tick").locator("li")).toHaveText([...ALL_EVENTS]);
   await expect(shown).toContainText("Events reads On once GitHub lists all 10.");
 
-  // Leaving it any other way asks first: another row, Esc, a link to another page. Stay keeps it.
+  // Leaving it any other way asks first: another row, Esc, a link to another page, the shell's keys,
+  // Back. Stay keeps it.
   const leave = page.getByRole("alertdialog");
   const otherRow = section.getByTestId("installation").first().getByRole("button").first();
   await otherRow.click();
@@ -227,11 +231,20 @@ test("F-006/c4: Turn on's result shows the App's webhook address, the secret onc
   await expect(leave.getByRole("button", { name: "Stay" })).toBeFocused();
   await leave.getByRole("button", { name: "Stay" }).click();
   await expect(shown.getByTestId("webhook-secret")).toHaveText(SECRET);
-  await shown.getByRole("heading", { name: "Turn on events" }).focus();
+  // Esc with the focus outside the result, on the row that asked, still asks.
+  await otherRow.focus();
   await page.keyboard.press("Escape");
   await expect(leave).toBeVisible();
   await leave.getByRole("button", { name: "Stay" }).click();
   await page.getByRole("link", { name: /^Members/ }).first().click();
+  await expect(leave).toBeVisible();
+  await leave.getByRole("button", { name: "Stay" }).click();
+  // `g` then `h`: Home, through the shell's router.
+  await page.keyboard.press("g");
+  await page.keyboard.press("h");
+  await expect(leave).toBeVisible();
+  await leave.getByRole("button", { name: "Stay" }).click();
+  await page.goBack({ waitUntil: "commit" });
   await expect(leave).toBeVisible();
   await leave.getByRole("button", { name: "Stay" }).click();
   await expect(page).toHaveURL(/\/organization\/github/);
@@ -250,6 +263,15 @@ test("F-006/c4: Turn on's result shows the App's webhook address, the secret onc
   await leave.getByRole("button", { name: "Leave" }).click();
   await expect(shown).toHaveCount(0);
   await expect(page.getByTestId("installation-panel")).toBeVisible();
+  expect(await page.content()).not.toContain(SECRET);
+
+  // Turn on again, then Back: Leave goes where Back was going, and the secret goes with the page.
+  await section.getByTestId("events-off-note").getByRole("button", { name: "Turn them on" }).click();
+  await expect(shown.getByTestId("webhook-secret")).toHaveText(SECRET);
+  await page.goBack({ waitUntil: "commit" });
+  await leave.getByRole("button", { name: "Leave" }).click();
+  await expect(page).toHaveURL(/\/organization\/members$/);
+  await expect(page.getByTestId("github-app")).toHaveCount(0);
   expect(await page.content()).not.toContain(SECRET);
 });
 

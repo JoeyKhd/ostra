@@ -2,7 +2,6 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppWindowIcon, ArrowRightIcon, BoxIcon, Building2Icon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CircleStopIcon, CornerDownLeftIcon, CpuIcon, FolderIcon, FolderPlusIcon, GitPullRequestIcon, HandIcon, HouseIcon, KeyboardIcon, LinkIcon, ListChecksIcon, Maximize2Icon, MessageSquareIcon, MessageSquareReplyIcon, MoonIcon, PanelLeftIcon, PlusIcon, RotateCcwIcon, SearchIcon, ServerIcon, SlidersHorizontalIcon, SquarePenIcon, StoreIcon, SunIcon, XIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { Dialog } from "radix-ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
@@ -29,6 +28,7 @@ import { errorText } from "@/lib/errors";
 import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
+import { useGuardedRouter } from "@/lib/use-leave-guard";
 
 import { Highlight, resultHref, shortAge, SnippetLine, titleParts } from "./search/highlight";
 import { joinQuery, pendingKey, pendingValue, splitQuery, statusValues, tokenKeys } from "./search/search-query";
@@ -178,7 +178,7 @@ export const SearchPalette = ({
   readonly onCloseAutoFocus?: (event: Event) => void;
 }) => {
   const trpc = useTRPC();
-  const router = useRouter();
+  const router = useGuardedRouter();
   const queryClient = useQueryClient();
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);

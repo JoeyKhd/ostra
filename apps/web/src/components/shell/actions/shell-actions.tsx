@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -12,6 +12,7 @@ import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
+import { useGuardedRouter } from "@/lib/use-leave-guard";
 
 import { useShellState } from "../shell-state";
 import { ShortcutSheet } from "../shortcut-sheet";
@@ -46,7 +47,7 @@ const projectOfPath = (path: string): string | null => /^\/projects\/([^/]+)/.ex
 
 export const ShellActions = ({ me, children }: { readonly me: RouterOutputs["me"]["get"]; readonly children: ReactNode }) => {
   const trpc = useTRPC();
-  const router = useRouter();
+  const router = useGuardedRouter();
   const path = usePathname();
   const queryClient = useQueryClient();
   const scope = useActionScope();
