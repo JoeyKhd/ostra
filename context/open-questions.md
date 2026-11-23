@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q347). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q353). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -540,8 +540,17 @@ Ticket 19 of that spec asks the maintainer to look at the lead's calls; any the 
 | Q344 With webhooks off, which GitHub changes must the reconcile bring? | F-044, ADR 0011 amended, the maintainer's answer ("Add them to reconcile"): all of them. `github.reconcile-prs` also reads each open task PR's comments, reviews and line comments since a cursor kept on its task repo (the code host capability `reconcileReads`), and each repo's open PRs for a task PR closed in the last 30 days that was reopened. What it finds lands as its webhook's would, once, keyed by GitHub's comment or review ID (F-046) |
 | Q345 What does adding a repo do to a saved environment? | F-112/c1, `brand/app-targets/m10-gaps/` (choice 15, `environment-repo-draft.md`), the maintainer's word ("yes to all", 2026-11-22): option (b). The saved environment keeps running as it is, and the new repo's draft is held for review on the Environment page's Setup tab: what detection found in the repo, the diff Apply makes, and Apply, Edit first and Dismiss. A setup an admin reviewed never changes without review. Until the `EnvironmentRepoDraft` row and its procedures are built, F-112/c1 stays unproved for a saved environment |
 | Q346 Is a `host` worktree kept between sessions an allowed difference? | ADR 0029 (amended, the fifth allowed difference), ADR 0039, F-096/c9, the maintainer's word ("yes to all", 2026-11-22): option (a). A `host` worktree stays, stopped, at its idle stop until its release, and a reopen on the runner that kept it resumes the agent's session in place, with its ignored files and no setup run again, for fast reopens on personal runners. `docker` and `kubernetes` restore from the archive on a fresh box since Q343, as `host` does for a reopen anywhere else. The docs' Executors page lists it |
+| Q348 How does connecting a site again resume its paused boards? | ADR 0071, F-152/c5, the lead's call (milestone 11's spec, section 12): the paused boards of a revoked connection of the same kind and site, with their tickets, move to the new connection in the transaction that makes it active; the old row keeps its history with `resumedIntoId`. Reviving the old row can't work for Linear, whose new app's webhook URL names the new row |
+| Q349 Where does "one connection per site" hold? | ADR 0071, F-152/c2, the lead's call: per organization, among connections not revoked, enforced in Postgres by a partial unique index on the workspace or cloud ID; not install-wide, since organizations are kept apart (ADR 0053) |
+| Q350 May milestone 11's migration drop the one-Linear index and the old board key? | ADR 0071, F-152/c6, the lead's call: yes, in the same migration that adds their replacements. They're constraints, not data, and an older replica still reads every row, so "add first; drop later" (`AGENTS.md`) is kept; `linearSkippedAt` stays one more release |
+| Q351 What does a delivery to a disconnected connection get? | ADR 0071, the lead's call: `410 Gone`, stored nowhere, so Jira stops retrying it; the disconnect dialog tells the admin to delete the webhook in Jira, which ostra can't |
+| Q352 How does a Jira move find its way when no one transition reaches the target? | F-008/c5, milestone 11's spec (section 5.2), the lead's call: the shortest route of at most three transitions *(working value)*, a global transition counting as one; more, or none, leaves the ticket where it is and ostra's comment says so |
 
 ## Open
+
+### Raised by milestone 11 (2026-11-23)
+
+**Q353 👤 May the Jira adapter use a markdown parser for ADF?** (F-008, milestone 11's spec, section 11). ostra turns the agent's and its own markdown into Jira's ADF for comments and descriptions. Agents write full GitHub-flavoured markdown (nested lists, tables, emphasis edge cases), which a hand-written converter handles only as well as its own parser. `mdast-util-from-markdown` 2.1.0, `micromark-extension-gfm` 3.0.0 and `mdast-util-gfm` 3.1.0 (MIT) are already in the lockfile through `apps/docs`, and would parse it exactly as CommonMark and GFM do. *Options:* (a) a hand-written converter for the subset ostra and agents write, round-trip tested, with no dependency; (b) the three packages in `adapter-jira`. *Recommendation:* (a) now, which milestone 11's ticket 03 builds; (b) if real tickets show the hand-written parse getting agents' markdown wrong. Nothing waits on it.
 
 ### Raised by milestone 10 (2026-11-23)
 

@@ -1,6 +1,6 @@
 # Jira connects through a service account and an admin webhook
 
-**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q-20. It adds to ADR 0013, which says Jira comes first after v1. Ledger: F-008, which stays later. Confidence is medium. The facts are in `research/trackers.md` §2.
+**Status:** accepted (2026-11-18, from the delegated answers in `context/history/answers-2026-11-18.md`). Settles Q-20. It adds to ADR 0013, which says Jira comes first after v1. Ledger: F-008, which stays later. Confidence is medium. The facts are in `research/trackers.md` §2. **Amended 2026-11-23 by ADR 0071 and milestone 11's spec** (`specs/m11-trackers-jira/`): F-008 is v1 and built now; an organization may hold several Jira connections, one per site, each with its own service account, token and webhook, beside its Linear ones; the token's scopes are four (`read:jira-work`, `write:jira-work`, `read:jira-user`, `read:workflow:jira`; choice 5 of the approved targets), checked by a read-back before the token is saved; ostra makes the webhook secret and shows it only until the first delivery, then offers only "Rotate the secret" (choice 15); a connection without a public address connects by polling (choice 4); the admin types the token's expiry date, since the API doesn't return it (choice 6); a status mapping names a target status per step, and the adapter picks the transition that reaches it (choice 7); and Done is moved by ostra by default (choice 8).
 
 Jira Cloud connects to an organization's ostra in two parts.
 
@@ -9,7 +9,7 @@ Jira Cloud connects to an organization's ostra in two parts.
 
 ostra never asks a customer to create its own OAuth 3LO app, and it never collects a member's personal API token.
 
-Each organization has its own Jira connection, as it has its own GitHub App and Linear app (ADR 0001). The webhook URL is per connection, so ostra routes an event by connection and not by one install-wide address (Q102).
+Each organization has its own Jira connection, as it has its own GitHub App and Linear app (ADR 0001). *Changed 2026-11-23 (ADR 0071): an organization may hold several, one per Jira site, each a client's.* The webhook URL is per connection, so ostra routes an event by connection and not by one install-wide address (Q102).
 
 ## Why
 
@@ -44,7 +44,7 @@ Each organization has its own Jira connection, as it has its own GitHub App and 
 
 ## Consequences
 
-- **Jira stays after v1.** This ADR means Jira work can start without waiting on this question. From milestone 2, the tracker contract suite runs against a Jira fake as well as Linear (Q104).
+- **Jira stays after v1.** *Changed 2026-11-23: Jira is v1, built in milestone 11 (ADR 0071).* This ADR means Jira work can start without waiting on this question. From milestone 2, the tracker contract suite runs against a Jira fake as well as Linear (Q104).
 - **Two things are still unverified.** Atlassian hasn't said how its rule applies to a self-hosted tool (S-9). Whether service accounts need a paid plan is unclear, because the docs say Atlassian Guard Standard or Enterprise and also list a free tier of 5 (S-10).
 - **If service accounts need a paid plan,** the fallback is a dedicated bot user with a scoped token. The organization creates the bot user for ostra. It's still not a member's personal token. The setup steps stay the same, but the bot user may cost a seat.
 - **Jira's quirks stay in the adapter.** Rich text is ADF, and issue keys change when a ticket moves project. The adapter keys everything on stable IDs (`research/trackers.md` §3).

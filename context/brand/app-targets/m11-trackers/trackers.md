@@ -4,7 +4,7 @@
 - **Sources:** `html/trackers.html` (`?view=list|picker|empty`), `html/states.html?sheet=trackers`, `html/phone.html?scene=list`; the parts in `html/tr.js` (`connTable`, `connPanel`, `kinds`, `pickerDialog`, `logo`) and `html/tr.css`.
 - **Route (new):** `/organization/trackers`, replacing `/organization/linear` (which redirects to its Linear connection's page). The organization panel's Connections group: `GitHub`, then `Trackers` (Lucide `ticket`, the count of connections in mono).
 - **Feature:** F-005 (Linear's connection, re-homed), F-008 (Jira), F-042 (polling). ADR 0013, ADR 0047.
-- **Status: a proposal** (`README.md`).
+- **Status: approved 2026-11-23** ("yes to all", `README.md`).
 
 ## Purpose
 

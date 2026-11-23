@@ -3,7 +3,7 @@
 - **Pictures:** `ticket-chips` and `ticket-chips-light`: one board of the places a ticket shows, for `calculator` with a Linear team (`CALC`, Acme Linear) and a Jira project (`PROJ`, Globex Jira), and the alternative not taken.
 - **Sources:** `html/chips.html`; `tkey` and `logo` in `html/tr.js`.
 - **Builds on:** `../m2/inbox.md`, `../m2/task-ticket.md`, `../m9/ticket-context.md` (approved) as the live pages draw them (`inbox-view.tsx`, the task page, `ticket-icons.tsx`).
-- **Feature:** F-008 (parity: a Jira ticket shows everywhere a Linear one does). **Status: a proposal** (`README.md`).
+- **Feature:** F-008 (parity: a Jira ticket shows everywhere a Linear one does). **Status: approved 2026-11-23** ("yes to all", `README.md`).
 
 ## The rule
 

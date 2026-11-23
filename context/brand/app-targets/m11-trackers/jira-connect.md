@@ -4,7 +4,7 @@
 - **Sources:** `html/connection.html?kind=jira&view=token|webhook|polling`, `html/states.html?sheet=jira`, `html/phone.html?scene=jira`; the parts in `html/tr.js` (`stepSite`, `stepToken`, `readback`, `stepWebhook`, `jiraNewPanel`).
 - **Route (new):** `/organization/trackers/<id>` while the connection is `pending`. The same page shows the settings once it's `active` (`connection-settings.md`).
 - **Feature:** F-008; ADR 0047; `../../../research/trackers.md` §2.1–2.4.
-- **Status: a proposal** (`README.md`).
+- **Status: approved 2026-11-23** ("yes to all", `README.md`).
 
 ## Purpose
 

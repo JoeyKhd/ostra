@@ -4,7 +4,7 @@
 - **Sources:** `html/home.html`; `html/states.html?sheet=trackers`.
 - **Route (existing):** `/` → `components/home/setup-checklist.tsx`, `setup-steps.tsx`.
 - **Builds on:** `../m2/home-first-run.md` (approved), in milestone 8's shell. Only step 4 changes.
-- **Feature:** F-076. **Status: a proposal** (`README.md`).
+- **Feature:** F-076. **Status: approved 2026-11-23** ("yes to all", `README.md`).
 
 ## What changes
 

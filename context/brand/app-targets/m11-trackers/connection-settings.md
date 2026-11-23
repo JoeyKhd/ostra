@@ -4,7 +4,7 @@
 - **Sources:** `html/connection.html?kind=jira&view=connected`, `?kind=linear&view=connected`; `html/tr.js` (`jiraSettings`, `jiraSettingsPanel`, `linearSettings`, `linearSettingsPanel`).
 - **Route (new):** `/organization/trackers/<id>`, once the connection is `active` or `failed`. `/organization/linear` redirects here for the organization's first Linear connection.
 - **Feature:** F-005, F-008, F-012 (agent mode), F-042. ADR 0013, ADR 0047.
-- **Status: a proposal** (`README.md`).
+- **Status: approved 2026-11-23** ("yes to all", `README.md`).
 
 ## Purpose
 

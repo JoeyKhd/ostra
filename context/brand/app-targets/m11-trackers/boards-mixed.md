@@ -5,7 +5,7 @@
 - **Route (existing):** `/projects/[project-id]/boards` → `components/boards/boards-view.tsx`, grown.
 - **Builds on:** `../m2/project-boards.md` and `../m10-gaps/prompt-tickets.md` (approved), as the live page draws them.
 - **Feature:** F-007, F-008, F-097/c2. ADR 0013, ADR 0047.
-- **Status: a proposal** (`README.md`).
+- **Status: approved 2026-11-23** ("yes to all", `README.md`).
 
 ## Purpose
 

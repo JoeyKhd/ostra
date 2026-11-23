@@ -9,7 +9,7 @@ Design targets for a tracker-neutral organization page, **Trackers**, and for **
 - Trello and Notion show in the picker as **Coming soon** (the maintainer, 2026-11-23, for Notion; Trello by the same rule, see choice 1).
 - Each tracker's real logo wherever a tracker shows (the maintainer, 2026-11-23: "show the logo of each one jira etc, that looks nicer").
 
-**Status: a proposal, waiting for the maintainer's approval.** Nothing here is built until it's approved. The choices to settle are at the end, each with a recommendation; the pictures follow the recommendations.
+**Status: approved 2026-11-23 by the maintainer** ("yes to all"). Every choice at the end is settled as recommended; see "Approval" below. Build from these targets, with `../../../specs/m11-trackers-jira/spec.md` and its tickets.
 
 ## How they're made
 
@@ -83,7 +83,7 @@ The earlier milestones' rules hold (`../m1/README.md` to `../m10-gaps/README.md`
 
 ## The choices to settle
 
-Each has a recommendation; the pictures follow it.
+Each has a recommendation; the pictures follow it. **All fifteen are settled as recommended** (the maintainer, 2026-11-23, "yes to all").
 
 | # | Choice | Recommended | The alternative |
 |---|---|---|---|
@@ -110,3 +110,12 @@ Each has a recommendation; the pictures follow it.
 3. **The routes:** `/organization/trackers`, `/organization/trackers/<id>`, the redirect from `/organization/linear`; the setup checklist's `linear` step becomes `tracker` (copy keys `checklist.tracker.*`).
 4. **Copy:** `linear.*` keys move under `trackers.*`, with `trackers.jira.*` for Jira's steps and settings; this set's `.md` files list them.
 5. **The marks:** `TrackerMark({ kind, size, mono })` with the four marks from `html/logos/`, sources in a comment (see "The marks").
+
+## Approval
+
+**Approved 2026-11-23.** The maintainer, shown every picture and the fifteen choices with their recommendations, answered "yes to all". So:
+
+- **Every choice above is settled as recommended,** and the pictures, the six build specs and `html/` are the build's contract on copy, states and sizes.
+- **"What the build needs beyond the pictures" is the build's contract too:** milestone 11's spec (`../../../specs/m11-trackers-jira/spec.md`) turns each item into a ticket's "Done when", ADR 0071 records the data model (several connections per organization, paused boards, one connection per site), and the ledger's F-008 and F-152 hold the tested conditions.
+- **Choice 5's scopes wait on S-12** (whether a service account's scoped token reads the workflow graph): the Jira adapter's read-back ticket fixes the list against the maintainer's test site, and a token without the workflow scope saves with the warning the targets draw.
+- **The marks' usage terms** are checked against each vendor's guidelines before the build ships them (the web ticket for the marks, and the maintainer's ticket for Notion's page, which refuses automated reads).

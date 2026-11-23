@@ -47,12 +47,24 @@ One thing the agent or ostra did in a session: a message, a tool call, a file ch
 _Avoid_: log entry, activity, message (a message is one kind of event)
 
 **Board**:
-The part of a tracker that is attached to a project: a Linear team or Linear project, or a Jira project or board. Each board belongs to one project.
+The part of a tracker that is attached to a project: a Linear team or Linear project, or a Jira project or board. Each board belongs to one project. It comes through one tracker connection, and a project may hold boards of several connections and kinds.
 _Avoid_: source, workspace
+
+**Tracker connection**:
+An organization's link to one tracker account: one Linear workspace through its own Linear app, or one Jira Cloud site through its own service account, with its own name, credentials and webhook or polling. An organization holds several, of any kind, one for each workspace or site, usually one for each client (ADR 0071).
+_Avoid_: integration, tracker (alone, that's the tool), workspace (that's the tracker's own word)
+
+**Paused board**:
+A board whose tracker connection isn't active: disconnected or failed. It stays attached to its project with its mapping, tickets and tasks, read-only; nothing moves on the tracker and nothing starts from it until its connection is active again, or the same workspace or site is connected again.
+_Avoid_: detached (that's a board a project admin removed), disabled
 
 **Status mapping**:
 A board's choice of which tracker statuses count as open, and which ones ostra moves a ticket to when its task starts, when its first PR opens and when it merges. Drafted from the tracker's own status types, and changed by a project admin.
 _Avoid_: workflow, state map
+
+**Target status**:
+The status a board's mapping names for one of ostra's steps. On a tracker with workflow transitions (Jira), ostra moves a ticket there by whichever transition reaches it from where the ticket stands, never by writing the status.
+_Avoid_: transition (that's the way there, not the place)
 
 **Inbox**:
 A project's list of the open tickets on its boards, from ostra's cached copy, where a member turns a ticket into a task.
@@ -582,7 +594,7 @@ _Avoid_: CLI token, API key, runner key (a runner's credential is a different on
 ### Integrations
 
 **Tracker**:
-The tool where an organization keeps its tickets: Linear, later Jira.
+The tool where an organization keeps its tickets: Linear or Jira Cloud. *Changed 2026-11-23: Jira is built in milestone 11 (ADR 0071).*
 _Avoid_: PM tool, project management tool, issue tracker
 
 **Code host**:
