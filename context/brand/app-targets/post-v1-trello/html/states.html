@@ -1,0 +1,73 @@
+<!doctype html>
+<!-- The Trello targets' states (../README.md): one 1440×956 sheet of the moments the pages change.
+       (default)      trello-states.
+       ?theme=light   the light sheet (the shipped set uses the dark one).
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · post-v1 Trello · states</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="../../m11-trackers/html/tr.css">
+<link rel="stylesheet" href="tl.css">
+<style>
+  .sheet .grid.three { grid-template-columns: repeat(3, 1fr); gap: 18px 26px; }
+  .statebox { padding: 13px 15px; }
+  .statebox .mini { font-size: 13px; line-height: 1.45; align-items: flex-start; }
+  .statebox .mini svg.lucide { margin-top: 2px; }
+  .statebox .lbl { font: 500 11px var(--mono); color: var(--faint); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 5px; margin-right: 6px; }
+  .statebox .kv .r { grid-template-columns: 100px minmax(0, 1fr); min-height: 34px; font-size: 13px; }
+  .statebox .kv .r .v { white-space: normal; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <h1 style="font:700 26px var(--title)">Trello states</h1>
+  <p class="lede" style="margin-top:4px">The connect steps' failures, polling, a revoked token, a paused board and a prefix already taken.</p>
+  <div class="grid three" id="grid"></div>
+</div>
+<script src="../../m11-trackers/html/tr.js"></script>
+<script src="tl.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const { ic, logo } = T;
+  const cell = (title, cap, body) => `<div class="statebox"><div class="lab2">${title}</div><div class="cap">${cap}</div>${body}</div>`;
+  document.getElementById("grid").innerHTML = [
+    cell("Step 2 · the bot is taken", "A token for a member another connection holds, refused by name.",
+      `<div class="consent" style="margin-top:0"><div class="ctop">${logo("trello", 22)}<div><div class="cn">The bot member and its token</div><div class="cs">Read back: the member, its boards.</div></div></div>
+       <div class="readback" style="margin-top:10px;border-color:var(--red)"><div class="rb warn">${ic("circle-x")}<span><span class="mono">ostra-northwind</span> is already connected, as <b style="font-weight:500">Northwind Trello</b>. A bot member can only have one connection. <span class="teal">Open it →</span></span></div></div>
+       <div class="acts-row" style="margin-top:10px"><span class="btn">Check the token</span></div></div>`),
+    cell("Step 2 · the token is refused", "Trello's 401, with nothing saved.",
+      `<div class="consent" style="margin-top:0"><div class="ctop">${logo("trello", 22)}<div><div class="cn">The bot member and its token</div></div></div>
+       <div class="readback" style="margin-top:10px"><div class="rb warn">${ic("circle-x")}<span>Trello refused the token: <span class="mono">401 Unauthorized</span>. Check that the token belongs to <span class="mono">ostra-acme</span> and hasn't been revoked.</span></div></div>
+       <div class="acts-row" style="margin-top:10px"><span class="btn primary">Check the token</span><span class="help">Nothing is saved until it passes.</span></div></div>`),
+    cell("Step 2 · polling", "No public address: the token step ends the connection.",
+      `<div class="stp" style="border-top:0;padding-top:2px">${TT.tick("cur", 2)}<div><div class="st1">The bot member and its token</div>
+       <div class="infol" style="margin-top:6px">${ic("refresh-cw")}<span>This server's address isn't public, so Trello gets no webhook. ostra asks each board every 60 s: <b style="font-weight:500;color:var(--text)">up to a minute late.</b></span></div>
+       <div class="infol" style="margin-top:6px">${ic("info")}<span>Set <span class="mono">OSTRA_CORE_PUBLIC_URL</span> to a public https address to receive webhooks.</span></div>
+       <div class="acts-row" style="margin-top:10px"><span class="btn primary">Finish</span><span class="help">Its boards can be attached at once.</span></div></div></div>`),
+    cell("Settings · the token is revoked", "Trello refused the saved token: the connection fails, its boards pause.",
+      `<div class="statebox" style="border:0;padding:0">
+       <div class="conn-row" style="border-top:0"><span class="dot red"></span><span class="red" style="font-weight:500">Failed</span><span class="mono">ostra-acme</span><span class="e">since 14 Nov</span></div>
+       <div class="kv"><div class="r"><span class="k">Mode</span><span class="v"><span class="redi">${ic("triangle-alert")}</span>Stopped: the token was refused</span></div>
+       <div class="r"><span class="k">Token</span><span class="v"><span class="red">Revoked</span><span class="muted">· Trello refused it on 3 Nov</span></span></div></div>
+       <p class="help" style="margin-top:8px;line-height:1.5">Replace the token to connect again. Its board stays attached but paused.</p>
+       <div class="acts-row" style="margin-top:8px"><span class="btn primary">Replace the token</span></div></div>`),
+    cell("Boards · paused", "The connection was disconnected: the board stays, read-only.",
+      `<div class="brows" style="border-top:0"><div class="brow k paused" style="grid-template-columns:22px minmax(0,1fr) auto">${logo("trello", 18)}
+       <span class="nm2"><span class="nm">Calculations</span><span class="via">Acme Trello · disconnected</span></span><span class="tk"><span class="dot grey"></span>Paused</span></div></div>
+       <p class="help" style="margin-top:10px;line-height:1.5">${ic("info")} Acme Trello was disconnected on 20 Nov, so TR's cards stay as they were and nothing moves on Trello. <span class="teal">Trackers →</span></p>`),
+    cell("Attach · the prefix is taken", "Two boards in one project can't share a prefix.",
+      `<div class="attachl" style="margin-top:0">Attach <span class="select" style="width:220px">${logo("trello", 15)}Retail${ic("chevron-down", "chev")}</span><span class="btn sm">Attach</span></div>
+       <div class="prefixline" style="margin-top:10px"><span class="pl">Prefix</span><span class="pinp" style="border-color:var(--red)">TR</span><span class="phelp">Cards show as <b class="mono">TR-12</b>.</span></div>
+       <div class="alertl red" style="margin-top:8px">${ic("circle-x")}<span><span class="mono">TR</span> is used by <b style="font-weight:500">Calculations</b> in this project. Pick another prefix.</span></div>`),
+  ].join("");
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>

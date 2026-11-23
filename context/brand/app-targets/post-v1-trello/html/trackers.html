@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- Organization › Trackers with Trello (../trackers-trello.md): the list with Trello connections,
+     Acme Trello selected, and the picker with Trello enabled and only Notion "Coming soon".
+       (default)      trackers-trello: five connections, Acme Trello selected, its detail in the panel.
+       ?view=picker   trello-picker: "Connect a tracker", Trello picked.
+       ?theme=light   the light theme of either.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · post-v1 Trello · Trackers</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="../../m11-trackers/html/tr.css">
+<link rel="stylesheet" href="tl.css">
+</head>
+<body data-space="org" data-panel="org" data-active="trackers" data-conns="5">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Acme Corp</span><i data-lucide="chevron-right" class="chev"></i><b>Trackers</b>
+      <div class="right" id="bar-right"></div>
+    </div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="../../m11-trackers/html/tr.js"></script>
+<script src="tl.js"></script>
+<script>
+(() => {
+  const view = new URLSearchParams(location.search).get("view") ?? "list";
+  const { ic } = T;
+  document.getElementById("bar-right").innerHTML = `<span class="btn primary">${ic("plus")}Connect a tracker</span>`;
+  document.getElementById("page").innerHTML = `
+    <h1>Trackers</h1>
+    <p class="lede">Where the organization's tickets live. Each client can bring its own Linear workspace, Jira site or Trello account; a project's Boards then attach teams, projects and boards from any of them.</p>
+    <div class="section first" style="margin-top:22px">
+      <div class="shead"><h3>Connections</h3><span class="n">5</span></div>
+      ${TT.connTable({ selected: view === "picker" ? "" : "acme-trello" })}
+      <div class="foot-note">${ic("lock")}<span>Each connection keeps its own token and webhook. A client's tickets only ever move through its own connection: Globex's never pass through Acme's.</span></div>
+    </div>`;
+  document.getElementById("props").innerHTML = TT.connPanel("acme-trello");
+  if (view === "picker") {
+    document.querySelector(".app").insertAdjacentHTML("beforeend", `<div class="scrim"></div>${TT.pickerDialog({ selected: "trello" }).replace('class="dlg wide tl-picker"', 'class="dlg wide tl-picker" style="left:50%;top:120px;transform:translateX(-50%)"')}`);
+  }
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+<script>T.orgNav();</script>
+</body>
+</html>

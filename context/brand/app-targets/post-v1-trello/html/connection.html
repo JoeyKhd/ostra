@@ -1,0 +1,76 @@
+<!doctype html>
+<!-- A Trello connection's page (../trello-connect.md, ../connection-trello.md):
+     /organization/trackers/<id>. While pending, the two numbered steps; once connected, its settings.
+       ?view=app        trello-connect-app: step 1, the organization's own app's key and secret.
+       ?view=consent    trello-connect-consent: step 2, the consent hand-off for the bot member.
+       ?view=token      trello-connect-token: step 2, the token checked and read back.
+       ?view=polling    trello-connect-polling: no public address, so polling.
+       ?view=connected  connection-trello: Acme Trello's settings.
+       ?theme=light     the light theme of any of them.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · post-v1 Trello · a connection</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="../../m11-trackers/html/tr.css">
+<link rel="stylesheet" href="tl.css">
+<style>
+  .page .section { margin-top: 24px; }
+  .page .section.first { margin-top: 20px; }
+  .page .lede { max-width: 720px; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="trackers">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar" id="bar"></div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="../../m11-trackers/html/tr.js"></script>
+<script src="tl.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const view = q.get("view") ?? "app";
+  const connected = view === "connected";
+  const { ic, logo } = T;
+  document.getElementById("bar").innerHTML = `
+    <span>Acme Corp</span><i data-lucide="chevron-right" class="chev"></i><span>Trackers</span><i data-lucide="chevron-right" class="chev"></i><b>Acme Trello</b>
+    <div class="right">${connected ? `<span class="btn">${ic("external-link")}Open in Trello</span>` : ""}</div>`;
+  const head = `
+    <div class="cpage-head">${logo("trello", 36)}<div><div class="eyebrow">${connected ? "Trello · bot member ostra-acme" : "Trello · connecting"}</div><h1>Acme Trello${connected ? `<span class="ren" title="Rename">${ic("pencil")}</span>` : ""}</h1></div></div>
+    <p class="lede" style="margin-top:10px">ostra signs in as a dedicated bot member the client adds to its boards. Its token never expires, and its app's secret signs each delivery. Neither ever reaches an agent.</p>`;
+  let body = "";
+  let panel = "";
+  if (!connected) {
+    const steps = {
+      app: [TT.stepApp("cur"), TT.stepToken("later")],
+      consent: [TT.stepApp("done"), TT.stepToken("cur", { mode: "consent" })],
+      token: [TT.stepApp("done"), TT.stepToken("cur", { mode: "checked" })],
+      polling: [TT.stepApp("done"), TT.stepToken("cur", { mode: "checked", polling: true })],
+    }[view];
+    const n = view === "app" ? "1" : "2";
+    const started = `<p class="help" style="margin-top:12px">Started 14:02 by Alex Kim · <span class="teal">Start again</span></p>`;
+    body = `${started}<div class="section first" style="margin-top:14px"><div class="shead"><h3>Connect Trello</h3><span class="n">${n} of 2</span></div><div class="steps">${steps.join("")}</div></div>`;
+    panel = TT.tokenPanel({ polling: view === "polling", checked: view === "token" || view === "polling" });
+  } else {
+    body = TT.trelloSettings();
+    panel = TT.trelloSettingsPanel();
+  }
+  document.getElementById("page").innerHTML = head + body;
+  document.getElementById("props").innerHTML = panel;
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+<script>T.orgNav();</script>
+</body>
+</html>

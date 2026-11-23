@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- A project's Boards with a Trello board (../boards-trello.md), on milestone 11's page.
+       ?view=mapping  boards-trello: Calculator (Linear), Globex Calculator (Jira) and Calculations
+                      (Trello) attached; Calculations selected; its prefix and list mapping.
+       ?view=attach   boards-attach-trello: attaching Calculations, the picker grouped by connection,
+                      the prefix beside Attach.
+       ?theme=light   the light theme of either.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · post-v1 Trello · Boards</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="../../m11-trackers/html/tr.css">
+<link rel="stylesheet" href="tl.css">
+<style>
+  .page .section { margin-top: 20px; }
+  .page .section.first { margin-top: 16px; }
+  .shead { margin-bottom: 4px; }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="boards">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><b>Boards</b>
+      <div class="right"><span class="btn primary" style="opacity:.45">Save mapping</span></div>
+    </div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page" style="position:relative"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="../../m11-trackers/html/tr.js"></script>
+<script src="tl.js"></script>
+<script>
+(() => {
+  const view = new URLSearchParams(location.search).get("view") ?? "mapping";
+  const attaching = view === "attach";
+  const { ic, logo } = T;
+  const attached = attaching ? TT.boards.slice(0, 2) : TT.boards;
+  document.getElementById("page").innerHTML = `
+    <h1>Boards</h1>
+    <p class="lede">Teams, projects and boards from the organization's trackers whose tickets reach this project's Inbox. Each board maps ostra's steps to its own statuses.</p>
+    <div class="section first">
+      <div class="shead"><h3>Attached</h3><span class="n">${attached.length}</span></div>
+      ${TT.boardRows({ selected: attaching ? "CALC" : "TR", list: attached })}
+      ${attaching ? TT.attachLine({ open: true }) : ""}
+    </div>
+    ${attaching ? "" : `
+    <div class="section">
+      <div class="shead"><h3>Status mapping</h3><span class="sec-note" style="color:var(--faint)">Calculations · <span class="mono">TR</span></span></div>
+      <p class="sec-note" style="margin-bottom:8px">Each list is a status, and ostra writes the list directly: Trello has no workflow and no transitions. The admin maps every list to a category and to the steps ostra moves.</p>
+      ${TT.trelloMapping()}
+    </div>`}`;
+  if (attaching) document.getElementById("page").insertAdjacentHTML("beforeend", TT.attachMenu("left:52px;top:330px"));
+  document.getElementById("props").innerHTML = attaching
+    ? `<div class="group">
+        <h5>Attach a Trello board</h5>
+        <div class="prop"><span class="k">Connection</span><span class="v">${logo("trello", 16)}Acme Trello</span></div>
+        <div class="prop"><span class="k">Board</span><span class="v">Calculations</span></div>
+        <div class="prop"><span class="k">Lists</span><span class="v"><span class="mono">6</span> open</span></div>
+        <div class="prop"><span class="k">Cards</span><span class="v"><span class="mono">12</span> open</span></div>
+        <p class="help" style="margin-top:8px;line-height:1.5">A Trello board needs a prefix: it's the key's first half, as <span class="mono">TR-12</span>. It must be unique among this project's attached boards.</p>
+      </div>
+      <div class="group">
+        <h5>After attaching</h5>
+        <p class="help" style="line-height:1.5">Map each of its lists to a category and to Started, In review and Done. ostra registers one webhook on the board.</p>
+      </div>`
+    : TT.trelloBoardPanel();
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

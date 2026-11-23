@@ -1,0 +1,236 @@
+<!doctype html>
+<!-- The Trello targets on a phone (390×844), where the layout changes.
+       ?scene=list      trackers-trello-phone: Organization › Trackers, each connection a card.
+       ?scene=picker    trello-picker-phone: Connect a tracker as a bottom sheet.
+       ?scene=app       trello-connect-app-phone: step 1, the app's key and secret stacked.
+       ?scene=consent   trello-connect-consent-phone: step 2, the consent hand-off.
+       ?scene=token     trello-connect-token-phone: step 2, the token read back.
+       ?scene=settings  connection-trello-phone: the settings stacked.
+       ?scene=boards    boards-trello-phone: the board's prefix, lists and steps stacked.
+       ?scene=attach    boards-attach-trello-phone: the picker as a sheet.
+       ?scene=chips     ticket-chips-trello-phone: the Inbox, a header and the Ticket group.
+       ?theme=light     the light theme of any of them.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · post-v1 Trello · phone</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="../../m11-trackers/html/tr.css">
+<link rel="stylesheet" href="tl.css">
+<style>
+  .ph .pbody .eyebrow { font-size: 12.5px; }
+  .ph .stp { padding: 11px 0; }
+  .ph .stp .st1 { font-size: 15px; }
+  .ph .stp .st1 .r { display: none; }
+  .ph .sb { font-size: 14px; }
+  .ph .cfield .k { font-size: 13px; }
+  .ph .consent { max-width: none; }
+  .ph .consent .acts-row { flex-wrap: wrap; }
+  .ph .readback { max-width: none; }
+  .ph .mstack { border-top: 1px solid var(--line); }
+  .ph .mstack .it { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .ph .mstack .n { font: 500 15px var(--sans); }
+  .ph .mstack .h { font-size: 12.5px; color: var(--faint); margin-bottom: 7px; }
+  .ph .mstack .ctl { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); font-size: 15px; }
+  .ph .mstack .ctl .chev { margin-left: auto; color: var(--faint); width: 16px; height: 16px; }
+  .ph .brow.k { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; min-height: 0; padding: 10px 4px; }
+  .ph .brow.k .meta3 { grid-column: 2; display: flex; gap: 10px; font-size: 13px; color: var(--muted); margin-top: 3px; align-items: center; }
+  .ph .kv .r { grid-template-columns: 120px minmax(0, 1fr); min-height: 38px; font-size: 13.5px; }
+  .ph .kv .r .e { display: none; }
+  .ph .kv .r .v .teal { display: inline; }
+  .ph .section { margin-top: 16px; }
+  .ph .section .shead h3 { font-size: 14px; }
+  .ph .tkey { gap: 5px; }
+</style>
+</head>
+<body class="phone">
+<div class="ph" id="ph" style="position:relative"></div>
+<script src="../../m11-trackers/html/tr.js"></script>
+<script src="tl.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const scene = q.get("scene") ?? "list";
+  const { ic, logo, m } = T;
+  const bar = (left, title, right = "") => `<div class="pbar"><span class="ib">${ic(left)}</span><span class="tt">${title}</span><span class="r">${right}</span></div>`;
+  let html = "";
+  const card = (c) => `<div class="pcard">${logo(c.kind, 20)}<div><div class="l1">${c.name}</div><div class="l2">${c.site}</div><div class="l3">${c.status === "ok" ? `<span class="cst ok"><span class="dot green"></span>Connected</span><span>${c.mode === "webhooks" ? "Webhooks" : "Polling"}</span><span class="mono">${c.last}</span>` : `<span class="cst pend"><span class="ring"></span>Pending</span><span>No delivery yet</span>`}</div></div><span class="chev2">${ic("chevron-right")}</span></div>`;
+
+  if (scene === "list") {
+    html = `${bar("menu", "Trackers", `<span class="ib">${ic("plus")}</span>`)}
+      <div class="pbody">
+        <h1>Trackers</h1>
+        <p class="lede">Each client's Linear workspace, Jira site or Trello account. A project's Boards attach teams, projects and boards from any of them.</p>
+        <div style="margin-top:16px">${TT.conns.map(card).join("")}</div>
+        <div class="foot-note" style="margin-top:12px">${ic("lock")}<span>Each connection keeps its own token and webhook.</span></div>
+      </div>`;
+  }
+  if (scene === "picker") {
+    html = `${bar("menu", "Trackers", `<span class="ib">${ic("plus")}</span>`)}
+      <div class="pbody"><h1>Trackers</h1><p class="lede">Where the organization's tickets live.</p></div>
+      <div class="sheet-scrim"></div>
+      <div class="psheet">
+        <h4>Connect a tracker</h4>
+        <p>Each connection is one workspace, site or bot member, with its own token.</p>
+        ${TT.kinds({ selected: "trello" })}
+        <div class="acts-row" style="margin-top:14px"><span class="btn" style="flex:1;justify-content:center">Cancel</span><span class="btn primary" style="flex:1;justify-content:center">Continue with Trello</span></div>
+      </div>`;
+  }
+  if (scene === "app") {
+    html = `${bar("arrow-left", "Acme Trello")}
+      <div class="pbody" style="padding-top:12px">
+        <div style="display:flex;align-items:center;gap:12px">${logo("trello", 30)}<div><div class="eyebrow">Trello · connecting</div><h1 style="margin:0;font-size:22px">Acme Trello</h1></div></div>
+        <div class="steps" style="margin-top:12px">
+          <div class="stp">${TT.tick("cur", 1)}<div><div class="st1">The app</div><div class="sb">Create the organization's app at <b>trello.com/apps/admin</b>, then paste its key and secret.</div>
+            <div class="form" style="margin-top:10px">
+              <div class="fl"><span class="lb">API key</span><span class="inp focus" style="font-size:12px">4f2c8a1d7b6e0f35c9d2</span></div>
+              <div class="fl"><span class="lb">API secret</span><span class="inp">••••••••••••••••••••<span class="end">${ic("eye-off")}</span></span></div>
+              <div class="fl"><span class="lb">Name</span><span class="inp" style="font-family:var(--sans);font-size:15px">Acme Trello</span></div>
+              <div class="acts-row"><span class="btn primary">Save and continue</span></div>
+            </div></div></div>
+          <div class="stp">${TT.tick("later", 2)}<div><div class="st1" style="color:var(--muted)">The bot member and its token</div></div></div>
+        </div>
+      </div>`;
+  }
+  if (scene === "consent") {
+    html = `${bar("arrow-left", "Acme Trello")}
+      <div class="pbody" style="padding-top:12px">
+        <div style="display:flex;align-items:center;gap:12px">${logo("trello", 30)}<div><div class="eyebrow">Trello · connecting</div><h1 style="margin:0;font-size:22px">Acme Trello</h1></div></div>
+        <div class="steps" style="margin-top:12px">
+          <div class="stp settled">${TT.tick("done")}<div><div class="st1">The app</div><div class="sb mono" style="font-size:13px">4f2c…e91</div></div></div>
+          <div class="stp">${TT.tick("cur", 2)}<div><div class="st1">The bot member and its token</div>
+            <div class="consent"><div class="ctop">${logo("trello", 22)}<div><div class="cn">Authorize on Trello</div><div class="cs"><b>read</b> and <b>write</b>, a token that never expires.</div></div></div>
+            <div class="cbody">The consent page returns the token in the URL fragment. ostra reads it there and never logs it.</div>
+            <div class="acts-row"><span class="btn primary">${ic("external-link")}Authorize on Trello</span></div></div>
+            <div class="form" style="margin-top:10px"><div class="fl"><span class="lb">Or paste a token</span><span class="inp">••••••••••••••••••••••••</span></div><div class="acts-row"><span class="btn">Check the token</span></div></div>
+          </div></div>
+        </div>
+      </div>`;
+  }
+  if (scene === "token") {
+    html = `${bar("arrow-left", "Acme Trello")}
+      <div class="pbody" style="padding-top:12px">
+        <div style="display:flex;align-items:center;gap:12px">${logo("trello", 30)}<div><div class="eyebrow">Trello · connecting</div><h1 style="margin:0;font-size:22px">Acme Trello</h1></div></div>
+        <div class="steps" style="margin-top:12px">
+          <div class="stp settled">${TT.tick("done")}<div><div class="st1">The app</div><div class="sb mono" style="font-size:13px">4f2c…e91</div></div></div>
+          <div class="stp">${TT.tick("cur", 2)}<div><div class="st1">The bot member and its token</div>
+            <div class="readback"><div class="rbh">What ostra read back<span class="r">just now</span></div>
+              <div class="rb"><span class="ok">${ic("check")}</span><span>Signs in as <span class="mono">ostra-acme</span> <span class="f">· ostra Acme, a bot member</span></span></div>
+              <div class="rb"><span class="ok">${ic("check")}</span><span>Sees 5 open boards and 1 closed</span></div>
+              <div class="rb"><span class="ok">${ic("check")}</span><span>The token never expires.</span></div></div>
+            <div class="acts-row" style="margin-top:12px"><span class="btn primary">Save and continue</span><span class="btn">Check again</span></div>
+          </div></div>
+        </div>
+      </div>`;
+  }
+  if (scene === "polling") {
+    html = `${bar("arrow-left", "Acme Trello")}
+      <div class="pbody" style="padding-top:12px">
+        <div style="display:flex;align-items:center;gap:12px">${logo("trello", 30)}<div><div class="eyebrow">Trello · connecting</div><h1 style="margin:0;font-size:22px">Acme Trello</h1></div></div>
+        <div class="steps" style="margin-top:12px">
+          <div class="stp settled">${TT.tick("done")}<div><div class="st1">The app</div><div class="sb mono" style="font-size:13px">4f2c…e91</div></div></div>
+          <div class="stp">${TT.tick("cur", 2)}<div><div class="st1">The bot member and its token</div>
+            <div class="readback"><div class="rbh">What ostra read back<span class="r">just now</span></div>
+              <div class="rb"><span class="ok">${ic("check")}</span><span>Signs in as <span class="mono">ostra-acme</span> <span class="f">· a bot member</span></span></div>
+              <div class="rb"><span class="ok">${ic("check")}</span><span>Sees 5 open boards and 1 closed</span></div>
+              <div class="rb"><span class="ok">${ic("check")}</span><span>The token never expires.</span></div></div>
+            <div class="infol" style="margin-top:12px">${ic("refresh-cw")}<span>This server's address isn't public, so Trello gets no webhook. ostra asks each board every 60 s: <b style="font-weight:500;color:var(--text)">up to a minute late.</b></span></div>
+            <div class="infol" style="margin-top:8px">${ic("info")}<span>Set <span class="mono">OSTRA_CORE_PUBLIC_URL</span> to a public https address to receive webhooks.</span></div>
+            <div class="acts-row" style="margin-top:12px"><span class="btn primary">Finish</span><span class="help">Its boards can be attached at once.</span></div>
+          </div></div>
+        </div>
+      </div>`;
+  }
+  if (scene === "settings") {
+    html = `${bar("arrow-left", "Acme Trello", `<span class="ib">${ic("external-link")}</span>`)}
+      <div class="pbody" style="padding-top:12px">
+        <div style="display:flex;align-items:center;gap:12px">${logo("trello", 30)}<div><div class="eyebrow">Trello · bot member ostra-acme</div><h1 style="margin:0;font-size:22px">Acme Trello</h1></div></div>
+        <div class="section first" style="margin-top:12px"><div class="shead"><h3>Connection</h3></div>
+          <div class="conn-row" style="border-top:0"><span class="dot green"></span><span class="green" style="font-weight:500">Connected</span><span class="mono">ostra-acme</span></div></div>
+        <div class="section"><div class="shead"><h3>Events</h3></div><div class="kv">
+          <div class="r"><span class="k">Mode</span><span class="v">${ic("radio-tower")}Webhooks</span></div>
+          <div class="r"><span class="k">Webhooks</span><span class="v">1 on Calculations</span></div>
+          <div class="r"><span class="k">App secret</span><span class="v">${ic("lock")}In the secret store</span></div>
+          <div class="r"><span class="k">Last event</span><span class="v"><span class="mono">updateCard</span>TR-12</span></div>
+        </div></div>
+        <div class="section"><div class="shead"><h3>Bot member</h3></div><div class="kv">
+          <div class="r"><span class="k">Token</span><span class="v"><span class="dot green"></span><span class="green">Healthy</span><span class="muted">· never expires</span></span></div>
+          <div class="r"><span class="k">Reaches</span><span class="v">5 open boards<span class="muted">· 1 closed</span></span></div>
+        </div></div>
+        <div class="section"><div class="shead"><h3>Disconnect</h3></div><div class="danger-row"><span>Deletes its webhook and revokes the token.</span><span class="btn">Disconnect</span></div></div>
+      </div>`;
+  }
+  if (scene === "boards") {
+    const row = (b) => `<div class="brow k${b.key === "TR" ? " on" : ""}">${logo(b.kind, 20)}<div><div class="nm" style="font-weight:500;font-size:15px">${b.name} <span class="mono faint" style="font-size:13px;font-weight:400">${b.key}</span></div><div class="meta3"><span>${b.via}</span></div></div><span class="chev2" style="color:var(--faint)">${ic("chevron-right")}</span></div>`;
+    html = `${bar("menu", "Boards")}
+      <div class="pbody">
+        <h1>Boards</h1>
+        <div class="shead" style="margin-top:10px"><h3>Attached</h3><span class="n">2</span></div>
+        <div class="brows">${[TT.boards[0], TT.boards[2]].map(row).join("")}</div>
+        <div class="prefixrow"><span class="k">Prefix</span><span class="pinp focus" style="justify-self:start">TR</span><span class="help">Cards show as <b class="mono">TR-12</b>.</span></div>
+        <div class="shead" style="margin-top:12px"><h3>Lists on Calculations</h3><span class="n">6</span></div>
+        <div class="ltable">
+          ${[["Backlog", "new", "To Do"], ["To Do", "new", "To Do"], ["Doing", "ind", "In progress"], ["Review", "ind", "In progress"], ["Done", "done", "Done"], ["Won't do", "cancel", "Cancelled"]]
+            .map(([n, c, cat]) => `<div class="lrow"><span class="ln">${n}</span><span class="lc2">${TT.catSel(c, cat)}</span></div>`).join("")}
+        </div>
+        <div class="mstack" style="margin-top:12px">
+          ${[["Started", "When the task starts", "ind", "Doing"], ["In review", "At the task's first PR", "ind", "Review"], ["Done", "When the last PR merges", "done", "Done"]]
+            .map(([n, h, c, l]) => `<div class="it"><div class="n">${n}</div><div class="h">${h}</div><div class="ctl"><span class="stcat ${c}"></span>${l}${ic("chevron-down", "chev")}</div></div>`).join("")}
+        </div>
+      </div>`;
+  }
+  if (scene === "attach") {
+    html = `${bar("menu", "Boards")}
+      <div class="pbody">
+        <h1>Boards</h1>
+        <div class="shead" style="margin-top:10px"><h3>Attached</h3><span class="n">2</span></div>
+        <div class="brows">${TT.boards.slice(0, 2).map((b) => `<div class="brow k">${logo(b.kind, 20)}<div><div class="nm" style="font-weight:500;font-size:15px">${b.name} <span class="mono faint" style="font-size:13px;font-weight:400">${b.key}</span></div><div class="meta3"><span>${b.via}</span></div></div><span class="chev2" style="color:var(--faint)">${ic("chevron-right")}</span></div>`).join("")}</div>
+        <div class="attachl" style="margin-top:12px">Attach <span class="select open" style="flex:1">${logo("trello", 15)}Calculations${ic("chevron-down", "chev")}</span></div>
+      </div>
+      <div class="sheet-scrim"></div>
+      <div class="psheet">
+        <h4>Attach a board</h4>
+        <p>Acme Trello's boards. A Trello board needs a prefix, as <span class="mono">TR-12</span>.</p>
+        <div class="prefixrow" style="border-top:1px solid var(--line);border-bottom:0;padding-bottom:2px"><span class="pl" style="color:var(--muted);font-size:13px">Prefix</span><span class="pinp">TR</span><span class="help">Unique in this project.</span></div>
+        <div class="menu attach" style="position:static;width:auto;box-shadow:none;border:0;background:transparent;padding:0">
+          <div class="gh">${logo("trello", 14)}Acme Trello<span class="s">boards</span></div>
+          <div class="mi on">${ic("square-kanban")}Calculations<span class="ck">${ic("check", "i14")}</span></div>
+          <div class="mi">${ic("square-kanban")}Roadmap</div>
+          <div class="mi dim">${ic("square-kanban")}Retail<span class="r">attached</span></div>
+        </div>
+        <div class="acts-row" style="margin-top:12px"><span class="btn" style="flex:1;justify-content:center">Cancel</span><span class="btn primary" style="flex:1;justify-content:center">Attach</span></div>
+      </div>`;
+  }
+  if (scene === "chips") {
+    html = `${bar("arrow-left", "TR-12", `<span class="ib">${ic("arrow-up-right")}</span>`)}
+      <div class="pbody" style="padding-top:12px">
+        <div style="display:flex;align-items:center;gap:7px;font-size:12.5px">${logo("trello", 14)}<span class="mono" style="color:var(--faint)">TR-12 · from Trello</span></div>
+        <h1 style="margin:4px 0 8px;font-size:20px">Checkout total ignores the coupon</h1>
+        <div class="chips-row"><span class="chip">${ic("square-kanban")}Doing</span><span class="chip">bug</span><span class="faint" style="font-size:13px">· Alex Kim</span></div>
+        <div class="shead" style="margin-top:14px"><h3>Ticket</h3></div>
+        <div class="kv"><div class="r"><span class="k">Key</span><span class="v mono teal">TR-12</span></div>
+          <div class="r"><span class="k">Tracker</span><span class="v">${logo("trello", 16)}Trello<span class="faint">· Acme Trello</span></span></div>
+          <div class="r"><span class="k">Status</span><span class="v">${ic("square-kanban")}Doing<span class="faint">· a list</span></span></div>
+          <div class="r"><span class="k">Board</span><span class="v">Calculations</span></div></div>
+        <div class="shead" style="margin-top:12px"><h3>On Trello</h3></div>
+        <div class="kv"><div class="r"><span class="k">Moved to Doing</span><span class="v"><span class="faint">wrote the list</span><span class="green" style="margin-left:auto">done</span></span></div>
+          <div class="r"><span class="k">Progress comment</span><span class="v"><span class="faint">posted</span></span></div>
+          <div class="r"><span class="k">Linked the task</span><span class="v"><span class="faint">attachment</span><span class="green" style="margin-left:auto">done</span></span></div></div>
+        <div class="msgh" style="border-top:1px solid var(--line);margin-top:10px;padding:10px 0;display:flex;gap:8px;font-size:13.5px"><b>What the agent got</b><span style="display:inline-flex;align-items:center;gap:5px;color:var(--faint)">14:02 · ${logo("trello", 13, true)}TR-12 from Trello</span></div>
+        <div class="shead" style="margin-top:14px"><h3>Inbox</h3></div>
+        <div class="pchiprows">
+          ${[["trello", "TR-12", "Checkout total ignores the coupon", "Doing"], ["linear", "CALC-170", "Fix rounding in percent mode", "In Progress"], ["trello", "TR-14", "Split the payment form", "To Do"]]
+            .map(([k, key, t, s]) => `<div class="cr">${logo(k, 14, true)}<span class="mono">${key}</span><span class="ct">${t}</span><span class="cs">${ic("square-kanban", "i13")}${s}</span></div>`).join("")}
+        </div>
+      </div>`;
+  }
+  document.getElementById("ph").innerHTML = html;
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>

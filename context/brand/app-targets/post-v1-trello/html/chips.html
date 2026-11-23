@@ -1,0 +1,146 @@
+<!doctype html>
+<!-- Ticket chips with Trello (../ticket-chips-trello.md): every place a ticket shows, for a project
+     whose boards come from Linear and Trello. Not whole pages: each cell is the part of the live
+     page that changes.
+       (default)      ticket-chips-trello.
+       ?theme=light   ticket-chips-trello-light.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · post-v1 Trello · ticket chips</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="../../m11-trackers/html/tr.css">
+<link rel="stylesheet" href="tl.css">
+<style>
+  .board-sheet { align-content: start; gap: 18px 36px; padding: 24px 32px; }
+  .span2 { grid-column: 1 / -1; }
+  .prio { display: flex; color: var(--muted); }
+  .prio svg { width: 14px; height: 14px; }
+  .hdr { padding: 13px 18px 14px; }
+  .hdr + .hdr { border-top: 1px solid var(--line); }
+  .hdr h1 { font-size: 21px; margin: 3px 0 8px; }
+  .hdr .eyebrow { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+  .panelc { padding: 13px 18px; }
+  .panelc .group + .group { margin-top: 11px; padding-top: 11px; }
+  .msgh { display: flex; align-items: center; gap: 8px; padding: 9px 16px; font-size: 14.5px; }
+  .msgh + .msgh { border-top: 1px solid var(--line); }
+  .msgh .ava { width: 26px; height: 26px; margin: 0; }
+  .msgh .meta { display: inline-flex; align-items: center; gap: 6px; }
+  .else .r { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 14px; white-space: nowrap; }
+  .else .r:last-child { border-bottom: 0; }
+  .else .r .w { width: 82px; flex: none; font-size: 12.5px; color: var(--faint); }
+  .else .live2 { display: flex; flex-direction: column; line-height: 1.3; }
+  .else .live2 .d { font: 400 12px var(--mono); color: var(--faint); display: inline-flex; align-items: center; gap: 5px; }
+  .colw { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .cap2 { font: 500 12px var(--sans); color: var(--faint); padding: 7px 10px 2px; }
+  .irow { grid-template-columns: 18px 92px minmax(0, 1fr) 126px 46px; height: 38px; }
+  .note { font-size: 12.5px; color: var(--faint); padding: 8px 16px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="board-sheet" id="sheet"></div>
+<script src="../../m11-trackers/html/tr.js"></script>
+<script src="tl.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const { ic, logo } = T;
+  const { tkey } = TT;
+  const prio = (n) => `<span class="prio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">${[0, 1, 2].map((i) => `<path d="M${6 + i * 6} 19V${14 - i * 4}" stroke="${i < n ? "currentColor" : "var(--line-2)"}"/>`).join("")}</svg></span>`;
+  const st = (icon, name) => `<span class="ss">${ic(icon, "i14")}${name}</span>`;
+  const irow = (kind, key, title, extra, status, age, { mono = true, on = false, p = 2 } = {}) => `
+    <div class="irow${on ? " on" : ""}">${prio(p)}${tkey(kind, key, { mono })}<span class="tt">${title}${extra}</span>${status}<span class="ag">${age}</span></div>`;
+  const rows = (mono) => [
+    irow("linear", "CALC-170", "Fix rounding in percent mode", '<span class="chip">bug</span>', st("contrast", "In Progress"), "4m", { mono, on: true, p: 3 }),
+    irow("trello", "TR-12", "Checkout total ignores the coupon", '<span class="chip">bug</span>', st("square-kanban", "Doing"), "18m", { mono, p: 3 }),
+    irow("trello", "TR-14", "Split the payment form", '<span class="chip">design</span>', st("square-kanban", "To Do"), "1h", { mono, p: 2 }),
+    irow("linear", "CALC-177", "Add a CONTRIBUTING.md", "", st("circle", "Todo"), "2h", { mono, p: 1 }),
+  ];
+  document.getElementById("sheet").innerHTML = `
+    <div class="sheet-title"><h2>Ticket chips with Trello</h2><span>calculator, with a Linear team (CALC, Acme Linear) and a Trello board (TR, Acme Trello). The mark is in its brand colour where it names the tracker once, and in the key's colour where it repeats.</span></div>
+
+    <div class="bcell span2">
+      <h4>Inbox <span class="w">the mark before each key, in the key's colour; the tracker's name in its tooltip</span></h4>
+      <div class="bframe">${rows(true).join("")}</div>
+    </div>
+
+    <div class="colw">
+      <div class="bcell">
+        <h4>A task's header <span class="w">brand colour: it names the tracker once</span></h4>
+        <div class="bframe">
+          <div class="hdr">
+            <div class="eyebrow">${logo("trello", 14)}<span class="mono" style="color:var(--faint)">TR-12 · from Trello</span></div>
+            <h1>Checkout total ignores the coupon</h1>
+            <div class="chips-row"><span class="chip">${ic("square-kanban")}Doing</span><span class="chip">bug</span><span>· Alex Kim</span><span class="link">Open in Trello ${ic("arrow-up-right")}</span></div>
+          </div>
+          <div class="hdr" style="padding-top:10px;padding-bottom:11px">
+            <div class="eyebrow">${logo("linear", 14)}<span class="mono" style="color:var(--faint)">CALC-170 · from Linear</span><span class="faint" style="margin-left:auto;font-size:12.5px">a Linear task, the same line</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="bcell">
+        <h4>What the agent got <span class="w">the key's colour; Trello's description and checklists arrive as Markdown</span></h4>
+        <div class="bframe">
+          <div class="msgh"><span class="ava">${ic("ticket")}</span><b>What the agent got</b><span class="meta">14:02 · ${logo("trello", 13, true)}TR-12 from Trello</span></div>
+          <div class="msgh"><span class="ava">${ic("ticket")}</span><b>What the agent got</b><span class="meta">09:41 · ${logo("linear", 13, true)}CALC-170 from Linear</span></div>
+          <div class="note">Description, checklists under <b style="font-weight:500;color:var(--text-2)">Checklists</b>, 2 comments, 2 labels, 1 member, 2 files.</div>
+        </div>
+      </div>
+      <div class="bcell">
+        <h4>The mark, at its sizes <span class="w">brand colour when it names the tracker; the key's colour where it repeats</span></h4>
+        <div class="bframe else">
+          <div class="r"><span class="w">Picker</span>${logo("trello", 32)}<span>Trello</span><span class="faint" style="margin-left:auto;font-size:12.5px">32px · brand</span></div>
+          <div class="r"><span class="w">Trackers</span>${logo("trello", 20)}<span>Acme Trello</span><span class="faint" style="margin-left:auto;font-size:12.5px">20px · brand</span></div>
+          <div class="r"><span class="w">Ticket group</span>${logo("trello", 16)}<span>Trello</span><span class="faint" style="margin-left:auto;font-size:12.5px">16px · brand</span></div>
+          <div class="r"><span class="w">Inbox</span>${logo("trello", 14, true)}<span class="mono faint" style="font-size:13px">TR-12</span><span class="faint" style="margin-left:auto;font-size:12.5px">14px · the key's colour</span></div>
+          <div class="r"><span class="w">Meta line</span>${logo("trello", 12, true)}<span class="mono faint" style="font-size:13px">TR-12 from Trello</span><span class="faint" style="margin-left:auto;font-size:12.5px">12px · the key's colour</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="colw">
+      <div class="bcell">
+        <h4>The task's Ticket group <span class="w">Tracker, Status as its list, no Sub-tasks row</span></h4>
+        <div class="bframe panelc">
+          <div class="group">
+            <h5>Ticket</h5>
+            <div class="prop"><span class="k">Key</span><span class="v mono teal">TR-12</span></div>
+            <div class="prop"><span class="k">Tracker</span><span class="v">${logo("trello", 16)}Trello<span class="faint">· Acme Trello</span></span></div>
+            <div class="prop"><span class="k">Status</span><span class="v">${ic("square-kanban", "i14")}Doing<span class="faint">· a list</span></span></div>
+            <div class="prop"><span class="k">Board</span><span class="v">Calculations</span></div>
+            <div class="prop"><span class="k">Synced</span><span class="v mono">40 s ago</span></div>
+          </div>
+          <div class="group">
+            <h5>On Trello</h5>
+            <div class="sync"><span>Moved to Doing</span><span class="f">wrote the list</span><span class="s green">done</span></div>
+            <div class="sync"><span>Progress comment</span><span class="s muted">posted</span></div>
+            <div class="sync"><span>Linked the task</span><span class="f">attachment</span><span class="s green">done</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="bcell">
+        <h4>Elsewhere <span class="w">repeated rows: the key's colour</span></h4>
+        <div class="bframe else">
+          <div class="r"><span class="w">Sidebar, live</span><span class="dot green"></span><span class="live2"><span>Checkout total ignores the coupon</span><span class="d">${logo("trello", 12, true)}TR-12 · Editing cart.ts</span></span></div>
+          <div class="r"><span class="w">Search</span>${tkey("trello", "TR-12")}<span>Checkout total ignores the coupon</span><span class="faint" style="margin-left:auto;font-size:12.5px">Acme Trello</span></div>
+          <div class="r"><span class="w">New task</span><span class="muted">It gets a card on</span><span style="display:inline-flex;align-items:center;gap:6px">${logo("trello", 15)}<b style="font-weight:500">Calculations</b></span><span class="muted">as it starts.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bcell span2">
+      <h4>Not taken: the brand colour in the Inbox too <span class="lbl-nt">for comparison</span></h4>
+      <div class="bframe" style="display:grid;grid-template-columns:1fr 1fr">
+        <div><div class="cap2">Taken · the key's colour</div>${rows(true).slice(1, 3).join("")}</div>
+        <div style="border-left:1px solid var(--line)"><div class="cap2">Not taken · brand colour on every row</div>${rows(false).slice(1, 3).join("")}</div>
+      </div>
+    </div>`;
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>

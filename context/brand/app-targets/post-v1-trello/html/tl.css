@@ -1,0 +1,101 @@
+/*
+ * Post-v1 Trello targets (../README.md): the parts Trello adds to milestone 11's tracker targets.
+ * Loaded after ../../m8/html/m8.css (the panel's tokens, fonts and shell),
+ * ../../m10-gaps/html/gaps.css (select, menu, dialog, board rows, mapping rows, copy fields) and
+ * ../../m11-trackers/html/tr.css (the connection list, steps, read-back and settings rows).
+ * Tokens only, plus Trello's own brand colour inside its mark. All data is demo data.
+ */
+
+/* The picker: four tiles, Trello enabled, Notion disabled but the same size. */
+.kind.off { border-style: dashed; background: transparent; color: var(--faint); }
+.kind.off .top { gap: 12px; }
+.kind.off .tl { opacity: 0.6; }
+.kind.off .nm { color: var(--faint); }
+.kind.off .sub { color: var(--faint); }
+.kind.off .d { color: var(--faint); }
+.kind.off .caps .chip { color: var(--faint); border-color: var(--line); }
+.kind.off .soon { position: absolute; top: 14px; right: 14px; }
+.dlg.tl-picker { width: 640px; padding: 22px 22px 18px; }
+
+/* The consent hand-off (step 2): the bot member's grant, then a pasted token. */
+.consent { margin-top: 12px; border: 1px solid var(--line-2); border-radius: 8px; padding: 12px 14px; max-width: 600px; }
+.consent .ctop { display: flex; align-items: center; gap: 10px; }
+.consent .cn { font: 500 14px var(--sans); color: var(--text); }
+.consent .cs { font-size: 12.5px; color: var(--faint); margin-top: 1px; }
+.consent .cs b { font-weight: 500; color: var(--text-2); }
+.consent .cbody { margin-top: 8px; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.consent .acts-row { margin-top: 12px; }
+.ctl2 { font-size: 13.5px; }
+
+/* The board's prefix: one field, then the lists with a category each. */
+.prefixrow { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.prefixrow .k { font: 500 12.5px var(--sans); color: var(--muted); width: 46px; }
+.prefixrow .help { font-size: 12.5px; color: var(--faint); }
+.prefixrow .help b { font-weight: 400; color: var(--text-2); }
+.pinp { display: inline-flex; align-items: center; justify-content: center; width: 76px; height: 32px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); font: 400 13px var(--mono); color: var(--text); }
+.pinp.focus { outline: 2px solid var(--teal); outline-offset: 1px; }
+.prefixline { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12.5px; color: var(--faint); }
+.prefixline .pl { font: 500 12.5px var(--sans); color: var(--muted); }
+.prefixline .pinp { width: 64px; height: 28px; }
+.prefixline .phelp { font-size: 12.5px; color: var(--faint); }
+.prefixline .phelp b { font-weight: 400; color: var(--text-2); }
+
+.mapgrid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; column-gap: 24px; align-items: start; }
+.mapgrid .mrows { border-top: 0; }
+.mapgrid .mrow { min-height: 44px; padding: 4px 0; grid-template-columns: 150px minmax(0, 1fr); column-gap: 12px; }
+.mapgrid .mrow .n { font-size: 14px; }
+.mapgrid .mrow .h { font-size: 12px; }
+.mapgrid .mrow.tr { min-height: 48px; padding: 6px 0; align-items: center; }
+.mapgrid .lside { min-width: 0; }
+.lside .shead { margin-bottom: 4px; }
+.ltable { border-top: 1px solid var(--line); }
+.lrow { display: grid; grid-template-columns: minmax(0, 1fr) 176px 96px; align-items: center; column-gap: 14px; min-height: 38px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.lside .lrow { grid-template-columns: minmax(0, 1fr) 138px 58px; column-gap: 8px; min-height: 34px; }
+.lside .lrow .lc2 .ctl { max-width: 138px; min-height: 26px; padding: 0 6px; font-size: 13px; }
+.lside .lrow .ls { text-align: left; }
+.lrow .ln { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lrow .lc2 .ctl { max-width: 176px; min-height: 28px; padding: 0 7px; font-size: 13.5px; }
+.lrow .lc2 .ctl .chev { width: 13px; height: 13px; }
+.lrow .ls { font-size: 12.5px; color: var(--faint); text-align: right; }
+.stcat.cancel { background: var(--line-3); opacity: 0.6; }
+
+/* Boards: a paused Trello board, and the attach picker's prefix line. */
+.brow .via { font: 400 12.5px var(--sans); color: var(--faint); }
+.brow.paused .nm, .brow.paused .ky, .brow.paused .tk { color: var(--muted); }
+.attachl .select .tl { margin-right: -1px; }
+
+/* The phone: the picker's sheet, the Trello steps and the board's list mapping. */
+body.phone .ph .kind { padding: 12px; gap: 7px; border-radius: 9px; }
+body.phone .ph .kind .nm { font-size: 15px; }
+body.phone .ph .kind .sub { font-size: 12px; }
+body.phone .ph .kind .d { font-size: 12.5px; line-height: 1.45; }
+body.phone .ph .kind .caps { display: none; }
+body.phone .ph .kind .top .tl { width: 26px; height: 26px; }
+.sheet-scrim { position: absolute; inset: 0; background: var(--scrim); }
+.psheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); border-radius: 14px 14px 0 0; padding: 16px 16px 22px; }
+.psheet h4 { font: 600 16px var(--sans); }
+.psheet p { margin-top: 4px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.psheet .kinds { margin-top: 14px; }
+.ph .pchiprows { border-top: 1px solid var(--line); }
+.ph .pchiprows .cr { display: grid; grid-template-columns: 14px 66px minmax(0, 1fr) auto; gap: 8px; align-items: center; height: 38px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.ph .pchiprows .cr .mono { font-size: 12.5px; color: var(--faint); }
+.ph .pchiprows .cr .ct { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ph .pchiprows .cr .cs { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.ph .pchiprows .cr .cs svg.lucide { width: 13px; height: 13px; }
+.ph .prefixrow { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 6px 0; }
+.ph .prefixrow .help { line-height: 1.45; }
+.ph .lrow { grid-template-columns: minmax(0, 1fr) 132px; column-gap: 10px; height: 30px; min-height: 0; }
+.ph .lrow .ls { display: none; }
+.ph .lrow .lc2 .ctl { max-width: none; height: 26px; min-height: 0; }
+.ph .mstack .it { padding: 5px 0; }
+.ph .mstack .n { font-size: 14px; }
+.ph .mstack .h { display: none; }
+.ph .mstack .ctl { height: 34px; }
+.ph .mstack .ctl .stcat { flex: none; }
+
+/* The states sheet: labelled cells, as milestone 11's. */
+.sheet .grid.two { grid-template-columns: 1fr 1fr; }
+.statebox { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 12px 14px; }
+.statebox .mini { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.statebox .mini + .mini { margin-top: 8px; }
+.statebox .cap { font-size: 12px; color: var(--faint); margin-bottom: 6px; }
