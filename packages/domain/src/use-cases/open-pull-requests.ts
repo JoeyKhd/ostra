@@ -30,6 +30,8 @@ import { appendServerEvent } from "./server-events.ts";
 import { enterReviewLoopInTx, reviewRoundsInTx } from "../review-loop/loop.ts";
 import { INSTALLATION_NOT_LINKED, installationStateSelect, installationUsable } from "../code-host/installations.ts";
 import { fallbackPullRequestTitle, pullRequestTitle, retitledReposInTx } from "./pr-title.ts";
+import { isTrackerKind } from "./tracker-connections.ts";
+import type { TrackerKindCapabilities } from "./tracker-connections.ts";
 import type { PullRequestTicket } from "./pr-title.ts";
 
 // F-030, F-078, ADR 0040: the `task.open-pull-requests` job. One PR per changed repo, opened by the
@@ -63,6 +65,12 @@ export type OpenPullRequestsDeps = Pick<Ports, "notices" | "audit" | "clock" | "
   readonly afterHostWrite?: () => void;
   /** Milestone 4 (F-104, ticket 18): a PR ostra opens gets its independent-review check evaluated; a task's move owes its items' fan-out. */
   readonly jobs: JobQueue;
+  /**
+   * Milestone 11 (F-008): what each tracker kind's adapter declares. A board whose tracker declares
+   * no `magicWords` (Jira, whose GitHub integration links by the key in the branch and the title)
+   * gets no magic line in the PR's body. Without it, every board's PR gets its word.
+   */
+  readonly trackerCapabilities?: TrackerKindCapabilities;
 };
 
 export type OpenPullRequests = (deps: OpenPullRequestsDeps, input: OpenPullRequestsInput) => Promise<OpenPullRequestsResult>;
@@ -91,17 +99,20 @@ export const pullRequestBody = (text: string, taskUrl: string, others: readonly 
 const ticketTextOf = async (
   db: Db,
   task: { readonly ticketKey: string | null; readonly ticketId: string | null; readonly boardId: string | null; readonly title: string },
-): Promise<{ readonly ticket: PullRequestTicket; readonly magicLine: string } | null> => {
+  capabilities?: TrackerKindCapabilities,
+): Promise<{ readonly ticket: PullRequestTicket; readonly magicLine: string | null } | null> => {
   const key = ticketKeySchema.safeParse(task.ticketKey);
   if (!key.success) {
     return null;
   }
   const ticket = task.ticketId === null ? null : await db.ticket.findUnique({ where: { id: task.ticketId }, select: { title: true, key: true } });
-  const board = task.boardId === null ? null : await db.board.findUnique({ where: { id: task.boardId }, select: { statusMap: true } });
+  const board = task.boardId === null ? null : await db.board.findUnique({ where: { id: task.boardId }, select: { statusMap: true, connection: { select: { kind: true } } } });
   const current = ticketKeySchema.safeParse(ticket?.key);
   const ticketKey = current.success ? current.data : key.data;
   const word = parseBoardMapping(board?.statusMap)?.magicWord ?? "Closes";
-  return { ticket: { key: ticketKey, title: ticket?.title ?? task.title }, magicLine: ticketMagicLine(ticketKey, word) };
+  const kind = board?.connection.kind;
+  const magicWords = capabilities === undefined || kind === undefined || !isTrackerKind(kind) || capabilities[kind].magicWords;
+  return { ticket: { key: ticketKey, title: ticket?.title ?? task.title }, magicLine: magicWords ? ticketMagicLine(ticketKey, word) : null };
 };
 
 /**
@@ -141,7 +152,7 @@ export const openPullRequests: OpenPullRequests = async (deps, input) => {
   const fallbackBody = (await db.$transaction((tx) => lastAgentMessageInTx(tx, task.id, input.sessionId))) ?? task.title;
   // Milestone 8 (F-121): the task's screenshots and recordings, as a count and a link to the task.
   const screenshots = screenshotsLine(await taskAttachmentCount(db, task.id), taskUrl);
-  const ticketText = await ticketTextOf(db, task);
+  const ticketText = await ticketTextOf(db, task, deps.trackerCapabilities);
   const taskRepos = await db.taskRepo.findMany({
     where: { taskId: task.id, ahead: true },
     include: { repo: { include: { connection: true, ...installationStateSelect } } },

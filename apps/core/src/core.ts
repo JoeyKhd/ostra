@@ -498,6 +498,8 @@ export const startCore = async (
   const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger, linearApiUrl, jiraApiUrl: settings.jiraApiUrl });
   // A token's date and a refused token (F-008/c8): the connection fails, its boards pause.
   const tokenDeps = { db, audit: postgresAuditLog, notices, clock: systemClock, logger, trackers };
+  // Milestone 11 (ticket 08): ticket sync and a ticket's reads fail a refused token's connection at once too.
+  const tokenRefused = (input: Parameters<typeof failRefusedToken>[1]) => failRefusedToken(tokenDeps, input);
   const ingestDeps = {
     db,
     trackers,
@@ -506,7 +508,7 @@ export const startCore = async (
     logger,
     jobs,
     closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog },
-    tokenRefused: (input: Parameters<typeof failRefusedToken>[1]) => failRefusedToken(tokenDeps, input),
+    tokenRefused,
   };
   // Milestone 3 (ticket 25): what an `@ostra` comment does, from its webhook's job or (F-044) the reconcile.
   const commentDeps = {
@@ -671,7 +673,7 @@ export const startCore = async (
   trackerTimer.unref();
   // The tracker writer (ticket 15): `ticket.sync` applies each outbox row; the drain sends the rows
   // written where no queue was at hand (a task's move), every 2 s.
-  await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger, jobs }), { localConcurrency: 4 });
+  await jobs.work("ticket.sync", ticketSyncHandler({ db, trackers, clock: systemClock, publicUrl: settings.publicUrl, logger, jobs, tokenRefused }), { localConcurrency: 4 });
   // Notifications (ticket 20): a needs-you moment fans out to its audience, and each channel delivers on its own.
   // Mail goes through the install's own settings when they set it (they lock the panel's choice), else the saved row.
   await syncEmailSettingsRow(db, settings.email);
@@ -768,12 +770,12 @@ export const startCore = async (
     team: settings.team,
   });
   // A ticket task's context, files and first prompt, then its dispatch (ticket 18; milestone 9's ticket 12).
-  await jobs.work("ticket.fetch-context", fetchContextHandler({ ...ticketFileDeps, jobs, notices, clock: systemClock, trackers }), { localConcurrency: 4 });
+  await jobs.work("ticket.fetch-context", fetchContextHandler({ ...ticketFileDeps, jobs, notices, clock: systemClock, trackers, tokenRefused }), { localConcurrency: 4 });
   // Milestone 9 (F-149, ticket 12): a ticket task's ticket read again, for a reopen, "Send ticket
   // updates" and Retry.
   await jobs.work(
     "ticket.read-changes",
-    readChangesHandler({ ...ticketFileDeps, jobs, outbox: postgresCommandOutbox, notices, audit: postgresAuditLog, clock: systemClock, trackers }),
+    readChangesHandler({ ...ticketFileDeps, jobs, outbox: postgresCommandOutbox, notices, audit: postgresAuditLog, clock: systemClock, trackers, tokenRefused }),
     { localConcurrency: 2 },
   );
   // Search (ticket 11): the entries of tasks from before milestone 4, once per task.

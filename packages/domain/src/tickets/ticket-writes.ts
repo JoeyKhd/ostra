@@ -1,6 +1,8 @@
+import type { TransitionTaken } from "@ostra/adapter-sdk";
 import type { DbEnum, Prisma, Tx } from "@ostra/db";
-import { organizationIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
+import { organizationIdSchema, taskIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 import type { BoardId, OrganizationId, RepoId, TaskId, TicketWriteId } from "@ostra/protocol";
+import { z } from "zod";
 
 import { boardStateOf } from "../lifecycles/m11-trackers.ts";
 import type { JobQueue } from "../ports.ts";
@@ -37,10 +39,11 @@ export type TicketSyncTrigger =
   | { readonly kind: "pr-closed"; readonly repoId: RepoId; readonly changedAt: number }
   | { readonly kind: "pr-reopened"; readonly repoId: RepoId; readonly changedAt: number }
   /**
-   * The comment shows something new: a reopen, an idle box, a stop, a crash, any move of the task.
+   * The comment shows something new: a reopen, an idle box, a stop, a crash, any move of the task,
+   * or (milestone 11) a ticket move that stayed put or went through after one did (`move`).
    * `revision` names what it shows, such as `idle:<boxId>:<n>`: the same revision writes once.
    */
-  | { readonly kind: "progress"; readonly reason: "reopened" | "idle" | "stopped" | "crashed" | "state"; readonly revision: string }
+  | { readonly kind: "progress"; readonly reason: "reopened" | "idle" | "stopped" | "crashed" | "state" | "move"; readonly revision: string }
   /** "Create ticket" on a prompt task (F-097): the board it goes on, and its text (untrusted). */
   | { readonly kind: "create-ticket"; readonly boardId: BoardId; readonly title: string; readonly description: string | null };
 
@@ -217,6 +220,87 @@ export const recordTicketProgressInTx = async (tx: Tx, taskId: TaskId, state: Db
   await writeTicketStepsInTx({ tx }, { taskId, trigger: { kind: "progress", reason: "state", revision: `${state}:${String(edits + 1)}` } });
 };
 
+// ---------- a move's outcome (milestone 11, F-008/c5) ----------
+
+/** A move's transitions as `TicketWrite.via` keeps them: IDs and names. Storage: read loosely. */
+const viaSchema = z.array(z.looseObject({ id: z.string(), name: z.string() }));
+
+/**
+ * What a done move did on the tracker, as its row keeps it: `moved`, with the transitions it took
+ * in `via` (`[]` when the ticket was already there, and on a tracker that writes statuses, such as
+ * Linear); or `stays`, when no route of the ticket's workflow reaches the target (Q352): nothing was
+ * written, `via` is `[]`, and the row's `error` holds `movedNot`'s line (the key and status names,
+ * never content), which the progress comment shows while it's the newest move.
+ */
+export type TicketMoveOutcome = { readonly kind: "moved"; readonly via: readonly TransitionTaken[] } | { readonly kind: "stays"; readonly line: string };
+
+/** The columns a done move's row keeps its outcome in. */
+const moveOutcomeColumns = (outcome: TicketMoveOutcome): { readonly via: Prisma.InputJsonValue; readonly error: string | null } => {
+  switch (outcome.kind) {
+    case "moved":
+      return { via: outcome.via.map((transition) => ({ id: transition.id, name: transition.name })), error: null };
+    case "stays":
+      return { via: [], error: outcome.line };
+    default:
+      return outcome satisfies never;
+  }
+};
+
+/** A move row's outcome once it's done; `null` before, and for any other write. */
+export const moveOutcomeOf = (row: {
+  readonly kind: DbEnum.TicketWriteKind;
+  readonly state: DbEnum.TicketWriteState;
+  readonly via: unknown;
+  readonly error: string | null;
+}): TicketMoveOutcome | null => {
+  if (row.kind !== "move" || row.state !== "done") {
+    return null;
+  }
+  if (row.error !== null) {
+    return { kind: "stays", line: row.error };
+  }
+  const via = viaSchema.safeParse(row.via);
+  return { kind: "moved", via: via.success ? via.data.map((transition) => ({ id: transition.id, name: transition.name })) : [] };
+};
+
+/** The progress comment's line for the task's moves: the newest done move's `movedNot` line while it stays put. */
+export const stayedLineInTx = async (tx: Pick<Tx, "ticketWrite">, taskId: TaskId): Promise<string | null> => {
+  const newest = await tx.ticketWrite.findFirst({
+    where: { taskId, kind: "move", state: "done" },
+    orderBy: [{ doneAt: "desc" }, { id: "desc" }],
+    select: { kind: true, state: true, via: true, error: true },
+  });
+  const outcome = newest === null ? null : moveOutcomeOf(newest);
+  return outcome?.kind === "stays" ? outcome.line : null;
+};
+
+/**
+ * Marks a pending move done with its outcome (core's `ticket.sync`). When that changes what the
+ * progress comment says of the moves (one that stays put, or a later one that went through), the
+ * comment's edit is written in the same transaction, so the comment follows. `false` when the row
+ * was no longer pending.
+ */
+export const settleMoveInTx = async (
+  deps: TicketWritesDeps,
+  input: { readonly ticketWriteId: TicketWriteId; readonly outcome: TicketMoveOutcome; readonly externalId: string | null; readonly now: number },
+): Promise<boolean> => {
+  const row = await deps.tx.ticketWrite.findFirst({ where: { id: input.ticketWriteId, kind: "move", state: "pending" }, select: { taskId: true } });
+  if (row === null) {
+    return false;
+  }
+  const taskId = taskIdSchema.parse(row.taskId);
+  const before = await stayedLineInTx(deps.tx, taskId);
+  await deps.tx.ticketWrite.update({
+    where: { id: input.ticketWriteId },
+    data: { state: "done", externalId: input.externalId, doneAt: new Date(input.now), attempts: { increment: 1 }, ...moveOutcomeColumns(input.outcome) },
+  });
+  const after = input.outcome.kind === "stays" ? input.outcome.line : null;
+  if (before !== after) {
+    await writeTicketStepsInTx(deps, { taskId, trigger: { kind: "progress", reason: "move", revision: input.ticketWriteId } });
+  }
+  return true;
+};
+
 /** "Retry sync" (F-031): the task's failed writes go back to pending, and are sent again. */
 export const retryTicketSyncInTx = async (deps: { readonly tx: Tx; readonly jobs: JobQueue }, taskId: TaskId): Promise<number> => {
   const failed = await deps.tx.ticketWrite.findMany({ where: { taskId, state: "failed" }, select: { id: true, organizationId: true } });
@@ -241,6 +325,8 @@ export type ProgressCommentInput = {
   readonly stoppedReason: DbEnum.TaskStopReason | null;
   /** Each repo's PR, in the order they opened. */
   readonly pullRequests: readonly { readonly repo: string; readonly url: string; readonly state: DbEnum.TaskRepoState }[];
+  /** Milestone 11 (Q352): the newest move's `movedNot` line while the ticket stays put (`stayedLineInTx`). */
+  readonly stays?: string | null;
 };
 
 const stateWords = (input: ProgressCommentInput): string => {
@@ -307,6 +393,9 @@ export const renderProgressComment = (input: ProgressCommentInput): string => {
     "",
     `Status: ${stateWords(input)}`,
   ];
+  if ((input.stays ?? null) !== null) {
+    lines.push("", input.stays ?? "");
+  }
   const prs = input.pullRequests.filter((pr) => pr.url !== "");
   if (prs.length > 0) {
     lines.push("", ...prs.map((pr) => `- ${pr.repo}: ${pr.url} (${prWords(pr.state)})`));

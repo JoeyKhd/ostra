@@ -7,6 +7,7 @@ import { organizationIdSchema, projectIdSchema, stopBodySchema } from "@ostra/pr
 
 import type { AckedCommand, RunnerRef } from "../gateway/context.ts";
 import { killPoint } from "../kill-points.ts";
+import { trackerKindCapabilities } from "../tracker/connections.ts";
 
 // The reactions to a session's end (ticket 27): the `task.session-ended` and
 // `task.open-pull-requests` workers, and what a runner's answer to a `stop` does. Each re-reads the
@@ -64,6 +65,8 @@ export const openPullRequestsHandler =
         publicUrl: deps.publicUrl,
         logger: context.logger,
         jobs: deps.jobs,
+        // Milestone 11 (F-008): a Jira board's PR has no magic word; its key is in the branch and the title.
+        trackerCapabilities: trackerKindCapabilities,
         afterHostWrite: () => {
           killPoint("open-pull-requests.answered");
         },

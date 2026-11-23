@@ -1,10 +1,10 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger, SecretStoreAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
-import { JiraAdapter } from "@ostra/adapter-jira";
-import { LinearAdapter } from "@ostra/adapter-linear";
+import { JIRA_CAPABILITIES, JiraAdapter } from "@ostra/adapter-jira";
+import { LINEAR_CAPABILITIES, LinearAdapter } from "@ostra/adapter-linear";
 import type { Db, DbEnum } from "@ostra/db";
 import { defaultConnectionName, isTrackerKind, postgresIdempotencyStore, postgresRateBudgetStore } from "@ostra/domain";
-import type { Clock, ConnectionTracker } from "@ostra/domain";
+import type { Clock, ConnectionTracker, TrackerKindCapabilities } from "@ostra/domain";
 import { connectionIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
 
@@ -59,6 +59,9 @@ export type TrackerEndpoints = {
   /** OSTRA_JIRA_API_URL: Atlassian's gateway (`https://api.atlassian.com`) unless set to a fake Jira. */
   readonly jiraApiUrl?: string | null;
 };
+
+/** What each kind's shipped adapter declares, for the domain's choices that build no adapter (a PR's magic word). */
+export const trackerKindCapabilities: TrackerKindCapabilities = { linear: LINEAR_CAPABILITIES, jira: JIRA_CAPABILITIES };
 
 /** Linear's own file host: where its uploads live, and the only host `downloadFile` sends the token to. */
 const LINEAR_FILE_HOST = "https://uploads.linear.app";

@@ -1,7 +1,9 @@
-import type { AdapterError, AdapterResult, IdempotencyStore, Logger, Ticket, TicketRef, TrackerAdapter } from "@ostra/adapter-sdk";
+import { mappedStatusId } from "@ostra/adapter-sdk";
+import type { AdapterError, AdapterResult, IdempotencyStore, Logger, MoveResult, Ticket, TicketRef, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db, DbEnum } from "@ostra/db";
 import {
   isParentCommentWrite,
+  movedNot,
   parentChildrenOf,
   parentCommentKey,
   parentTicketUrlOf,
@@ -9,15 +11,17 @@ import {
   renderParentProgressComment,
   postgresIdempotencyStore,
   renderProgressComment,
+  settleMoveInTx,
   statusMappingOf,
+  stayedLineInTx,
   ticketWritePayloadSchema,
   writeTicketStepsInTx,
 } from "@ostra/domain";
-import type { Clock, JobQueue, TicketWritePayload } from "@ostra/domain";
+import type { Clock, JobQueue, TicketMoveOutcome, TicketWritePayload } from "@ostra/domain";
 import { queueSettings } from "@ostra/jobs";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { connectionIdSchema, draftIdSchema, externalTicketIdSchema, organizationIdSchema, taskIdSchema, ticketKeySchema, ticketWriteIdSchema } from "@ostra/protocol";
-import type { OrganizationId, TicketWriteId } from "@ostra/protocol";
+import type { ConnectionId, OrganizationId, TicketWriteId } from "@ostra/protocol";
 
 import { z } from "zod";
 
@@ -57,6 +61,13 @@ export type TicketWriterDeps = {
   readonly lookupBeforeRetry?: boolean;
   /** Attempts within one run: the in-run retry's budget. */
   readonly attemptDeadlineMs?: number;
+  /**
+   * Milestone 11 (F-008/c8): the tracker refused the connection's saved token (401): the
+   * connection fails at once and its boards pause (`failRefusedToken`), unless its credential
+   * renews itself. `true` when it failed it; the write is then marked failed, for "Retry sync"
+   * once the token is replaced.
+   */
+  readonly tokenRefused?: (input: { readonly organizationId: OrganizationId; readonly connectionId: ConnectionId }) => Promise<boolean>;
 };
 
 export type ApplyOutcome =
@@ -118,7 +129,7 @@ export const applyTicketWrite = async (
     where: { id: input.ticketWriteId, organizationId: input.organizationId },
     include: {
       board: { select: { id: true, externalId: true, statusMap: true, connectionId: true } },
-      ticket: { select: { id: true, externalId: true, key: true } },
+      ticket: { select: { id: true, externalId: true, key: true, statusName: true } },
       task: { select: { id: true, title: true, progressCommentId: true } },
     },
   });
@@ -161,7 +172,7 @@ export const applyTicketWrite = async (
       ? { outcome: "failed", reason: `the tracker connection can't write: ${lookup.message}` }
       : { outcome: "retry", reason: lookup.message };
   }
-  const { tracker, ownUserId } = lookup.value;
+  const { tracker, ownUserId, connectionId } = lookup.value;
   const board = { externalId: row.board.externalId };
   const ref: TicketRef | null = row.ticket === null ? null : { externalId: externalTicketIdSchema.parse(row.ticket.externalId) };
   const key = row.ticket === null ? null : ticketKeySchema.parse(row.ticket.key);
@@ -197,7 +208,8 @@ export const applyTicketWrite = async (
       return current === null || kept.some((pr) => pr.url === current) ? kept : [...kept, { repo: repo.repo.fullName, url: current, state: repo.state }];
     });
     const task = await db.task.findUniqueOrThrow({ where: { id: taskId }, select: { state: true, stoppedReason: true } });
-    return renderProgressComment({ taskUrl, state: task.state, stoppedReason: task.stoppedReason, pullRequests });
+    // Milestone 11 (Q352): a move no route reached says so, while it's the newest move.
+    return renderProgressComment({ taskUrl, state: task.state, stoppedReason: task.stoppedReason, pullRequests, stays: await stayedLineInTx(db, taskId) });
   };
 
   const attempt = async <T,>(call: () => Promise<AdapterResult<T>>, hedge: boolean): Promise<AdapterResult<T>> => {
@@ -222,7 +234,20 @@ export const applyTicketWrite = async (
   const fail = async (error: AdapterError): Promise<ApplyOutcome> => {
     // Not done: a later attempt may claim the key again, and reads the tracker before writing.
     await store.release(row.idempotencyKey);
+    // Milestone 11 (F-008/c8): a refused token fails its connection at once, and the write with it.
+    if (error.code === "unauthorized" && deps.tokenRefused !== undefined && (await deps.tokenRefused({ organizationId: input.organizationId, connectionId }))) {
+      return { outcome: "failed", reason: "the tracker refused the connection's token: replace it, then retry" };
+    }
     return retryable(error) ? { outcome: "retry", reason: words(error) } : { outcome: "failed", reason: words(error) };
+  };
+
+  /** A move is done with its outcome on its row, and the progress comment follows when it changes what it says. */
+  const settleMove = async (outcome: TicketMoveOutcome, externalId: string | null): Promise<ApplyOutcome> => {
+    await store.complete(row.idempotencyKey, { externalId }, deps.clock.now());
+    await db.$transaction((tx) =>
+      settleMoveInTx({ tx, ...(deps.jobs === undefined ? {} : { jobs: deps.jobs }) }, { ticketWriteId: input.ticketWriteId, outcome, externalId, now: deps.clock.now() }),
+    );
+    return { outcome: "done", externalId, how: "written" };
   };
 
   const data: TicketWritePayload = payload.data;
@@ -274,11 +299,25 @@ export const applyTicketWrite = async (
         await store.release(row.idempotencyKey);
         return { outcome: "failed", reason: "the board has no ready status" };
       }
-      const moved = await attempt(
-        () => (data.target === "ready" ? tracker.moveTicket(board, ref, "started", { ...statuses, started: ready ?? statuses.started }) : tracker.moveTicket(board, ref, data.target, statuses)),
-        true,
-      );
-      return moved.ok ? finish(moved.value.status.id, "written") : fail(moved.error);
+      const mapped = data.target === "ready" ? { target: "started" as const, statuses: { ...statuses, started: ready ?? statuses.started } } : { target: data.target, statuses };
+      const moved: AdapterResult<MoveResult> = await attempt(() => tracker.moveTicket(board, ref, mapped.target, mapped.statuses), true);
+      if (moved.ok) {
+        // Milestone 11 (F-008/c5): the transitions it took are kept on the row, for "On Jira".
+        return settleMove({ kind: "moved", via: moved.value.via }, moved.value.status.id);
+      }
+      if (moved.error.code !== "conflict") {
+        return fail(moved.error);
+      }
+      // No route of the ticket's workflow reaches the target (Q352): nothing was written, the ticket
+      // stays where it is, and the progress comment says so. The names come from the tracker.
+      const goal = mappedStatusId(mapped.statuses, mapped.target);
+      const [current, listed] = await Promise.all([tracker.getTicket(board, ref), tracker.listStatuses(board)]);
+      const line = movedNot({
+        key: current.ok ? current.value.key : (key ?? ref.externalId),
+        from: current.ok ? current.value.status.name : (row.ticket?.statusName ?? "its status"),
+        to: (listed.ok ? listed.value.find((status) => status.id === goal)?.name : undefined) ?? goal,
+      });
+      return settleMove({ kind: "stays", line }, null);
     }
     case "comment": {
       if (ref === null || key === null) return { outcome: "failed", reason: "the write has no ticket" };

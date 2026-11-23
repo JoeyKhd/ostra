@@ -5,7 +5,7 @@ import type { Db } from "@ostra/db";
 import { fetchTicketFiles, noTicketFiles, PARENT_COMMENT_MARKER, PROGRESS_COMMENT_MARKER, ticketFileLimits } from "@ostra/domain";
 import type { FetchedTicketFiles, FileSettings, TicketReadPorts } from "@ostra/domain";
 import { blobIdSchema, connectionIdSchema, externalTicketIdSchema, sha256HexSchema } from "@ostra/protocol";
-import type { OrganizationId, TaskId } from "@ostra/protocol";
+import type { ConnectionId, OrganizationId, TaskId } from "@ostra/protocol";
 
 import type { BlobService } from "../blobs/blob-service.ts";
 import { TICKET_FILE_PURPOSE } from "../dispatch/restore-spec.ts";
@@ -47,6 +47,12 @@ export type TicketFileStoreDeps = {
 
 export type TicketReadsDeps = TicketFileStoreDeps & {
   readonly trackers: Pick<ConnectionTrackers, "forConnection">;
+  /**
+   * Milestone 11 (F-008/c8): the tracker refused the connection's saved token (401): the connection
+   * fails at once and its boards pause (`failRefusedToken`). The read is then `gone`, as any read of
+   * a connection that isn't active: the start goes on from the ticket's cached row.
+   */
+  readonly tokenRefused?: (input: { readonly organizationId: OrganizationId; readonly connectionId: ConnectionId }) => Promise<boolean>;
 };
 
 type TaskOwner = { readonly organizationId: OrganizationId; readonly projectId: string; readonly taskId: TaskId };
@@ -98,7 +104,7 @@ export const downloadWith =
   };
 
 type TaskTracker =
-  | { readonly ok: true; readonly tracker: TrackerAdapter; readonly ownUserId: string | null; readonly board: { readonly externalId: string }; readonly ticket: { readonly externalId: string } }
+  | { readonly ok: true; readonly tracker: TrackerAdapter; readonly connectionId: ConnectionId; readonly ownUserId: string | null; readonly board: { readonly externalId: string }; readonly ticket: { readonly externalId: string } }
   | { readonly ok: false; readonly reason: "unavailable" | "gone" };
 
 /**
@@ -125,7 +131,7 @@ export const ticketReadPorts = (deps: TicketReadsDeps): TicketReadPorts => {
       if (!lookup.ok) {
         return { ok: false, reason: lookup.reason === "no-token" ? "unavailable" : "gone" };
       }
-      return { ok: true, tracker: lookup.value.tracker, ownUserId: lookup.value.ownUserId, board, ticket };
+      return { ok: true, tracker: lookup.value.tracker, connectionId: lookup.value.connectionId, ownUserId: lookup.value.ownUserId, board, ticket };
     })();
     found.set(task.taskId, looked);
     return looked;
@@ -143,6 +149,9 @@ export const ticketReadPorts = (deps: TicketReadsDeps): TicketReadPorts => {
       );
       if (!read.ok) {
         deps.logger.info("ticket.read-failed", { taskId: task.taskId, code: read.error.code });
+        if (read.error.code === "unauthorized" && deps.tokenRefused !== undefined) {
+          await deps.tokenRefused({ organizationId: task.organizationId, connectionId: tracker.connectionId });
+        }
         return { ok: false, reason: read.error.code === "rate-limited" || read.error.code === "unavailable" ? "unavailable" : "gone" };
       }
       return { ok: true, context: read.value, capability: tracker.tracker.capabilities.ticketFiles, ownUserId: tracker.ownUserId };

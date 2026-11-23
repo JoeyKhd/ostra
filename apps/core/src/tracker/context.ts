@@ -24,6 +24,7 @@ import type { BlobService } from "../blobs/blob-service.ts";
 import type { DocumentTextReader } from "../files/text/index.ts";
 import type { ConnectionTrackers } from "./connections.ts";
 import { ticketReadPorts } from "./ticket-reads.ts";
+import type { TicketReadsDeps } from "./ticket-reads.ts";
 
 // `ticket.fetch-context` (F-064; milestone 9's ticket 12, F-149, F-150): a new ticket task's first
 // prompt, the start's read of its ticket (round 1). It reads the ticket's full context through the
@@ -54,6 +55,8 @@ export type FetchContextDeps = {
   /** The settings' file limits and `OSTRA_FILE_TEXT_EXTRACTION` (`settings.files`). */
   readonly files: FileSettings;
   readonly logger: Logger;
+  /** Milestone 11 (F-008/c8): a token the tracker refuses (401) fails its connection at once (`failRefusedToken`). */
+  readonly tokenRefused?: NonNullable<TicketReadsDeps["tokenRefused"]>;
 };
 
 /** Thrown so the queue retries: the tracker didn't answer, and nothing was written. */
