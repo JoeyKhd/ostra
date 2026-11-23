@@ -20,6 +20,7 @@
     { "text": "ostra/", "reason": "The branch names' prefix." },
     { "text": "ostra login", "reason": "A command of ostra's CLI." },
     { "text": "https://", "reason": "An example of the field's format (a URL)." },
+    { "text": ".atlassian.net", "reason": "Jira Cloud's site suffix, shown beside the field." },
     { "text": "https://api.example.com/v1", "reason": "An example of the field's format (a URL)." },
     { "text": "acme/sql-coder-ft", "reason": "An example of the field's format (a model's ID)." },
     { "text": "anthropic", "reason": "An example of the field's format (a provider's name)." },

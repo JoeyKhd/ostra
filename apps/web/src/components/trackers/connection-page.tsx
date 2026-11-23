@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { ConnectionId } from "@ostra/protocol";
 
 import { LinearView } from "@/components/linear/linear-view";
+import { JiraConnect } from "@/components/trackers/jira/jira-connect";
 import { PageFrame, PageHeading } from "@/components/shell/page-frame";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { errorText } from "@/lib/errors";
@@ -29,6 +30,7 @@ export const ConnectionPage = ({ connectionId, admin }: { readonly connectionId:
   const detail = useQuery(trpc.trackers.get.queryOptions({ id: connectionId }));
   const data = detail.data;
   if (data?.kind === "linear" && admin) return <LinearView connectionId={connectionId} name={data.name} />;
+  if (data?.kind === "jira" && admin) return <JiraConnect connectionId={connectionId} />;
   const crumbs = [{ label: me.data?.organization?.name ?? t("shell.organization") }, { label: t("trackers.title"), href: "/organization/trackers" }, { label: data?.name ?? t("trackers.title") }];
   return (
     <PageFrame crumbs={crumbs}>
