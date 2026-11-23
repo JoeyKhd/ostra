@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { checklistSteps, signIn, watchOrigins } from "./helpers.ts";
+import { checklistSteps, readStack, signIn, watchOrigins } from "./helpers.ts";
 import { e2eModelToken, e2eStubBaseUrl } from "./settings.ts";
 
 // Ticket 37: the setup screens against the stub model endpoint. Desktop only: the steps write data,
@@ -44,6 +44,55 @@ test("F-076/c1, F-152/c7: a new organization's Home shows the checklist in its o
   await page.locator('[data-step="model-provider"]').getByRole("link", { name: "Add a provider" }).click();
   await page.waitForURL((url) => url.pathname === "/organization/models");
   await expect(page.getByRole("heading", { name: "Models", level: 1 })).toBeVisible();
+});
+
+/** A token's date well past the 14-day warning, as the admin gives it. */
+const futureDay = (): string => new Date((Math.floor(Date.now() / 86_400_000) + 200) * 86_400_000).toISOString().slice(0, 10);
+
+test("F-152/c7: connecting Jira through Trackers' steps ticks Home's step 4", { tag: "@desktop-only" }, async ({ page }) => {
+  test.setTimeout(120_000);
+  const stack = await readStack();
+  const siteName = stack.jira.siteHost.replace(/\.atlassian\.net$/, "");
+  await signIn(page);
+
+  // The step's action goes to Trackers, whose empty state is the picker (choice 14).
+  await page.goto("/");
+  await page.locator('[data-step="tracker"]').getByRole("link", { name: "Connect a tracker", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/organization/trackers");
+  await page.locator('[data-kind="jira"]').click();
+  await page.getByRole("button", { name: "Continue with Jira" }).click();
+  await page.waitForURL((url) => url.pathname.startsWith("/organization/trackers/") && url.searchParams.get("new") === "1");
+
+  // Step 1: the site's cloud ID, read back from the fake Jira's tenant info.
+  await page.getByTestId("jira-site").fill(siteName);
+  await page.getByTestId("jira-name").fill("Globex Jira");
+  await page.getByRole("button", { name: "Find the site" }).click();
+  await expect(page.getByTestId("jira-done-count")).toHaveText("1 of 3");
+
+  // Step 2: the service account's token, read back before it's saved.
+  await page.getByTestId("jira-email").fill(stack.jira.serviceAccountEmail);
+  await page.getByTestId("jira-token").fill(stack.jira.token);
+  await page.getByTestId("jira-expires").fill(futureDay());
+  await page.getByRole("button", { name: "Check the token" }).click();
+  await expect(page.getByTestId("jira-readback").getByRole("listitem")).toHaveCount(4);
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  await expect(page.getByTestId("jira-done-count")).toHaveText("2 of 3");
+
+  // Step 3: the stack answers on loopback, so the mode is polling; Finish connects it, for real.
+  await expect(page.getByRole("heading", { level: 3, name: "Events: polling" })).toBeVisible();
+  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(page.getByTestId("jira-connected")).toBeVisible({ timeout: 15_000 });
+
+  // Home's step 4: done, naming the connection, with nothing left to press.
+  await page.goto("/");
+  const step = page.locator('[data-step="tracker"]');
+  await expect(step).toHaveAttribute("data-done", "true");
+  await expect(step).toContainText("Connected");
+  await expect(step).toContainText("Globex Jira");
+  await expect(step.locator('[data-tracker-mark="jira"]')).toBeVisible();
+  await expect(step.getByRole("button", { name: "Skip for now" })).toHaveCount(0);
+  // The docs link is still there (`Docs: Connect a tracker`); the step's own action isn't.
+  await expect(step.getByRole("link", { name: "Connect a tracker", exact: true })).toHaveCount(0);
 });
 
 test("Add a model provider: a wrong token is refused in words, the right one lists the models", async ({ page }) => {
