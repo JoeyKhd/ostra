@@ -1,8 +1,7 @@
 "use client";
 
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppWindowIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, LinkIcon, MessageSquareIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
-import Link from "next/link";
+import { AppWindowIcon, MessageSquareIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -11,38 +10,29 @@ import type { TaskId } from "@ostra/protocol";
 import { deriveTaskState } from "@ostra/task-view";
 
 import { servicesWaitText } from "@/components/projects/environment-services-words";
-import { RunnerKind } from "@/components/runners/runners-view";
 import { useProvideTaskScope } from "@/components/shell/actions/use-scope";
 import type { ItemScope, TaskScope } from "@/components/shell/actions/use-scope";
-import { TaskMemory } from "@/components/memory/task-memory";
-import { PageFrame, PropGroup, PropRow } from "@/components/shell/page-frame";
+import { PageFrame } from "@/components/shell/page-frame";
 import { useOptionalShellState } from "@/components/shell/shell-state";
-import { Kbd } from "@/components/ui/kbd";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { initials } from "@/components/shell/user-menu";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Status } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
-import { formatDuration, formatElapsed, formatTokens } from "@/lib/format";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
-import type { RouterOutputs } from "@/lib/trpc";
-import { safeHref } from "@/task/renderers";
 import { TaskThread } from "@/task/task-thread";
 import { useTaskLog } from "@/task/use-task-log";
 
-import { TaskAppSupportLine, TaskAttachmentsGroup } from "./attachments/attachments-group";
+import { TaskAppSupportLine } from "./attachments/attachments-group";
 import { TicketContextRows } from "./attachments/ticket-context-thread";
 import { monthWord } from "./budget-reason";
 import { PhoneTaskSections } from "./phone-task-sections";
 import { TaskPrs } from "./task-prs";
-import { HeldNoKey, KeyRow, NoKeySentence, WhoPicks } from "./no-key";
+import { HeldNoKey, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
 import type { NoKey } from "./no-key";
-import { AgentGot, MergedHint, TicketLine, TicketProperties, boxText, composerInputOf, composerMode, idleHeader, limitStateOf, sessionText, SpendCapComposer, SpendValue, trackerName } from "./task-ticket";
-import { headerActivity, planRowText, stateTone, taskStateLine } from "./task-words";
+import { AgentGot, MergedHint, TicketLine, TicketProperties, composerInputOf, composerMode, idleHeader, limitStateOf, SpendCapComposer, trackerName } from "./task-ticket";
+import { headerActivity, stateTone, taskStateLine } from "./task-words";
 import { ApprovalCard, PlanBlock, QuestionCard, WatcherBar, approvalReceipt } from "./task-answers";
 import { NeedsYouCards, NeedsYouLive } from "./needs-you-cards";
 import { needsOf, questionRepeatsMessage, replyHint } from "./needs-you-card-words";
@@ -51,33 +41,33 @@ import { ChangesTab } from "./task-changes/changes-tab";
 import { EventLogTab } from "./task-event-log/event-log-tab";
 import { ChecksTab, checksMarkerOf, checksPropertyOf } from "./task-checks/checks-tab";
 import { ChecksTabMarker } from "./task-checks/task-checks";
-import { ReasoningRow, TaskEffortRow } from "./task-effort";
+import { TaskEffortRow } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
-import { TakeItLocal } from "./take-it-local";
+import { Properties } from "./task-properties";
+import { TaskStatusLine } from "./task-status-line";
+import { TaskTopBar } from "./task-top-bar";
+import type { SidePaneChoice } from "./task-top-bar";
 import { StartedInLinear } from "@/components/approvals/approval-block";
 
 import { TaskWaiting } from "./task-waiting";
 import { PreviewPane } from "./preview-pane";
 import { PreviewSteerBar } from "./preview-steer-bar";
-import { boxSizeText } from "./task-waiting-words";
 import type { LocalLoad } from "./take-it-local";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { Chip } from "@/components/ui/status";
 import { DraftView } from "./draft/draft-view";
 import { DraftProperties } from "./draft/draft-properties";
 import { capOf } from "./review/review-words";
-import { CodeHeadRows, RoundsGroup, RoundsInThread, StageLine, statusWithSubState } from "./review/task-rounds";
+import { RoundsGroup, RoundsInThread, StageLine } from "./review/task-rounds";
 import { AiReviewLine, FollowUpWaiting, ReviewOfLine } from "./review/follow-up";
 import { followUpWaitWords } from "./review/follow-up-words";
 import { formatClock } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 
-type Task = RouterOutputs["tasks"]["get"];
+// Milestone 10 (ticket 09): the properties panel lives in `task-properties.tsx`; its tests still import it from here.
+export { Properties } from "./task-properties";
 
 type TaskTab = "activity" | "changes" | "checks" | "events" | "draft";
-
-/** The task kinds that never push (ADR 0028 amended): a refine task, and a review task. */
-const readOnlyKind = (kind: Task["kind"]): boolean => kind === "refine" || kind === "review";
 
 /** The wait reasons milestones 3 and 4 word in their own blocks on this page (the waiting line skips them). */
 const wordedElsewhere: ReadonlySet<string> = new Set(["needs-services-runner", "provider-not-allowed", "installation-not-linked", "no-provider-for-model"]);
@@ -96,295 +86,6 @@ const useNow = (): number => {
   }, []);
   return now;
 };
-
-/** The ` · ` between facts on a line, in `--faint`. */
-const Sep = () => <span aria-hidden className="text-faint">·</span>;
-
-const Mono = ({ children, className }: { readonly children: ReactNode; readonly className?: string }) => (
-  <span className={cn("truncate font-mono text-ui", className)}>{children}</span>
-);
-
-/** The 18px avatar beside the driver's name: the only marker a value may carry besides the status dot. */
-const Avatar = ({ name }: { readonly name: string }) => (
-  <span aria-hidden className="inline-grid size-[18px] shrink-0 place-items-center rounded-full bg-line-2 text-[9.5px] font-semibold text-text">
-    {initials(name)}
-  </span>
-);
-
-/** The ghost icon button left of the PR: copies the task's address. */
-const CopyLink = () => {
-  const [copied, setCopied] = useState(false);
-  const label = copied ? t("taskPage.linkCopied") : t("taskPage.copyLink");
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label={label}
-      title={label}
-      data-action="copy-link"
-      onClick={() => {
-        void navigator.clipboard.writeText(window.location.href).then(() => {
-          setCopied(true);
-          setTimeout(() => { setCopied(false); }, 1500);
-        });
-      }}
-    >
-      {copied ? <CheckIcon /> : <LinkIcon />}
-    </Button>
-  );
-};
-
-/** A PR the top bar links to: the repo's current one, with a safe address. */
-type BarPr = { readonly number: number; readonly href: string; readonly state: "open" | "merged" | "closed"; readonly repo: string; readonly draft: boolean };
-
-/** Whether a repo's current PR is a draft (task-checks.md: `git-pull-request-draft`, `#483 · draft`). */
-const prIsDraft = (repo: Task["repos"][number]): boolean =>
-  repo.pr !== null && repo.pr.state === "open" && repo.pullRequests.some((pr) => pr.number === repo.pr?.number && pr.draft);
-
-const PrStateIcon = ({ state }: { readonly state: BarPr["state"] }) => {
-  const className = "size-[15px] shrink-0 stroke-[1.75] text-muted";
-  switch (state) {
-    case "open":
-      return <GitPullRequestIcon aria-hidden className={className} />;
-    case "merged":
-      return <GitMergeIcon aria-hidden className={className} />;
-    case "closed":
-      return <GitPullRequestClosedIcon aria-hidden className={className} />;
-    default:
-      return state satisfies never;
-  }
-};
-
-/**
- * The top bar's PR buttons (task.md): one per PR. At phone width several collapse into one
- * `PRs · n` button that opens a bottom sheet listing them (m2/phone-task.md, "Top bar"), so the
- * bar never scrolls sideways.
- */
-const PrButtons = ({ prs }: { readonly prs: readonly BarPr[] }) => {
-  const button = (pr: BarPr, className?: string) => (
-    <a key={`${pr.repo}#${String(pr.number)}`} href={pr.href} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants(), className)}>
-      {pr.draft ? <GitPullRequestDraftIcon /> : <GitPullRequestIcon />} {t("taskPage.prButton", { n: pr.number })}
-    </a>
-  );
-  if (prs.length < 2) return <>{prs.map((pr) => button(pr))}</>;
-  return (
-    <>
-      {prs.map((pr) => button(pr, "max-sm:hidden"))}
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button className="sm:hidden" data-action="task-prs">
-            <GitPullRequestIcon aria-hidden /> {t("taskPage.prsButton", { n: prs.length })}
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="bottom" title={t("taskPage.prsTitle")} className="px-4 pb-6 pt-4">
-          <h2 className="text-ui font-semibold text-text">{t("taskPage.prsTitle")}</h2>
-          <ul className="mt-2">
-            {prs.map((pr) => (
-              <li key={`${pr.repo}#${String(pr.number)}`} className="flex h-10 items-center gap-2 border-b border-line text-ui last:border-b-0">
-                <PrStateIcon state={pr.state} />
-                <span className="min-w-0 truncate font-mono text-text">{pr.repo}</span>
-                <a href={pr.href} target="_blank" rel="noopener noreferrer" className="shrink-0 font-mono text-teal hover:underline">#{pr.number}</a>
-                <span className="ml-auto shrink-0 text-muted">{t(`taskPage.prState.${pr.state}`)}</span>
-              </li>
-            ))}
-          </ul>
-        </SheetContent>
-      </Sheet>
-    </>
-  );
-};
-
-/**
- * The properties panel (task.md, "Properties panel"): what describes the task and doesn't change turn
- * to turn. Values carry no icons, so they all start at one x; the status dot and the driver's avatar
- * are the only markers. Its Tokens, Cache, Spend and Agent time rows are F-084's.
- */
-export const Properties = ({ task, tokens, reasoningTokens, context, now, onTakeOver, takingOver, ticket, effort, noKey, projectName, checks }: {
-  readonly task: Task;
-  /** The newest turn's checks, for the Code group's `Checks` row (task-checks.md); `null` when none ran. */
-  readonly checks: { readonly failing: number; readonly passed: number; readonly running: boolean } | null;
-  /** F-137: the Effort row, built by the view (it holds the change's mutation). */
-  readonly effort: ReactNode;
-  /** F-135: queued with no key for its model. */
-  readonly noKey: boolean;
-  readonly projectName: string;
-  readonly tokens: { readonly inputTokens: number; readonly outputTokens: number; readonly estimated: boolean };
-  /** F-137: the reasoning tokens inside `out`, from the turns' usage. */
-  readonly reasoningTokens: number;
-  readonly context: { readonly used: number; readonly size: number } | null;
-  readonly now: number;
-  readonly onTakeOver: () => void;
-  readonly takingOver: boolean;
-  /** The Ticket and On Linear groups (ticket 36). */
-  readonly ticket: ReactNode;
-}) => {
-  const usage = task.usage?.totals ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, spentMicroUsd: null, agentMs: 0, estimated: false };
-  const input = Math.max(tokens.inputTokens, task.session?.inputTokens ?? 0);
-  const output = Math.max(tokens.outputTokens, task.session?.outputTokens ?? 0);
-  const boxSize = task.box?.size ?? null;
-  return (
-    <div data-testid="task-properties">
-      <PropGroup title={t("taskPage.properties")}>
-        <PropRow label={t("taskPage.status")}>
-          <Status tone={stateTone(task.state)} className="min-w-0">
-            {/* A sub-state makes it long (`In review · waiting for a reviewer`): it wraps rather than cut a word. */}
-            <span className="min-w-0 break-words" data-testid="task-status">{noKey ? t("noKey.queued") : statusWithSubState(task)}</span>
-          </Status>
-        </PropRow>
-        <PropRow label={t("taskPage.driver")}>
-          {task.driver === null ? <span className="text-faint">–</span> : (
-            <>
-              <Avatar name={task.driver.name} />
-              <span className="truncate">{task.driver.name}</span>
-            </>
-          )}
-          {task.capabilities.takeOver ? (
-            <>
-              {task.driver === null ? null : <Sep />}
-              <Button variant="link" className="text-ui font-normal" onClick={onTakeOver} disabled={takingOver} data-action="take-over">{t("taskPage.takeOver")}</Button>
-            </>
-          ) : null}
-        </PropRow>
-        {task.kind === "code" ? null : (
-          <PropRow label={t("draft.kind")}><span data-testid="task-kind">{task.kind === "refine" ? t("draft.kindRefine") : t("draft.kindReview")}</span></PropRow>
-        )}
-        <PropRow label={t("taskAnswers.usage.profile")}>
-          {task.agent === null ? <span className="text-faint">{t("taskAnswers.usage.none")}</span> : <span className="truncate" data-testid="task-profile">{task.agent.name}</span>}
-          {task.agent?.builtInKind === null || task.agent?.builtInKind === undefined ? null : <Chip className="h-5 shrink-0 px-1.5 text-xs">{t("draft.builtIn")}</Chip>}
-        </PropRow>
-        {task.plan === null ? null : <PropRow label={t("taskAnswers.usage.plan")}><span className="truncate" data-testid="task-plan-row">{planRowText(task.plan)}</span></PropRow>}
-        {task.agent === null ? null : (
-          <>
-            <PropRow label={t("taskPage.agent")}><span className="truncate">{task.agent.agentName}</span></PropRow>
-            {task.agent.model === null ? null : (
-              <PropRow label={t("taskPage.model")}>
-                <span className="truncate">{task.agent.model.name}</span>
-                {task.session?.providerName === undefined || task.session.providerName === null ? null : (
-                  <span className="shrink-0 truncate" data-testid="task-key">
-                    <span className="text-muted">{t("noKey.keyPrefix")}</span> <span className="font-mono text-ui">{task.session.providerName}</span>
-                  </span>
-                )}
-              </PropRow>
-            )}
-            {noKey ? <KeyRow providerName={null} projectName={projectName} /> : null}
-          </>
-        )}
-        {effort}
-        <PropRow label={t("taskPage.runner")}>
-          {/* Once the box is released the task has no runner (task-reopen.md, "Properties"). */}
-          {task.runner === null || task.box?.state === "released" ? <span className="text-faint">{t("taskPage.noRunner")}</span> : <Mono>{task.runner.name}</Mono>}
-        </PropRow>
-        {task.runner === null || task.box?.state === "released" ? null : (
-          <div className="pb-1.5 pl-[104px]"><RunnerKind runner={task.runner} /></div>
-        )}
-        {readOnlyKind(task.kind) ? (
-          <PropRow label={t("draft.pushes")}><span className="truncate text-muted" data-testid="task-pushes">{task.state === "done" ? t("draft.pushesNoneDone") : t("draft.pushesNone")}</span></PropRow>
-        ) : null}
-        <PropRow label={t("taskPage.tokens")}>
-          <Mono>
-            <span data-testid="task-tokens">{usage.estimated ? "≈ " : ""}{formatTokens(Math.max(input, usage.inputTokens))} {t("taskPage.in")} · {formatTokens(Math.max(output, usage.outputTokens))} {t("taskPage.out")}</span>
-          </Mono>
-          {/* F-089: a call whose endpoint reported no usage was estimated by the key proxy, and the count says so. */}
-          {tokens.estimated ? (
-            <span data-testid="task-tokens-estimated" className="truncate text-faint" title={t("taskPage.estimatedHelp")}>
-              {t("taskPage.estimated")}
-            </span>
-          ) : null}
-        </PropRow>
-        <ReasoningRow tokens={reasoningTokens} />
-        <PropRow label={t("taskAnswers.usage.cache")}>
-          <Mono><span data-testid="task-cache">{formatTokens(usage.cacheReadTokens)} {t("taskAnswers.usage.read")} · {formatTokens(usage.cacheWriteTokens)} {t("taskAnswers.usage.write")}</span></Mono>
-        </PropRow>
-        {context === null ? null : (
-          <PropRow label={t("taskPage.context")}>
-            <span className="inline-block h-1 w-[60px] shrink-0 overflow-hidden rounded-sm bg-line-2" aria-hidden>
-              <i className="block h-full bg-muted" style={{ width: `${String(Math.min(100, Math.round((context.used / Math.max(1, context.size)) * 100)))}%` }} />
-            </span>
-            <Mono className="text-muted">{formatTokens(context.used)} / {formatTokens(context.size)}</Mono>
-          </PropRow>
-        )}
-        {task.box === null ? null : <PropRow label={t("taskPage.box.label")}><span className="truncate">{boxText(task.box, now)}</span></PropRow>}
-        {task.sessions.length === 0 ? null : (
-          <PropRow label={t("taskPage.session.label")}>
-            <span className="truncate" data-testid="task-sessions">{sessionText(task.sessions)}</span>
-          </PropRow>
-        )}
-        {boxSize === null ? null : <PropRow label={t("waitLine.panelBoxSize")}><Mono><span data-testid="task-box-size">{boxSizeText(boxSize)}</span></Mono></PropRow>}
-        <PropRow label={t("taskPage.spend")}>
-          <Mono><span data-testid="task-spend" data-reached={task.spend.reached}><SpendValue spend={task.spend} /></span></Mono>
-        </PropRow>
-        <PropRow label={t("taskAnswers.usage.agentTime")}><Mono><span data-testid="task-agent-time">{formatDuration(usage.agentMs)}</span></Mono></PropRow>
-        <PropRow label={t("taskPage.time")}><Mono>{formatElapsed(task.createdAt, now)}</Mono></PropRow>
-      </PropGroup>
-      {task.taskRules.length === 0 ? null : (
-        <PropGroup title={t("taskAnswers.usage.rules")}>
-          {task.taskRules.map((rule) => (
-            <div key={rule.ruleId} className="flex h-[26px] items-center gap-2 text-[12.5px]" data-testid="task-rule">
-              <span className="min-w-0 flex-1 truncate font-mono text-text">{rule.tool} {rule.pattern}</span>
-              <span className="shrink-0 text-xs text-faint">{t("taskAnswers.usage.fromTask", { name: rule.createdBy?.name ?? t("taskPage.someone") })}</span>
-            </div>
-          ))}
-        </PropGroup>
-      )}
-      {ticket}
-      <TaskAttachmentsGroup taskId={task.id} pr={task.repos.flatMap((repo) => (repo.pr === null ? [] : [{ number: repo.pr.number, url: repo.pr.url }]))[0] ?? null} />
-      <TaskMemory taskId={task.id} />
-      <PropGroup title={t("taskPage.code")}>
-        {task.repos.map((repo) => {
-          const href = repo.pr === null ? null : safeHref(repo.pr.url);
-          return (
-            <div key={repo.repoId}>
-              <PropRow label={t("taskPage.repo")}><Mono>{repo.fullName}</Mono></PropRow>
-              <PropRow label={t("taskPage.branch")}>
-                <span className="truncate font-mono text-ui" title={repo.branchName}>{repo.branchName}</span>
-              </PropRow>
-              {repo.pullRequests.filter((pr) => pr.number !== repo.pr?.number).map((pr) => (
-                <PropRow key={pr.number} label={t("taskPage.pr")}>
-                  <a href={safeHref(pr.url) ?? "#"} target="_blank" rel="noopener noreferrer" className="font-mono text-ui text-teal hover:underline" data-testid="pr-earlier">#{pr.number}</a>
-                  <span className="text-faint">·</span>
-                  <span className="text-ui text-muted">{pr.state}</span>
-                </PropRow>
-              ))}
-              {repo.pr === null ? null : <CodeHeadRows headSha={repo.headSha} ci={repo.ci} />}
-              <PropRow label={t("taskPage.pr")}>
-                {repo.pr === null || href === null ? <span className="text-faint">{t("taskPage.noPr")}</span> : (
-                  <>
-                    <a href={href} target="_blank" rel="noopener noreferrer" className="font-mono text-ui text-teal hover:underline" data-testid="pr-link">
-                      #{repo.pr.number}
-                    </a>
-                    <span className="text-faint">·</span>
-                    <span className={cn("text-ui", repo.pr.state === "merged" ? "text-green" : repo.pr.state === "closed" ? "text-faint" : "text-muted")} data-pr-state={repo.pr.state}>
-                      {prIsDraft(repo) ? t("taskPage.prState.draft") : t(`taskPage.prState.${repo.pr.state}`)}
-                    </span>
-                  </>
-                )}
-              </PropRow>
-            </div>
-          );
-        })}
-        {checks === null ? null : (
-          <PropRow label={t("checks.property.label")}>
-            <span className="truncate text-[12.5px]" data-testid="task-checks-row">
-              {checks.running ? (
-                <span className="text-muted">{t("checks.property.running")}</span>
-              ) : checks.failing > 0 ? (
-                <>
-                  <span className="text-red">{t("checks.summary.failed", { n: checks.failing })}</span>
-                  {checks.passed > 0 ? <span className="text-muted">{t("checks.property.andPassed", { n: checks.passed })}</span> : null}
-                </>
-              ) : (
-                <span className="text-green">{t("checks.property.allPassed", { n: checks.passed })}</span>
-              )}
-            </span>
-          </PropRow>
-        )}
-      </PropGroup>
-    </div>
-  );
-};
-
-/** The task page's side pane (task-preview.md): the preview, or the properties. */
-type SidePaneChoice = "preview" | "properties";
 
 /** The words "Ask the agent to start the app" puts into the composer, unsent (task-preview.md, "Nothing to preview"). */
 const putInComposer = (text: string): void => {
@@ -626,10 +327,6 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
 
   const stopped = data.state === "stopped";
   const finished = stopped || data.state === "merged" || data.state === "done";
-  const prs = data.repos.flatMap((repo): BarPr[] => {
-    const href = repo.pr === null ? null : safeHref(repo.pr.url);
-    return repo.pr === null || href === null ? [] : [{ number: repo.pr.number, href, state: repo.pr.state, repo: repo.fullName, draft: prIsDraft(repo) }];
-  });
   const running = view.turnRunning || data.state === "running" || data.state === "preparing";
   // F-137: the level from the newest `effort.changed` on the stream, else `tasks.get`'s.
   const effort: TaskEffort = { level: view.effort ?? data.effort.level, levels: data.effort.levels.map((one) => one.level), runningTurn: view.runningEffort };
@@ -758,28 +455,6 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
 
   const previewing = side === "preview";
   const eventsMarker = eventRows.data === undefined || eventRows.data.rows === 0 ? null : <span className="text-faint" data-testid="event-log-count">{eventRows.data.rows}</span>;
-  const sideToggle = codeTask ? (
-    <ToggleGroup
-      type="single"
-      value={side}
-      aria-label={t("task.preview.side")}
-      onValueChange={(value) => { if (value === "preview" || value === "properties") setQuery({ pane: value, view: null }); }}
-      className="h-7 max-lg:hidden"
-      data-testid="side-pane-toggle"
-    >
-      <ToggleGroupItem value="preview" aria-label={t("task.preview.sidePreview")} className="flex items-center gap-1.5 px-2.5 text-[13px] [&_svg]:size-[15px] [&_svg]:stroke-[1.75]">
-        <AppWindowIcon aria-hidden /> <span className="max-md:hidden">{t("task.preview.sidePreview")}</span>
-      </ToggleGroupItem>
-      <ToggleGroupItem value="properties" aria-label={t("task.preview.sideProperties")} className="flex items-center gap-1.5 px-2.5 text-[13px] [&_svg]:size-[15px] [&_svg]:stroke-[1.75]">
-        <PanelRightIcon aria-hidden /> <span className="max-md:hidden">{t("task.preview.sideProperties")}</span>
-      </ToggleGroupItem>
-    </ToggleGroup>
-  ) : null;
-  const stopButton = data.capabilities.stop && !stopped ? (
-    <Button data-action="stop" onClick={() => { stop.mutate({ taskId }); }} disabled={stopping || stop.isPending} aria-label={stopping ? t("taskPage.stopping") : t("taskPage.stop")}>
-      <SquareIcon aria-hidden /> <span className="max-sm:hidden">{stopping ? t("taskPage.stopping") : t("taskPage.stop")}</span>
-    </Button>
-  ) : null;
   const previewPane = previewing ? (
     <PreviewPane
       task={{
@@ -864,29 +539,15 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       // A phone's top bar: the title over `CALC-192 · ● Running` (app-shell.md, "Phone").
       phoneTitle={{ title: data.title, line: <>{data.key} · <Status tone={stateTone(data.state)} className="min-w-0 gap-1.5"><span className="truncate">{stateText}</span></Status></> }}
       actions={
-        expanded ? (
-          <>
-            <span className="text-[13px] text-faint max-lg:hidden">{t("task.preview.press")}</span>
-            <Kbd className="rounded-sm border border-line-2 px-1.5 py-0.5 max-lg:hidden">esc</Kbd>
-            <Button onClick={() => { setExpanded(false); }} data-action="collapse-preview">
-              <Minimize2Icon aria-hidden /> <span className="max-sm:hidden">{t("task.preview.collapse")}</span>
-            </Button>
-            {stopButton}
-          </>
-        ) : (
-          <>
-            {sideToggle}
-            <CopyLink />
-            <TakeItLocal pushed={data.repos.some((repo) => repo.headSha !== null)} load={localLoad} onOpen={() => { setLocalOpened(true); }} />
-            {data.kind === "code" && data.repos.some((repo) => repo.pr?.state === "open") ? (
-              <Link href={`/tasks/${taskId}/review`} className={buttonVariants()} aria-label={t("review.button")} data-action="open-review">
-                <ScanSearchIcon aria-hidden /> <span className="max-sm:hidden">{t("review.button")}</span>
-              </Link>
-            ) : null}
-            <PrButtons prs={prs} />
-            {stopButton}
-          </>
-        )
+        <TaskTopBar
+          task={data}
+          expanded={expanded}
+          side={codeTask ? side : null}
+          onSide={(value) => { setQuery({ pane: value, view: null }); }}
+          onCollapse={() => { setExpanded(false); }}
+          stop={{ stopping, pending: stop.isPending, run: () => { stop.mutate({ taskId }); } }}
+          local={{ load: localLoad, onOpen: () => { setLocalOpened(true); } }}
+        />
       }
       {...(previewPane === null
         ? {}
@@ -922,17 +583,14 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             {data.kind === "code" ? null : <Chip className="font-mono text-muted">{data.kind === "refine" ? t("draft.chipRefine") : t("draft.chipReview")}</Chip>}
           </div>
           <h1 className={cn("page-title mb-1.5 mt-1 break-words", previewing && "lg:text-[24px]")}>{data.title}</h1>
-          <p className="flex flex-wrap items-center gap-x-2 text-body" data-testid="task-doing" data-state={data.state}>
-            <Status tone={stateTone(data.state)}><span className="font-medium text-text">{noKey === null ? stateText : t("noKey.queued")}</span></Status>
-            {activity === "" ? null : <><Sep /><span className="text-muted">{activity}</span></>}
-            {readOnlyKind(data.kind) ? <><Sep /><span className="text-muted" data-testid="task-read-only">{data.state === "done" ? t("draft.readOnlyDone") : t("draft.readOnly")}</span></> : null}
-            <Sep />
-            <span className="text-muted">
-              {stoppedAt === null ? t("taskPage.started", { age: formatElapsed(data.createdAt, now) }) : t("taskPage.stoppedAgo", { age: formatElapsed(stoppedAt, now) })}
-              {data.runner === null ? null : <> {t("taskPage.on")} <span className="font-mono text-ui text-faint">{data.runner.name}</span></>}
-            </span>
-            {log.state.connection === "reconnecting" ? <><Sep /><span className="text-muted">{t("taskPage.reconnecting")}</span></> : null}
-          </p>
+          <TaskStatusLine
+            task={data}
+            label={noKey === null ? stateText : t("noKey.queued")}
+            activity={activity}
+            stoppedAt={stoppedAt}
+            now={now}
+            reconnecting={log.state.connection === "reconnecting"}
+          />
           {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} /> : null}
           {data.reviewOf === null ? null : <ReviewOfLine reviewOf={data.reviewOf} />}
           <div className="max-sm:hidden">
