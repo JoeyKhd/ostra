@@ -1,8 +1,8 @@
 import type { Logger } from "@ostra/adapter-sdk";
 import { effortLevelToDb, LIVE_TEXT_TABLE, mapTask, notifyChannels, Prisma } from "@ostra/db";
 import type { Session, Tx } from "@ostra/db";
-import { boxIdSchema, modelIdSchema, organizationIdSchema, projectIdSchema, runnerEventSchema, sessionIdSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
-import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskId, TaskSeq } from "@ostra/protocol";
+import { boxIdSchema, modelIdSchema, organizationIdSchema, projectIdSchema, repoIdSchema, runnerEventSchema, sessionIdSchema, runnerIdSchema, taskIdSchema, taskSeqSchema } from "@ostra/protocol";
+import type { LeaseEpoch, RunnerEvent, RunnerId, SessionId, SessionSeq, TaskEventOf, TaskId, TaskSeq } from "@ostra/protocol";
 import { z } from "zod";
 
 import { taskRepoFromColumns, taskRepoToColumns } from "../lifecycles/mapping.ts";
@@ -209,6 +209,39 @@ export const recordSessionCrashInTx = async (deps: SessionCrashDeps, task: Locke
   await releaseLeaseInTx(tx, task.id, new Date(deps.clock.now()), "released", deps);
 };
 
+/**
+ * Whether a session its runner says crashed had no turn in progress (2026-11-23, a runner's restart
+ * under a task idle in review): it's idle, its last turn's work left the box (a `session.saved`
+ * after its last `turn.started`), and no member's message waits for a turn. Its agent didn't survive,
+ * but nothing of the task was lost, so it ends as its idle timer would have ended it. A session
+ * whose turn ran, waited on a person, or ended without its save, or with a message still owed (a
+ * steer the restart lost before its turn started), crashed (F-047). Read from the event log in
+ * order, so it holds on every executor and both carriers: a restarted runner resends what it hadn't
+ * had acked before its `session.crashed`.
+ */
+const endedBetweenTurnsInTx = async (tx: Tx, taskId: TaskId, session: Session): Promise<boolean> => {
+  if (session.state !== "idle") {
+    return false;
+  }
+  const latestOf = (kind: "turn.started" | "session.saved") =>
+    tx.event.findFirst({ where: { taskId, sessionId: session.id, kind }, orderBy: { seq: "desc" }, select: { seq: true } });
+  const [started, saved] = await Promise.all([latestOf("turn.started"), latestOf("session.saved")]);
+  if (saved === null || (started !== null && started.seq > saved.seq)) {
+    return false;
+  }
+  return (await unansweredMessagesInTx(tx, taskId)).length === 0;
+};
+
+/**
+ * The session's end as its runner sends it at an idle stop: each of the task's repos, ahead or not
+ * as its last save left it. A refine or review task's repos are never saved, so none is ahead.
+ */
+const idleEndInTx = async (tx: Tx, taskId: TaskId): Promise<TaskEventOf<"session.ended">> => {
+  const repos = await tx.taskRepo.findMany({ where: { taskId }, orderBy: { repoId: "asc" }, select: { repoId: true, ahead: true } });
+  const ended = repos.map((repo) => ({ repoId: repoIdSchema.parse(repo.repoId), ahead: repo.ahead === true }));
+  return { kind: "session.ended", outcome: ended.some((repo) => repo.ahead) ? "with-changes" : "without-changes", repos: ended };
+};
+
 /** What the stored events imply, in the same transaction (ticket 25). */
 const applyEffects = async (
   deps: IngestEventsDeps,
@@ -410,6 +443,17 @@ const applyEffects = async (
         });
         break;
       case "session.crashed":
+        // 2026-11-23: a session with no turn in progress lost nothing when its agent went (a
+        // runner's restart while the task waited between turns): it ends as an idle stop ends,
+        // quietly, its work saved and a reopen restoring it. Its event is stored as that end, and
+        // the session-end job does the rest (the lease, the box, a refine or review task's settle).
+        if (await endedBetweenTurnsInTx(tx, task.id, current)) {
+          const ended = await idleEndInTx(tx, task.id);
+          await tx.event.update({ where: { taskId_seq: { taskId: task.id, seq } }, data: { kind: ended.kind, payload: ended } });
+          deps.logger?.info("ingest.crash-between-turns", { taskId: task.id, sessionId: session.id, seq });
+          await deps.jobs.enqueueInTx(tx, "task.session-ended", { organizationId: task.organizationId, taskId: task.id, sessionId: item.sessionId, eventSeq: seq });
+          break;
+        }
         // Needs you for the driver; the box failed; the lease ends (`recordSessionCrashInTx`). The
         // fence already checked that this event carries the task's current epoch, so the active
         // lease is this session's.

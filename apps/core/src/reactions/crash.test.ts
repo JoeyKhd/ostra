@@ -296,3 +296,153 @@ describe("a task that crashes", () => {
   }, 90_000);
 });
 
+// A runner's restart while its task waits between turns (2026-11-23): a code task sat in review,
+// its last turn saved and its box only waiting for its idle stop, and the restarted runner said the
+// session's agent didn't survive. Core recorded a crash, and the thread ended on "The session
+// crashed" in red, though nothing was lost. A session with no turn in progress now ends as its idle
+// stop would; one whose turn ran, or whose turn's save or a member's message is still owed, is a
+// crash as before (F-047).
+describe("a runner restarting under a task between turns", () => {
+  /** A task dispatched to a fresh runner whose first turn pushed, saved and opened its PR. */
+  const inReviewOnARunner = async (label: string) => {
+    const runner: RegisteredRunner = await registerPersonal(harness, test.db, fixture.a.member);
+    const peer = await connect(harness, runner);
+    await peer.next("welcome");
+    const task = await seedQueuedTask(test.db, world, fixture.a.member, runner.runnerId);
+    await core.db.$transaction((tx) => core.jobs.sendInTx(tx, "task.dispatch", dispatchPayload(task)));
+    const offer = await acceptNextDispatch(peer, task);
+    const repoId = repoIdSchema.parse(world.repoId);
+    const { branchName } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+    const head = gitShaSchema.parse("e".repeat(40));
+    const hidden = gitShaSchema.parse("f".repeat(40));
+    const blob = await test.db.blob.create({
+      data: {
+        organizationId: task.organizationId,
+        projectId: world.projectId,
+        taskId: task.taskId,
+        store: "postgres",
+        key: `postgres:${randomBytes(8).toString("hex")}`,
+        purpose: "session-archive",
+        contentType: "application/gzip",
+        size: 1234,
+        sha256: randomBytes(32).toString("hex"),
+      },
+    });
+    const archive: BlobRef = { blobId: blobIdSchema.parse(blob.id), size: blob.size, sha256: blob.sha256 };
+    await sendEvents(peer, task, [
+      { kind: "turn.started", turnId },
+      { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse(`s-${label}`), text: "I added CONTRIBUTING.md." },
+      { kind: "git.pushed", repoId, branch: branchName, headSha: head, ref: `refs/heads/${branchName}` },
+      { kind: "turn.ended", turnId, stopReason: "end_turn" },
+      { kind: "session.saved", turnOrdinal: 1, repos: [{ repoId, headSha: head, ahead: true, hiddenRefSha: hidden }], archive },
+    ]);
+    await waitFor("the first PR", async () => (await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state === "in_review");
+    return { runner, peer, task, offer, repoId, head, hidden, archive };
+  };
+
+  /** The runner's process dies and starts again: it reports the session it held, as `reportRestoredSessions` does. */
+  const restarts = async (runner: RegisteredRunner, peer: FakePeer, lastCommandSeq: number): Promise<FakePeer> => {
+    peer.close();
+    await peer.closed;
+    const again = await connect(harness, runner, { lastCommandSeq });
+    await again.next("welcome");
+    return again;
+  };
+
+  const restartCrash: TaskEvent = { kind: "session.crashed", error: "the runner restarted while the session was running" };
+
+  it("F-047/c1, F-096/c9: a restart while the task waits in review ends its session as an idle stop: no crash line, no needs-you, the work kept, and a reopen restores it", async () => {
+    const { runner, peer: first, task, offer, repoId, head, hidden, archive } = await inReviewOnARunner("idle");
+    let peer = first;
+    try {
+      const session = await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } });
+      expect(session.state).toBe("idle");
+      peer = await restarts(runner, peer, offer.seq);
+      await sendEvents(peer, task, [restartCrash], 6);
+
+      // The session ends as its idle timer would end it: the session-end job ends it and its lease.
+      await waitFor("the session's idle end", async () => (await test.db.session.findUniqueOrThrow({ where: { id: task.sessionId } })).state === "ended");
+      expect(await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).toMatchObject({ state: "in_review", needsYouReason: null });
+      expect(await test.db.needsYouItem.count({ where: { taskId: task.taskId, reason: "crashed" } })).toBe(0);
+      // The thread ends on the session's end, never on a crash.
+      const kinds = (await test.db.event.findMany({ where: { taskId: task.taskId }, orderBy: { seq: "asc" } })).map((row) => row.kind);
+      expect(kinds).not.toContain("session.crashed");
+      expect(kinds.at(-1)).toBe("session.ended");
+      const lease = await test.db.lease.findFirstOrThrow({ where: { taskId: task.taskId } });
+      expect(lease).toMatchObject({ state: "ended", endReason: "released" });
+      expect((await test.db.box.findUniqueOrThrow({ where: { id: lease.boxId } })).state).not.toBe("failed");
+      expect(await test.db.taskRepo.findFirstOrThrow({ where: { taskId: task.taskId } })).toMatchObject({ state: "pr_open", headSha: head, hiddenRefSha: hidden });
+
+      // A member's message reopens it from the last turn's archive and the hidden ref, as after any idle stop.
+      const scope: MemberScope = { organizationId: task.organizationId, memberId: memberIdSchema.parse(fixture.a.member.id), role: "member", projectRoles: new Map() };
+      const reopened = await core.db.$transaction((tx) =>
+        reopenTask(
+          { tx, scope, jobs: core.jobs, notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock },
+          { taskId: task.taskId, clientMessageId: clientMessageIdSchema.parse("idle-restart-reopen-1"), text: "Add a section on the linters." },
+        ),
+      );
+      if (!reopened.ok) throw new Error(`the reopen was refused: ${reopened.error}`);
+      const next: QueuedTask = { ...task, sessionId: sessionIdSchema.parse(reopened.sessionId) };
+      await acceptNextDispatch(peer, next);
+      const { leaseEpoch } = await test.db.task.findUniqueOrThrow({ where: { id: task.taskId } });
+      const token = await accessToken(harness, runner);
+      const response = await fetch(`${harness.url}${runnerPaths.taskSpec(task.taskId)}?leaseEpoch=${String(leaseEpoch)}`, {
+        headers: { authorization: `Bearer ${token.accessToken}`, [runnerHeaders.minor]: String(PROTOCOL_MINOR) },
+      });
+      expect(response.status).toBe(200);
+      const spec = taskSpecSchema.parse(await response.json());
+      expect(spec.restore).toMatchObject({ archive, hiddenRefs: [{ repoId, sha: hidden, baseSha: head }] });
+    } finally {
+      peer.close();
+    }
+  }, 90_000);
+
+  it("F-047/c1: a restart after a turn ended but before its save, or with a member's message its turn never started, is still a crash", async () => {
+    // The turn ended, but its work never left the box: the restart lost it.
+    const unsaved = await inReviewOnARunner("unsaved");
+    let peer = unsaved.peer;
+    try {
+      const secondTurn = turnIdSchema.parse("turn-unsaved");
+      await sendEvents(
+        peer,
+        unsaved.task,
+        [
+          { kind: "turn.started", turnId: secondTurn },
+          { kind: "turn.ended", turnId: secondTurn, stopReason: "end_turn" },
+        ],
+        6,
+      );
+      expect((await test.db.session.findUniqueOrThrow({ where: { id: unsaved.task.sessionId } })).state).toBe("idle");
+      peer = await restarts(unsaved.runner, peer, unsaved.offer.seq);
+      await sendEvents(peer, unsaved.task, [restartCrash], 8);
+      expect(await test.db.session.findUniqueOrThrow({ where: { id: unsaved.task.sessionId } })).toMatchObject({ state: "crashed" });
+      expect((await test.db.event.findMany({ where: { taskId: unsaved.task.taskId }, orderBy: { seq: "asc" } })).map((row) => row.kind).at(-1)).toBe("session.crashed");
+    } finally {
+      peer.close();
+    }
+
+    // A member's message reached the idle session, but the restart came before its turn started.
+    const owed = await inReviewOnARunner("owed");
+    peer = owed.peer;
+    try {
+      await core.db.$transaction((tx) =>
+        appendServerEvent(tx, {
+          organizationId: owed.task.organizationId,
+          projectId: world.projectId,
+          taskId: owed.task.taskId,
+          sessionId: owed.task.sessionId,
+          at: Date.now(),
+          event: { kind: "user.message", memberId: memberIdSchema.parse(fixture.a.member.id), clientMessageId: clientMessageIdSchema.parse("idle-restart-owed-1"), text: "Now add a section on the linters.", delivery: "queued" },
+        }),
+      );
+      peer = await restarts(owed.runner, peer, owed.offer.seq);
+      await sendEvents(peer, owed.task, [restartCrash], 6);
+      expect(await test.db.session.findUniqueOrThrow({ where: { id: owed.task.sessionId } })).toMatchObject({ state: "crashed" });
+      // The message is owed: the task needs its driver, and the one click replays it.
+      expect(await test.db.task.findUniqueOrThrow({ where: { id: owed.task.taskId } })).toMatchObject({ state: "needs_you", needsYouReason: "crashed" });
+    } finally {
+      peer.close();
+    }
+  }, 120_000);
+});
+

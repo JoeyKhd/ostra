@@ -114,6 +114,11 @@ const turnEnds = (task: DrivenTask, ordinal: number) => {
 /** The idle timer ends the session (`session.ended`), and core's `task.session-ended` job runs. */
 const sessionEnds = async (task: DrivenTask, repos: TaskEventOf<"session.ended">["repos"] = []): Promise<void> => {
   await task.send({ kind: "session.ended", outcome: "without-changes", repos });
+  await sessionEndJobRuns(task);
+};
+
+/** Core's `task.session-ended` job, for the session's stored end. */
+const sessionEndJobRuns = async (task: DrivenTask): Promise<void> => {
   const ended = await h.db.event.findFirstOrThrow({ where: { taskId: task.taskId, sessionId: task.sessionId, kind: "session.ended" }, orderBy: { seq: "desc" } });
   await sessionEndedHandler({
     db: h.db,
@@ -235,5 +240,21 @@ describe("the stuck AI review: a review task never stays running with nothing to
     await again.send({ kind: "session.crashed", error: "the runner restarted while the session was running" });
     expect(await stateOf(h, reviewTaskId)).toBe("done");
     expect(await openItemsOf(reviewTaskId)).toEqual([]);
+  });
+
+  it("F-047/c1, F-100/c6: a runner restarting while the review waits between turns ends its session as an idle stop, and the round it still owes needs its driver as stalled", async () => {
+    const { task, reviewTaskId, review } = await reviewing();
+    // The agent ends its turn without its review: the session is idle, its box warm.
+    await turnEnds(review, 1);
+    expect(await stateOf(h, reviewTaskId)).toBe("running");
+    // The runner restarts: no turn was in progress, so the session ends as its idle timer would.
+    await review.send({ kind: "session.crashed", error: "the runner restarted while the session was running" });
+    expect(await h.db.event.count({ where: { taskId: reviewTaskId, kind: "session.crashed" } })).toBe(0);
+    await sessionEndJobRuns(review);
+    expect(await h.db.session.findUniqueOrThrow({ where: { id: review.sessionId } })).toMatchObject({ state: "ended" });
+    expect(await stateOf(h, reviewTaskId)).toBe("needs_you/stalled");
+    expect(await openItemsOf(reviewTaskId)).toEqual(["stalled/driver"]);
+    expect(await h.db.lease.count({ where: { taskId: reviewTaskId, state: "active" } })).toBe(0);
+    expect(await stateOf(h, task.taskId)).toBe("in_review/ai_review");
   });
 });
