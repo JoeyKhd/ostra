@@ -41,6 +41,7 @@ import type { ReplyHow } from "./needs-you-card-words";
 import { ChangesTab } from "./task-changes/changes-tab";
 import { EventLogTab } from "./task-event-log/event-log-tab";
 import { ChecksTab, checksMarkerOf, checksPropertyOf } from "./task-checks/checks-tab";
+import { markerWithCi } from "./task-checks/check-words";
 import { ChecksTabMarker } from "./task-checks/task-checks";
 import { NextTurnMenu, TaskEffortRow } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
@@ -58,7 +59,7 @@ import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { Chip } from "@/components/ui/status";
 import { DraftView } from "./draft/draft-view";
 import { DraftProperties } from "./draft/draft-properties";
-import { capOf } from "./review/review-words";
+import { capOf, runningCiJobs } from "./review/review-words";
 import { RoundsGroup, RoundsInThread, StageLine } from "./review/task-rounds";
 import { AiReviewLine, FollowUpWaiting, ReviewOfLine } from "./review/follow-up";
 import { followUpWaitWords } from "./review/follow-up-words";
@@ -230,6 +231,25 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   const closedKeep = useMutation(trpc.tasks.keepWorking.mutationOptions(settle));
   const createTicket = useMutation(trpc.tasks.createTicket.mutationOptions(settle));
   const boards = useQuery(trpc.boards.get.queryOptions(task.data === undefined ? skipToken : { projectId: task.data.projectId }));
+  // Milestone 10 (ticket 14): what the thread's results read: the repos' heads and PRs (a draft's
+  // icon, a later push), the project's AI review switch (the CI line's tail), the review screen.
+  const threadProjectId = task.data?.projectId;
+  const threadReviewOf = task.data?.kind === "review" ? (task.data.reviewOf?.taskId ?? null) : null;
+  const threadAiReview = reviewSettings.data?.aiReview ?? false;
+  const threadResults = useMemo(
+    () =>
+      threadProjectId === undefined
+        ? undefined
+        : {
+            projectId: threadProjectId,
+            aiReview: threadAiReview,
+            headOf: (repoId: string) => repos?.find((repo) => repo.repoId === repoId)?.headSha ?? null,
+            prsOf: (repoId: string) =>
+              (repos?.find((repo) => repo.repoId === repoId)?.pullRequests ?? []).map((pr) => ({ number: pr.number, state: pr.state, draft: pr.draft, openedAt: pr.openedAt })),
+            reviewHref: threadReviewOf === null ? null : `/tasks/${threadReviewOf}/review`,
+          },
+    [threadProjectId, threadAiReview, threadReviewOf, repos],
+  );
 
   const names = useMemo(() => new Map<string, string>((members.data ?? []).map((member) => [member.memberId, member.name] as const)), [members.data]);
   const memberName = useCallback((memberId: string) => names.get(memberId) ?? t("taskPage.someone"), [names]);
@@ -427,7 +447,6 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       <>
         <RoundsInThread
           taskId={taskId}
-          rounds={roundList}
           limits={rounds.data.limits}
           cap={cap}
           capInput={{ agent: agentName, failing: failingCheck, blocking: blockingSent }}
@@ -605,7 +624,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             now={now}
             reconnecting={log.state.connection === "reconnecting"}
           />
-          {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} /> : null}
+          {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} ciJobs={runningCiJobs(data.repos)} /> : null}
           {data.reviewOf === null ? null : <ReviewOfLine reviewOf={data.reviewOf} />}
           <div className="max-sm:hidden">
             <TaskPrs repos={data.repos} />
@@ -679,7 +698,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
                 : [
                     { id: "activity", label: t("taskAnswers.tabs.activity") },
                     { id: "changes", label: t("taskAnswers.tabs.changes"), extra: changedFiles === 0 ? null : <span className="text-faint">{changedFiles}</span> },
-                    { id: "checks", label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={checksMarkerOf(checksMarker.data)} /> },
+                    // Milestone 10 (F-151/c6): the marker follows ostra's checks and the code host's CI alike.
+                    { id: "checks", label: t("taskAnswers.tabs.checks"), extra: <ChecksTabMarker marker={markerWithCi(checksMarkerOf(checksMarker.data), data.repos.flatMap((repo) => (repo.ci === null ? [] : [repo.ci])))} /> },
                     { id: "events", label: t("taskAnswers.tabs.events"), extra: eventsMarker },
                   ]
             }
@@ -806,6 +826,7 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           ciOf={ciOf}
           runnerName={data.runner?.name ?? null}
           title={data.title}
+          {...(threadResults === undefined ? {} : { results: threadResults })}
         />
         )}
       </div>

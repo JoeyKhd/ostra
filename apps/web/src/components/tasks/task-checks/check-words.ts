@@ -144,6 +144,23 @@ export const markerOf = (turns: readonly TurnChecksView[]): ChecksMarker => {
   return failing > 0 ? { kind: "failing", count: failing } : { kind: "passed" };
 };
 
+/** The code host's CI on a PR's head, as `tasks.get` counts it in jobs. */
+export type HeadCiMark = { readonly state: "running" | "passed" | "failed" | "none"; readonly failingJobs: readonly string[] };
+
+/**
+ * Milestone 10 (F-151/c6, parts.md part 13): the tab's marker over both things the tab holds,
+ * ostra's checks in the box (`checks`, from their newest turn) and the code host's CI on the PRs'
+ * heads (counted in jobs): spinning while either runs, red with how many failed (checks and jobs)
+ * once one failed, green when both passed (or the one of them there is). `No CI` counts neither way.
+ */
+export const markerWithCi = (checks: ChecksMarker, cis: readonly HeadCiMark[]): ChecksMarker => {
+  if (checks.kind === "running" || cis.some((ci) => ci.state === "running")) return { kind: "running" };
+  const failingJobs = cis.reduce((sum, ci) => sum + (ci.state === "failed" ? Math.max(1, ci.failingJobs.length) : 0), 0);
+  const failing = (checks.kind === "failing" ? checks.count : 0) + failingJobs;
+  if (failing > 0) return { kind: "failing", count: failing };
+  return checks.kind === "passed" || cis.some((ci) => ci.state === "passed") ? { kind: "passed" } : { kind: "none" };
+};
+
 /** The properties panel's `Checks` row, from the newest turn, or `null` when none ran. */
 export const propertyOf = (turns: readonly TurnChecksView[]): { readonly failing: number; readonly passed: number; readonly running: boolean } | null => {
   const newest = turns[0];

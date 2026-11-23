@@ -12,13 +12,13 @@ import { t } from "@/lib/messages";
 import { taskStateLine } from "../task-words";
 import type { TaskReason, TaskLimit, TaskState } from "../task-words";
 
-import { capBody, capTitle, roundOutcomeText, stagesOf } from "./review-words";
-import type { CapKind, Limits, Stage, SubState, TaskRound } from "./review-words";
+import { capBody, capTitle, stagesOf } from "./review-words";
+import type { CapKind, CiJobs, Limits, Stage, SubState } from "./review-words";
 
 // The task page in review (app-targets/m6/task-rounds.md; F-035, F-101, F-105, ticket 35): the
-// stage line under the status, "automatic turns N of 4", each round's outcome, the cap's needs-you
-// with "Keep working", and the panel's Rounds group. Milestone 10 (ticket 12): what a round sent
-// the agent by itself, and why, is its message's outlined bubble in the thread.
+// stage line under the status, "automatic turns N of 4", the cap's needs-you with "Keep working",
+// and the panel's Rounds group. Milestone 10: what a round sent the agent by itself, and why, is its
+// message's outlined bubble in the thread (ticket 12); its outcome, its turn's push line (ticket 14).
 
 type Count = { readonly used: number; readonly limit: number };
 
@@ -32,14 +32,16 @@ const StageGlyph = ({ stage, needsYou, held }: { readonly stage: Stage; readonly
 };
 
 /** The five stages of the loop, joined by hairlines; at the right, the automatic turns. */
-export const StageLine = ({ subState, aiReview, counts, needsYou, held }: {
+export const StageLine = ({ subState, aiReview, counts, needsYou, held, ciJobs = null }: {
   readonly subState: SubState;
   readonly aiReview: boolean;
   readonly counts: { readonly ci: Count; readonly review: Count; readonly automaticTurns: Count };
   readonly needsYou: boolean;
   readonly held: boolean;
+  /** Milestone 10 (F-151/c6): the PRs' jobs while CI runs, for `CI running · 2 of 4 jobs`. */
+  readonly ciJobs?: CiJobs | null;
 }) => {
-  const stages = stagesOf({ subState, aiReview, ci: counts.ci, review: counts.review });
+  const stages = stagesOf({ subState, aiReview, ci: counts.ci, review: counts.review, ciJobs });
   return (
     <div className="mt-2.5 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="stage-line" data-sub-state={subState ?? ""}>
       {/* Tight enough that the five stages and the turns fit one row beside the panel at 1440 (task-rounds.webp). */}
@@ -63,10 +65,9 @@ export const StageLine = ({ subState, aiReview, counts, needsYou, held }: {
   );
 };
 
-/** The rounds in the thread, oldest first, then the cap's needs-you when the task stopped at one. */
-export const RoundsInThread = ({ taskId, rounds, limits, cap, capInput, isDriver, driver, keep, onTakeOver }: {
+/** The cap's needs-you at the thread's end, when the task stopped at a round's limit. */
+export const RoundsInThread = ({ taskId, limits, cap, capInput, isDriver, driver, keep, onTakeOver }: {
   readonly taskId: string;
-  readonly rounds: readonly TaskRound[];
   readonly limits: Limits;
   /** The cap the task waits at (`round_cap`), or `null`. */
   readonly cap: CapKind | null;
@@ -77,44 +78,36 @@ export const RoundsInThread = ({ taskId, rounds, limits, cap, capInput, isDriver
   readonly onTakeOver: () => void;
 }) => {
   const reviewHref = `/tasks/${taskId}/review`;
-  // Milestone 10 (F-151, ticket 12): each round is its message's outlined bubble in the thread (what it
-  // sent, its round of its limit, its hold); its outcome stays here until the push's result line
-  // carries the CI verdict (ticket 14). A round the cap stopped never ran: the cap's needs-you says so.
-  const outcomes = rounds.flatMap((round) => {
-    const outcome = round.state === "capped" ? null : roundOutcomeText(round.outcome, capInput.agent);
-    return outcome === null ? [] : [{ key: `${round.kind}-${String(round.number)}-${String(round.createdAt)}`, outcome }];
-  });
-  if (outcomes.length === 0 && cap === null) return null;
+  // Milestone 10 (F-151, tickets 12 and 14): each round is its message's outlined bubble in the thread
+  // (what it sent, its round of its limit, its hold), and its outcome is its turn's push line, with
+  // CI's verdict once it says (`Pushed 9a03d1e · CI passed`). A round the cap stopped never ran: the
+  // cap's needs-you says so.
+  if (cap === null) return null;
   return (
     <div className="mt-4 space-y-3" data-testid="task-rounds">
-      {outcomes.map(({ key, outcome }) => (
-        <p key={key} className="text-ui text-muted" data-testid="round-outcome">{outcome}</p>
-      ))}
-      {cap === null ? null : (
-        // Milestone 10 (ticket 13, parts.md part 11, `states-asks.md` cell 6): milestone 6's copy and buttons at the thread's needs-you sizes.
-        <div className={cn("mb-2 mt-3 border-l-(length:--rule-needs-you) py-0.5 pl-[14px]", isDriver ? "border-amber" : "border-line-2")} role="region" aria-label={capTitle(cap)} data-testid="round-cap" data-cap={cap} data-waits={isDriver ? "other" : undefined}>
-          <p className={cn("flex items-center gap-2 text-ui font-semibold", isDriver ? "text-amber-text" : "text-muted")}>
-            <HandIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {capTitle(cap)}
+      {/* Milestone 10 (ticket 13, parts.md part 11, `states-asks.md` cell 6): milestone 6's copy and buttons at the thread's needs-you sizes. */}
+      <div className={cn("mb-2 mt-3 border-l-(length:--rule-needs-you) py-0.5 pl-[14px]", isDriver ? "border-amber" : "border-line-2")} role="region" aria-label={capTitle(cap)} data-testid="round-cap" data-cap={cap} data-waits={isDriver ? "other" : undefined}>
+        <p className={cn("flex items-center gap-2 text-ui font-semibold", isDriver ? "text-amber-text" : "text-muted")}>
+          <HandIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {capTitle(cap)}
+        </p>
+        <p className="mt-[5px] text-body leading-[1.55] text-text">{capBody(cap, { ...capInput, limits })}</p>
+        {isDriver ? (
+          <>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              <Button size="sm" variant="amber" className="h-7" disabled={keep.pending} onClick={keep.run} data-action="keep-working">{t("review.cap.keepWorking")}</Button>
+              {cap === "ci" ? <Link href={`/tasks/${taskId}?tab=checks`} className={cn(buttonVariants({ size: "sm" }), "h-7")}>{t("review.cap.openChecks")}</Link> : null}
+              {cap === "findings" ? <Link href={reviewHref} className={cn(buttonVariants({ size: "sm" }), "h-7")}>{t("review.cap.openReview")}</Link> : null}
+            </div>
+            <p className="mt-2 text-sm text-faint">{cap === "ci" ? t("review.cap.footCi", { agent: capInput.agent }) : cap === "findings" ? t("review.cap.footFindings", { agent: capInput.agent }) : t("review.cap.footTurns", { agent: capInput.agent })}</p>
+            {keep.error === null ? null : <p role="alert" className="mt-1 text-sm text-red">{keep.error}</p>}
+          </>
+        ) : (
+          <p className="mt-1.5 text-sm text-muted">
+            {t("review.cap.driverDecides", { driver: driver ?? t("taskPage.someone") })}{" "}
+            <Button variant="link" className="text-sm" onClick={onTakeOver}>{t("taskPage.takeOver")}</Button>
           </p>
-          <p className="mt-[5px] text-body leading-[1.55] text-text">{capBody(cap, { ...capInput, limits })}</p>
-          {isDriver ? (
-            <>
-              <div className="mt-2.5 flex flex-wrap gap-2">
-                <Button size="sm" variant="amber" className="h-7" disabled={keep.pending} onClick={keep.run} data-action="keep-working">{t("review.cap.keepWorking")}</Button>
-                {cap === "ci" ? <Link href={`/tasks/${taskId}?tab=checks`} className={cn(buttonVariants({ size: "sm" }), "h-7")}>{t("review.cap.openChecks")}</Link> : null}
-                {cap === "findings" ? <Link href={reviewHref} className={cn(buttonVariants({ size: "sm" }), "h-7")}>{t("review.cap.openReview")}</Link> : null}
-              </div>
-              <p className="mt-2 text-sm text-faint">{cap === "ci" ? t("review.cap.footCi", { agent: capInput.agent }) : cap === "findings" ? t("review.cap.footFindings", { agent: capInput.agent }) : t("review.cap.footTurns", { agent: capInput.agent })}</p>
-              {keep.error === null ? null : <p role="alert" className="mt-1 text-sm text-red">{keep.error}</p>}
-            </>
-          ) : (
-            <p className="mt-1.5 text-sm text-muted">
-              {t("review.cap.driverDecides", { driver: driver ?? t("taskPage.someone") })}{" "}
-              <Button variant="link" className="text-sm" onClick={onTakeOver}>{t("taskPage.takeOver")}</Button>
-            </p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

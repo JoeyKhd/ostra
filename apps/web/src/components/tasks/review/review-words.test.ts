@@ -74,7 +74,8 @@ describe("the review loop's words (ticket 35)", () => {
     expect(prCiRow(passed)).toEqual({ mark: "passed", words: "Passed · 3 jobs" });
     expect(prCiRow({ ...passed, checks: [job("build", "success")] }).words).toBe("Passed · 1 job");
     expect(prCiRow({ state: "failed", checks: [job("build", "success"), job("e2e", "failure"), job("lint", "timed_out"), job("docs", null)], completedAt: 1 })).toEqual({ mark: "failed", words: "Failed · e2e, lint" });
-    expect(prCiRow({ state: "pending", checks: [job("build", null)], completedAt: null })).toEqual({ mark: "running", words: "CI running" });
+    expect(prCiRow({ state: "pending", checks: [job("build", null)], completedAt: null })).toEqual({ mark: "running", words: "Running · 0 of 1 job" });
+    expect(prCiRow({ state: "pending", checks: [], completedAt: null })).toEqual({ mark: "running", words: "CI running" });
     expect([prCiRow(null), prCiRow({ state: "none", checks: [], completedAt: null }), prCiRow({ state: "timed_out", checks: [], completedAt: null })]).toEqual([
       { mark: "quiet", words: "No CI" },
       { mark: "quiet", words: "No CI" },

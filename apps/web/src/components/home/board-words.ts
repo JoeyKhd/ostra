@@ -14,6 +14,9 @@ export type BoardColumnId = (typeof boardColumns)[number];
 /** The in-review sub-state in words (`PR #481 · CI running`). */
 export type ReviewStep = "ci-running" | "fixing-ci" | "ai-review" | "fixing-findings" | "waiting-for-reviewer";
 
+/** Milestone 10 (F-151/c6): the code host's CI on the task's PRs, counted in jobs, while it runs. */
+export type CiJobs = { readonly done: number; readonly total: number };
+
 /** What a preparing box is doing. */
 export type PrepareStep = "restoring-snapshot" | "starting-services" | "checking-out";
 
@@ -26,7 +29,7 @@ export type CardStatus =
   | { readonly kind: "queued"; readonly on: { readonly kind: "pool"; readonly name: string } | { readonly kind: "personal" } }
   | { readonly kind: "preparing"; readonly step: PrepareStep | null }
   | { readonly kind: "running"; readonly activity: RunningActivity | null }
-  | { readonly kind: "in-review"; readonly prs: readonly number[]; readonly step: ReviewStep | null }
+  | { readonly kind: "in-review"; readonly prs: readonly number[]; readonly step: ReviewStep | null; readonly ciJobs?: CiJobs | null }
   | { readonly kind: "merged"; readonly prs: readonly number[] }
   | { readonly kind: "done" }
   | { readonly kind: "stopped"; readonly reason: { readonly kind: "spend-cap" } | { readonly kind: "ticket-closed" } | { readonly kind: "by"; readonly name: string } | null };
@@ -78,10 +81,13 @@ const columnEmptyKey: Readonly<Record<BoardColumnId, MessageKey>> = {
 export const columnTitle = (column: BoardColumnId): string => t(columnTitleKey[column]);
 export const columnEmpty = (column: BoardColumnId): string => t(columnEmptyKey[column]);
 
-const reviewWords = (step: ReviewStep): string => {
+const reviewWords = (step: ReviewStep, ciJobs: CiJobs | null): string => {
   switch (step) {
     case "ci-running":
-      return t("home.board.review.ciRunning");
+      // CI is counted in jobs (`CI running · 2 of 4 jobs`); checks are only ostra's, in the box.
+      return ciJobs === null || ciJobs.total === 0
+        ? t("home.board.review.ciRunning")
+        : t("home.board.review.ciRunningJobs", { jobs: plural(ciJobs.total, "task.ci.jobsOf.one", "task.ci.jobsOf.other", { done: ciJobs.done, total: ciJobs.total }) });
     case "fixing-ci":
       return t("home.board.review.fixingCi");
     case "ai-review":
@@ -129,7 +135,7 @@ export const cardStatusParts = (status: CardStatus): readonly Part[] => {
       return [plain(t(`home.board.activity.${status.activity.verb}`)), code(status.activity.subject)];
     case "in-review": {
       const prs = status.prs.length === 0 ? t("home.board.inReview") : prsWords(status.prs);
-      return [plain(status.step === null ? prs : `${prs} · ${reviewWords(status.step)}`)];
+      return [plain(status.step === null ? prs : `${prs} · ${reviewWords(status.step, status.ciJobs ?? null)}`)];
     }
     case "merged":
       return [plain(status.prs.length === 0 ? t("home.board.merged") : `${t("home.board.merged")} · ${prsWords(status.prs)}`)];

@@ -1,12 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { releasedHoldText, roundOutcomeText } from "./review-words";
+import { repoIdSchema } from "@ostra/protocol";
+
+import { t } from "@/lib/messages";
+import { resultWords } from "@/task/thread/words";
+
+import { releasedHoldText } from "./review-words";
 import { CodeHeadRows, statusWithSubState } from "./task-rounds";
 
 // Milestone 6's review follow-ups (ticket 41, F-035, F-101): the task page in review against
 // `task-rounds.md`: the status's sub-state, the Code group's Head and CI, a released hold's line and
-// each round's outcome after its card.
+// each round's outcome, its turn's push line since milestone 10 (ticket 14).
 
 const at = Date.UTC(2026, 10, 20, 10, 34);
 
@@ -24,11 +29,10 @@ describe("the task page in review (task-rounds.md)", () => {
     expect(failed).toContain("Failed · unit-tests");
     expect(renderToStaticMarkup(<CodeHeadRows headSha="3f9c21ab7e" ci={{ state: "passed", failing: null }} />)).toContain("Passed");
     expect(renderToStaticMarkup(<CodeHeadRows headSha={null} ci={null} />)).toContain("No CI");
-    expect(roundOutcomeText({ kind: "pushed", headSha: "b20e7f31aa", ci: "passed", failing: null }, "OpenCode")).toBe("OpenCode pushed b20e7f3. CI passed.");
-    expect(roundOutcomeText({ kind: "pushed", headSha: "b20e7f31aa", ci: "failed", failing: "lint" }, "OpenCode")).toBe("OpenCode pushed b20e7f3. CI failed again: lint.");
-    expect(roundOutcomeText({ kind: "pushed", headSha: "b20e7f31aa", ci: "pending", failing: null }, "OpenCode")).toBe("OpenCode pushed b20e7f3.");
-    expect(roundOutcomeText({ kind: "no-push", endedAt: at }, "OpenCode")).toBe("The turn ended without a push.");
-    expect(roundOutcomeText(null, "OpenCode")).toBeNull();
+    // A round's push to the open PR is its turn's result line, with CI's verdict once it says.
+    const push = { kind: "push" as const, push: { repoId: repoIdSchema.parse("0196f1a0-ca1c-7000-8000-000000000001"), branch: "ostra/calc-192", headSha: "b20e7f31aa".padEnd(40, "0"), ref: "refs/heads/ostra/calc-192", hidden: false, checks: null, firstPr: null } };
+    const line = (ci: "passed" | "failed" | "running" | null): string => resultWords(push, t, { later: true, ci }).words.map((segment) => segment.text).join("");
+    expect([line("passed"), line("failed"), line("running"), line(null)]).toEqual(["Pushed b20e7f3 · CI passed", "Pushed b20e7f3 · CI failed", "Pushed b20e7f3 · CI running", "Pushed b20e7f3"]);
   });
 
   it("F-035/c2: a released hold says how long it held, which budget, and what released it", () => {

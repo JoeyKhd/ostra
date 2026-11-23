@@ -409,6 +409,70 @@ const seedScene = async (scene: Scene, shape: TaskShape): Promise<string> => {
   return task.id;
 };
 
+/**
+ * Ticket 14 (F-151/c6): what core keeps beside a scene's events for its push and its PR: a row per
+ * check the box ran (the Checks tab's, `tasks.checks`), each in the turn its session's next save
+ * names, and the Changes tab's compare of the PR's head (`diff.get`, as `DiffCache` holds the code
+ * host's), six files adding up to the target's `+214 −18`.
+ */
+const seedChecksAndCompare = async (taskId: string, scene: Scene): Promise<void> => {
+  const worldSessions = await db.session.findMany({ where: { taskId }, orderBy: { startedAt: "asc" }, select: { id: true } });
+  const sceneSessions = [...new Set(scene.events.map((stored) => stored.sessionId))];
+  const sessionOf = new Map(sceneSessions.flatMap((id, index) => { const world = worldSessions[index]; return world === undefined ? [] : [[id, world.id] as const]; }));
+  const started = new Map<string, { readonly name: string; readonly repoId: string | null; readonly at: number }>();
+  let unsaved: { checkId: string; name: string; repoId: string | null; sessionId: string; status: "passed" | "failed" | "timed_out" | "error"; exitCode: number | null; durationMs: number; startedAt: number; finishedAt: number }[] = [];
+  for (const { event, at, sessionId } of scene.events) {
+    if (event.kind === "check.started") started.set(event.checkId, { name: event.name, repoId: event.repoId, at });
+    if (event.kind === "check.finished") {
+      const start = started.get(event.checkId);
+      const session = sessionOf.get(sessionId);
+      if (start === undefined || session === undefined) continue;
+      const status = event.status === "timed-out" ? "timed_out" : event.status;
+      unsaved.push({ checkId: event.checkId, name: start.name, repoId: start.repoId === null ? null : repo.id, sessionId: session, status, exitCode: event.exitCode, durationMs: event.durationMs, startedAt: start.at, finishedAt: at });
+    }
+    if (event.kind === "session.saved") {
+      for (const run of unsaved) {
+        await db.checkRun.create({
+          data: { ...place, taskId, sessionId: run.sessionId, turnOrdinal: event.turnOrdinal, checkId: run.checkId, name: run.name, repoId: run.repoId, status: run.status, exitCode: run.exitCode, durationMs: run.durationMs, startedAt: new Date(run.startedAt), finishedAt: new Date(run.finishedAt) },
+        });
+      }
+      unsaved = [];
+    }
+  }
+  const taskRepo = await db.taskRepo.findFirst({ where: { taskId, headSha: { not: null } }, select: { headSha: true, branchName: true } });
+  if (taskRepo?.headSha === null || taskRepo?.headSha === undefined) return;
+  const files = [
+    { path: "src/history/store.ts", status: "added", additions: 46, deletions: 0 },
+    { path: "src/history/store.test.ts", status: "added", additions: 58, deletions: 0 },
+    { path: "src/history/panel.tsx", status: "modified", additions: 64, deletions: 3 },
+    { path: "src/history/panel.test.tsx", status: "added", additions: 27, deletions: 0 },
+    { path: "src/keypad/keypad.tsx", status: "modified", additions: 7, deletions: 9 },
+    { path: "src/app.tsx", status: "modified", additions: 12, deletions: 6 },
+  ] as const;
+  // A hunk per file of the right size: its old lines out, its new ones in.
+  const patchOf = (file: (typeof files)[number]): string =>
+    [`@@ -${String(file.deletions === 0 ? 0 : 1)},${String(file.deletions)} +1,${String(file.additions)} @@`, ...Array.from({ length: file.deletions }, (_, i) => `-  old line ${String(i + 1)}`), ...Array.from({ length: file.additions }, (_, i) => `+  line ${String(i + 1)}`)].join("\n");
+  const base = "5d1f0a2c3b".padEnd(40, "0");
+  await db.diffCache.create({
+    data: {
+      ...place,
+      repoId: repo.id,
+      baseSha: base,
+      headSha: taskRepo.headSha,
+      result: {
+        version: 1,
+        mergeBase: base,
+        headSha: taskRepo.headSha,
+        aheadBy: 4,
+        behindBy: 0,
+        filesTruncated: false,
+        hostUrl: `https://github.com/${sceneWorld.repo}/compare/main...${taskRepo.branchName}`,
+        files: files.map((file) => ({ path: file.path, previousPath: null, status: file.status, additions: file.additions, deletions: file.deletions, patch: patchOf(file), tooLarge: false })),
+      },
+    },
+  });
+};
+
 const byTurn = (spend: ReadonlyMap<string, { readonly microUsd: number; readonly estimated: boolean }>) => spend;
 const jobs = [
   { name: "build", conclusion: "success" },
@@ -430,6 +494,7 @@ const s2Task = await seedScene(s2, {
   session: "idle",
   pr: { number: calc192.pr.number, url: calc192.pr.url, title: calc192.pr.title, headSha: calc192.pushSha, jobs },
 });
+await seedChecksAndCompare(s2Task, s2);
 const s3Task = await seedScene(s3, { title: "Review of PR #483", branch: "pending", key: null, kind: "review", state: "done", reviewOf: s2Task, spend: byTurn(review483Spend), session: "ended" });
 const s5PlanTask = await seedScene(s5Plan, { title: "Add keyboard shortcuts to the keypad", branch: "ostra/calc-196-keypad-shortcuts-1", key: "CALC-196", kind: "code", state: "needs_you", needsYouReason: "plan", spend: new Map(), session: "waiting" });
 const s5ApprovedTask = await seedScene(s5Approved, { title: "Add keyboard shortcuts to the keypad", branch: "ostra/calc-196-keypad-shortcuts-2", key: "CALC-196", kind: "code", state: "running", spend: new Map(), session: "running" });
@@ -561,6 +626,25 @@ const asksOne = stateCells.asks[1];
 const asksOneTask = await seedScene(asksOne, { title: "Index the history table", branch: "ostra/calc-201-history-index-1", key: "CALC-201", kind: "code", state: "needs_you", needsYouReason: "approval", spend: new Map(), session: "waiting" });
 const asksTwoTask = await seedScene(twoApprovalsPending, { title: "Index the history table", branch: "ostra/calc-201-history-index-2", key: "CALC-201", kind: "code", state: "needs_you", needsYouReason: "approval", spend: new Map(), session: "waiting" });
 
+// ---- ticket 14: what a turn made ---------------------------------------------------------------
+
+// Cell 1's CI round ran on an open PR: #483, opened before the round, its head now the round's push,
+// on which CI passed (`Pushed 9a03d1e · CI passed`).
+{
+  const later = "9a03d1e".padEnd(40, "0");
+  const taskRepoId = await repoOf(cell1Task);
+  await db.taskRepo.update({ where: { id: taskRepoId }, data: { state: "pr_open", headSha: later, ahead: true, prNumber: calc192.pr.number, prUrl: calc192.pr.url, prTitle: calc192.pr.title } });
+  await db.taskPullRequest.create({ data: { ...place, taskRepoId, number: calc192.pr.number, url: calc192.pr.url, branchName: `${sceneWorld.branch}-cell-1`, openedAt: new Date(messageAt(cell1, "fix-ci").at - 3_600_000) } });
+  await db.ciRun.create({
+    data: { ...place, taskRepoId, headSha: later, state: "passed", firstSeenAt: new Date(cell1.now - 60_000), completedAt: new Date(cell1.now), checks: jobs.map((job, i) => ({ name: job.name, conclusion: "success", externalId: String(2100 + i) })) },
+  });
+}
+// Cell 6: a turn's preview and memory proposal, then a budget hold; and a refine task's draft.
+const cell6 = stateCells.messages[6].code;
+const cell6Task = await seedScene(cell6, cellShape(6, "running", "running"));
+const cell6Draft = stateCells.messages[6].refine;
+const cell6DraftTask = await seedScene(cell6Draft, { title: "Refine CALC-201", branch: `${sceneWorld.branch}-cell-6-draft`, key: "CALC-201", kind: "refine", state: "running", spend: new Map(), session: "running" });
+
 console.log(
   JSON.stringify({
     username,
@@ -571,6 +655,8 @@ console.log(
     cellNow: { "messages-1": cell1.now, "messages-2": cell2.now, "messages-3": cell3.now, "messages-4": cell4.now, "messages-5": cell5.now },
     // Ticket 13's approvals, apart from the scenes' (a spec reading only the scenes ignores them).
     asks: { tasks: { "asks-1": asksOneTask, "asks-1-two": asksTwoTask }, now: { "asks-1": asksOne.now, "asks-1-two": twoApprovalsPending.now } },
+    results: { "messages-1": cell1Task, "messages-6": cell6Task, "messages-6-draft": cell6DraftTask },
+    resultsNow: { "messages-1": cell1.now, "messages-6": cell6.now, "messages-6-draft": cell6Draft.now },
   }),
 );
 await db.$disconnect();

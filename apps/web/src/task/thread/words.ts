@@ -889,6 +889,86 @@ export const resultWords = (result: TurnResult, tr: Translate, push: PushContext
   }
 };
 
+/** A row of a push opened in place, on the opened run's grid: its verb, its subject, its result and its link. */
+export type PushRowWords = {
+  readonly verb: string;
+  readonly subject: readonly Segment[];
+  readonly result: readonly Segment[];
+  readonly link: { readonly label: string; readonly name: string } | null;
+};
+
+/**
+ * A push opened in place (ticket 14, parts.md part 8): its commit row, `Pushed 9c1e2f0 · 4 commits
+ * ahead of main` with `changes ›` to the Changes tab once the code host's compare of that head is
+ * in (`diff.get`), the commit alone before.
+ */
+export const pushCommitWords = (headSha: string, compare: { readonly aheadBy: number; readonly base: string } | null, tr: Translate): PushRowWords => {
+  const sha = headSha.slice(0, 7);
+  return {
+    verb: tr("task.result.open.pushed"),
+    subject: [code(sha)],
+    result: compare === null ? [] : [seg(counted(tr, compare.aheadBy, "task.result.open.ahead.one", "task.result.open.ahead.other", { base: compare.base }), "faint")],
+    link: compare === null ? null : { label: tr("task.result.open.changes"), name: tr("task.result.open.changesName", { sha }) },
+  };
+};
+
+/** One of the push's checks in the box, as the Checks tab keeps it (`tasks.checks`). */
+export type PushCheck = {
+  readonly name: string;
+  readonly status: "waiting" | "running" | "passed" | "failed" | "timed-out" | "error";
+  readonly exitCode: number | null;
+  readonly durationMs: number | null;
+  readonly timeoutMs: number;
+};
+
+/**
+ * A check of the push's turn under its commit (ostra's, in the box): `Checked Tests ✓ passed ·
+ * 12.8 s`; a failing one red, with `output ›` to its output in the Checks tab.
+ */
+export const pushCheckWords = (check: PushCheck, tr: Translate): PushRowWords => {
+  const result: Segment[] = [];
+  switch (check.status) {
+    case "passed":
+      pushSegment(result, seg(`✓ ${tr("checks.status.passed")}`, "green"));
+      break;
+    case "failed":
+      pushSegment(result, seg(check.exitCode === null ? tr("checks.status.failedNoCode") : tr("checks.status.failed", { code: check.exitCode }), "red"));
+      break;
+    case "timed-out":
+      pushSegment(result, seg(tr("checks.status.timedOut", { limit: stepDuration(check.timeoutMs, tr) }), "red"));
+      break;
+    case "error":
+      pushSegment(result, seg(tr("checks.status.error"), "red"));
+      break;
+    case "waiting":
+      pushSegment(result, seg(tr("checks.status.waiting"), "faint"));
+      break;
+    case "running":
+      pushSegment(result, seg(tr("checks.status.running"), "faint"));
+      break;
+    default:
+      return check.status satisfies never;
+  }
+  if ((check.status === "passed" || check.status === "failed") && check.durationMs !== null) {
+    pushSegment(result, seg(" · ", "faint"));
+    pushSegment(result, seg(stepDuration(check.durationMs, tr), "faint"));
+  }
+  const failing = check.status === "failed" || check.status === "timed-out" || check.status === "error";
+  return {
+    verb: tr("task.result.open.checked"),
+    subject: [code(check.name)],
+    result,
+    link: failing ? { label: tr("task.step.link.output"), name: tr("task.result.open.checkOutputName", { name: check.name }) } : null,
+  };
+};
+
+/** The PR card's size, summed from the Changes tab's files: `+214` green, `−18` red (U+2212). */
+export const prSizeWords = (size: { readonly added: number; readonly removed: number }): readonly Segment[] => [
+  code(`+${String(size.added)}`, "green"),
+  seg(" "),
+  code(`−${String(size.removed)}`, "red"),
+];
+
 // ---- a member's message and ostra's (parts.md part 2, ticket 12) ----------------------------
 
 /** `{login} on GitHub`: a PR comment's or a review's author; `GitHub` when its login isn't in view. */

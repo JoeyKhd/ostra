@@ -450,7 +450,7 @@ const results = cell("messages-6", "ce36", "15:10:00", (log, task) => {
   say(log, sam.id, 0xce36_01, "Show me the panel, and remember how the tests run.");
   const turnId = task.turn(1);
   const steps = startTurn(log, turnId);
-  steps.tool("ostra_show_preview", { process: "web", path: "/history" }, { output: "The preview of web :5173 /history is open in the task's preview pane." });
+  steps.tool("ostra_show_preview", { port: 5173, label: "web", path: "/history" }, { output: "web (port 5173) is shown in the task's preview pane." });
   steps.tool("ostra_memory_propose", { title: "Run the tests with pnpm test, not npm" }, { output: "Proposed." });
   log.add({ kind: "memory.proposed", proposalId: sceneExtras.memoryProposal, title: "Run the tests with pnpm test, not npm" });
   steps.say("The preview shows the panel at `/history`, and I proposed a note on how the tests run.");

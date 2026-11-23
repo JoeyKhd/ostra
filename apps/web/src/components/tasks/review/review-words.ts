@@ -17,6 +17,25 @@ export type Limits = TaskRounds["limits"];
 
 type Count = { readonly used: number; readonly limit: number };
 
+/** The code host's CI counted in jobs: how many have a conclusion, of how many (F-151/c6, ticket 08). */
+export type CiJobs = { readonly done: number; readonly total: number };
+
+/** `2 of 4 jobs`: CI is counted in jobs everywhere (parts.md part 13); `checks` are only ostra's. */
+export const jobsOfWords = (jobs: CiJobs): string => plural(jobs.total, "task.ci.jobsOf.one", "task.ci.jobsOf.other", { done: jobs.done, total: jobs.total });
+
+/** The words a check run keeps while it runs, never a conclusion. */
+const runningWords: readonly string[] = ["queued", "in_progress", "waiting", "requested", "pending"];
+
+/**
+ * The jobs of a task's PRs while CI runs on their heads, added up (the stage line's `CI running ·
+ * 2 of 4 jobs`), or `null` when none runs or none counted a job.
+ */
+export const runningCiJobs = (repos: readonly { readonly ci: { readonly state: string; readonly jobs: CiJobs } | null }[]): CiJobs | null => {
+  const running = repos.flatMap((repo) => (repo.ci?.state === "running" ? [repo.ci.jobs] : []));
+  const sum = running.reduce((total, jobs) => ({ done: total.done + jobs.done, total: total.total + jobs.total }), { done: 0, total: 0 });
+  return sum.total === 0 ? null : sum;
+};
+
 /** The sub-state in words: the stage the review loop is at. */
 export const subStateWords = (subState: SubState, rounds: { readonly ci: Count; readonly review: Count }): string | null => {
   switch (subState) {
@@ -64,29 +83,6 @@ export const releasedHoldText = (hold: NonNullable<TaskRound["hold"]>): string |
   return `${head} ${tail}`;
 };
 
-/**
- * The round's outcome after its card: `OpenCode pushed 3f9c21a. CI passed.`, or `The turn ended
- * without a push.`; `null` while the turn runs.
- */
-export const roundOutcomeText = (outcome: TaskRound["outcome"], agent: string): string | null => {
-  if (outcome === null) return null;
-  if (outcome.kind === "no-push") return t("review.round.noPush");
-  const sha = outcome.headSha.slice(0, 7);
-  const { ci, failing } = outcome;
-  switch (ci) {
-    case "passed":
-      return t("review.round.pushedPassed", { agent, sha });
-    case "failed":
-    case "timed_out":
-      return failing === null ? t("review.round.pushedFailedNoCheck", { agent, sha }) : t("review.round.pushedFailed", { agent, sha, check: failing });
-    case "pending":
-    case "none":
-      return t("review.round.pushed", { agent, sha });
-    default:
-      return ci satisfies never;
-  }
-};
-
 /** The latest CI verdict on a PR's head. */
 export const ciWords = (state: CiState | null): string | null => {
   switch (state) {
@@ -114,7 +110,7 @@ const passingConclusions: readonly string[] = ["success", "neutral", "skipped"];
 
 /**
  * The PR group's CI row (F-102, F-151/c6): the code host's CI on the PR's head, counted in jobs
- * (`Passed · 3 jobs`), a failure naming its failing jobs (`Failed · e2e, lint`).
+ * (`Passed · 3 jobs`, `Running · 2 of 4 jobs`), a failure naming its failing jobs (`Failed · e2e, lint`).
  */
 export const prCiRow = (ci: ReviewPr["ci"]): PrCiRow => {
   if (ci === null) return { mark: "quiet", words: t("review.ci.none") };
@@ -125,8 +121,10 @@ export const prCiRow = (ci: ReviewPr["ci"]): PrCiRow => {
       const failing = ci.checks.filter((job) => job.conclusion !== null && !passingConclusions.includes(job.conclusion));
       return { mark: "failed", words: t("review.panel.ciFailed", { jobs: failing.map((job) => job.name).join(", ") }) };
     }
-    case "pending":
-      return { mark: "running", words: t("review.ci.running") };
+    case "pending": {
+      const done = ci.checks.filter((job) => job.conclusion !== null && !runningWords.includes(job.conclusion)).length;
+      return { mark: "running", words: ci.checks.length === 0 ? t("review.ci.running") : t("review.panel.ciRunning", { jobs: jobsOfWords({ done, total: ci.checks.length }) }) };
+    }
     case "none":
       return { mark: "quiet", words: t("review.ci.none") };
     case "timed_out":
@@ -221,15 +219,19 @@ const ORDER: readonly NonNullable<SubState>[] = ["ci_running", "fixing_ci", "ai_
 /**
  * The stage line: the five stages, or three with the AI review off. A stage before the current one
  * is done only when it happened in this pass (CI fixed, findings fixed); one passed over stays ahead.
+ * Milestone 10 (F-151/c6): CI running, as the current stage, counts its jobs (`CI running · 2 of 4 jobs`).
  */
-export const stagesOf = (input: { readonly subState: SubState; readonly aiReview: boolean; readonly ci: Count; readonly review: Count }): readonly Stage[] => {
+export const stagesOf = (input: { readonly subState: SubState; readonly aiReview: boolean; readonly ci: Count; readonly review: Count; readonly ciJobs?: CiJobs | null }): readonly Stage[] => {
   const shown = ORDER.filter((id) => input.aiReview || (id !== "ai_review" && id !== "fixing_findings"));
   const at = input.subState === null ? -1 : shown.indexOf(input.subState);
   return shown.map((id, index) => {
     const happened = id === "fixing_ci" ? input.ci.used > 0 : id === "fixing_findings" ? input.review.used > 0 : true;
     const state: StageState = index === at ? "current" : index < at && happened ? "done" : "ahead";
+    const jobs = input.ciJobs ?? null;
     const words =
-      id === "fixing_ci"
+      id === "ci_running" && state === "current" && jobs !== null
+        ? t("review.stage.ciRunningJobs", { jobs: jobsOfWords(jobs) })
+        : id === "fixing_ci"
         ? state === "ahead" && input.ci.used === 0
           ? t("review.stage.fixingCiPlain")
           : t("review.stage.fixingCi", { n: Math.max(1, input.ci.used), limit: input.ci.limit })

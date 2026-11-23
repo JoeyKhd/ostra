@@ -9,7 +9,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 
 import { HomeBoard } from "./home-board";
 import type { BoardLoad } from "./home-board";
-import type { BoardCard, BoardColumnData, BoardColumnId, BoardData, CardStatus, RunningActivity } from "./board-words";
+import type { BoardCard, BoardColumnData, BoardColumnId, BoardData, CardStatus, ReviewStep, RunningActivity } from "./board-words";
 import type { NeedsYouDetail } from "./home-words";
 
 // Ticket 44 wired (home-board.md; F-062): `home.board` drawn by the board's parts. The API's cards
@@ -81,6 +81,28 @@ const activityOf = (doing: Extract<ApiStatus, { kind: "running" }>["doing"]): Ru
   }
 };
 
+type SubState = Extract<ApiStatus, { kind: "in-review" }>["subState"];
+
+/** The review loop's stage, as the card words it (`PR #481 · CI running · 2 of 4 jobs`). */
+export const reviewStepOf = (subState: SubState): ReviewStep | null => {
+  switch (subState) {
+    case null:
+      return null;
+    case "ci_running":
+      return "ci-running";
+    case "fixing_ci":
+      return "fixing-ci";
+    case "ai_review":
+      return "ai-review";
+    case "fixing_findings":
+      return "fixing-findings";
+    case "waiting_for_reviewer":
+      return "waiting-for-reviewer";
+    default:
+      return subState satisfies never;
+  }
+};
+
 export const cardStatusOf = (status: ApiStatus): CardStatus => {
   switch (status.kind) {
     case "needs-you":
@@ -92,7 +114,7 @@ export const cardStatusOf = (status: ApiStatus): CardStatus => {
     case "preparing":
       return { kind: "preparing", step: null };
     case "in-review":
-      return { kind: "in-review", prs: status.prNumbers, step: null };
+      return { kind: "in-review", prs: status.prNumbers, step: reviewStepOf(status.subState), ciJobs: status.ciJobs };
     case "finished":
       return status.outcome === "merged"
         ? { kind: "merged", prs: status.prNumbers }

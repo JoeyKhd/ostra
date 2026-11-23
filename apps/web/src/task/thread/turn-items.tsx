@@ -68,7 +68,7 @@ const Item = ({ item, message, live, retried }: { readonly item: TurnItem; reado
       return item.notice.cause === "held" && item.notice.held.origin !== "message" ? null : <NoticeLine notice={item.notice} />;
     case "result": {
       const { result } = item;
-      return result.kind === "pr" ? <PrCard pr={result.pr} ci={ciOf(result.pr.repoId)} /> : <ResultLine result={result} />;
+      return result.kind === "pr" ? <PrCard pr={result.pr} ci={ciOf(result.pr.repoId)} /> : <ResultLine result={result} itemId={item.id} turnAt={message.metadata?.at ?? null} />;
     }
     case "needs": {
       const { need } = item;

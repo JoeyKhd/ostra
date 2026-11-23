@@ -169,6 +169,7 @@
     },
     "stage": {
       "ciRunning": "CI running",
+      "ciRunningJobs": "CI running · {jobs}",
       "fixingCi": "Fixing CI {n} of {limit}",
       "fixingCiPlain": "Fixing CI",
       "aiReview": "AI review",
@@ -243,6 +244,7 @@
       "ci": "CI",
       "ciPassed": { "one": "Passed · {n} job", "other": "Passed · {n} jobs" },
       "ciFailed": "Failed · {jobs}",
+      "ciRunning": "Running · {jobs}",
       "aiReview": "AI review",
       "aiOff": "Off for this project",
       "nothingFound": "Nothing found",
@@ -293,12 +295,7 @@
       "releasedOrganization": "Held {duration}: the organization's budget for {month} was reached.",
       "releasedBy": "Released when {name} raised it.",
       "releasedMonth": "Released when {month} began.",
-      "released": "Released.",
-      "pushedPassed": "{agent} pushed {sha}. CI passed.",
-      "noPush": "The turn ended without a push.",
-      "pushedFailed": "{agent} pushed {sha}. CI failed again: {check}.",
-      "pushedFailedNoCheck": "{agent} pushed {sha}. CI failed again.",
-      "pushed": "{agent} pushed {sha}."
+      "released": "Released."
     },
     "cap": {
       "titleCi": "Needs you · CI round limit",
@@ -842,6 +839,7 @@
       },
       "review": {
         "ciRunning": "CI running",
+        "ciRunningJobs": "CI running · {jobs}",
         "fixingCi": "fixing CI",
         "aiReview": "AI review",
         "fixingFindings": "fixing findings",
@@ -2972,7 +2970,23 @@
       "previewPath": "Preview {target} {path}",
       "show": "Show",
       "memory": "Proposed a memory: {title}",
-      "reviewMemory": "Review"
+      "reviewMemory": "Review",
+      "prLink": "PR #{n} on GitHub",
+      "prSize": "{added} lines added, {removed} removed",
+      "prState": {
+        "open": "Open pull request",
+        "draft": "Draft pull request",
+        "merged": "Merged pull request",
+        "closed": "Closed pull request"
+      },
+      "open": {
+        "pushed": "Pushed",
+        "checked": "Checked",
+        "ahead": { "one": "{n} commit ahead of {base}", "other": "{n} commits ahead of {base}" },
+        "changes": "changes",
+        "changesName": "Show the changes up to {sha}",
+        "checkOutputName": "Show the output of {name} in the Checks tab"
+      }
     },
     "ci": {
       "running": { "one": "CI on GitHub: running, {done} of {total} job done", "other": "CI on GitHub: running, {done} of {total} jobs done" },

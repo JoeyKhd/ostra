@@ -41,9 +41,10 @@ import type { ComposerFiles, SentFiles } from "./thread/composer";
 import { showsInterrupt } from "./thread/composer-words";
 import type { ComposerWords } from "./thread/composer-words";
 import { Divider } from "./thread/divider";
+import { headVerdictsKey, headVerdictsOf, withHeadCi } from "./thread/head-ci";
 import { JumpBand } from "./thread/jump-pill";
 import { ThreadParts } from "./thread/thread-context";
-import type { ThreadPartsValue } from "./thread/thread-context";
+import type { ThreadPartsValue, ThreadResults } from "./thread/thread-context";
 import { TurnItems } from "./thread/turn-items";
 import { pricedTurnsOf } from "./thread/turn-spend";
 import type { UsageTurn } from "./thread/turn-spend";
@@ -171,6 +172,8 @@ export type TaskThreadProps = {
   /** Ticket 12: the task's runner now (its active lease's), for how its last session came back; and its title, for "What the agent got". */
   readonly runnerName?: string | null;
   readonly title?: string;
+  /** Milestone 10 (ticket 14): what the results read beyond the CI (the PRs, the AI review, the links); the thread adds CI on older heads from the log. */
+  readonly results?: Omit<ThreadResults, "ciOnHead">;
 };
 
 /** The first message of each day after the first (the day divider's place, milestone 2's rule), with its time. */
@@ -191,7 +194,7 @@ const NO_TURNS: readonly UsageTurn[] = [];
 const NO_NAMES: readonly string[] = [];
 const noCi = (): HeadCi | null => null;
 
-export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi, runnerName = null, title }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi, runnerName = null, title, results }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -338,6 +341,14 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
     [store, memberName, agentName, agentModel, approvalSummary, rememberPrComment, openSubagents, approvalCard, approvalReceipt, approvalLostRace, questionCard, projectName, ticketKey],
   );
 
+  // Ticket 14: the code host's latest verdict on each pushed head, from the log's `ci.updated`, for a
+  // later push's line (`Pushed 9a03d1e · CI passed`); keyed by its words, so a new event that
+  // changes no verdict keeps the thread's parts as they are.
+  const verdictsKey = useMemo(() => headVerdictsKey(log.events), [log.events]);
+  const threadResults = useMemo<ThreadResults | undefined>(
+    () => (results === undefined ? undefined : withHeadCi(results, ciOf, headVerdictsOf(verdictsKey))),
+    [results, ciOf, verdictsKey],
+  );
   // Ticket 12: what members answered (the plan's receipts and markers, late answers), read from the log;
   // the runner the task's last session came back on; and a day divider where the day changes.
   const answers = useMemo(() => answersOf(log.events), [log.events]);
@@ -345,8 +356,8 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
   const runnerOf = useCallback((sessionId: SessionId | undefined) => (sessionId !== undefined && sessionId === lastSession ? runnerName : null), [lastSession, runnerName]);
   const dayBreaks = useMemo(() => dayBreaksOf(messages), [messages]);
   const threadParts = useMemo<ThreadPartsValue>(
-    () => ({ taskKind, workspace: { taskId, checkoutDirs, mcpServers }, project: projectName ?? "", capMicroUsd, ciOf, answers, runnerOf, ...(title === undefined ? {} : { taskTitle: title }) }),
-    [taskKind, taskId, checkoutDirs, mcpServers, projectName, capMicroUsd, ciOf, answers, runnerOf, title],
+    () => ({ taskKind, workspace: { taskId, checkoutDirs, mcpServers }, project: projectName ?? "", capMicroUsd, ciOf, answers, runnerOf, ...(title === undefined ? {} : { taskTitle: title }), ...(threadResults === undefined ? {} : { results: threadResults }) }),
+    [taskKind, taskId, checkoutDirs, mcpServers, projectName, capMicroUsd, ciOf, answers, runnerOf, title, threadResults],
   );
 
   // F-138: the member's message the turn answered, for the main agent's pane of the window.
