@@ -409,7 +409,9 @@ describe("a project admin manages its project (F-003, F-087)", () => {
     ) {
       await seedLinearConnection(harness);
     }
-    const [team] = await asAdmin.boards.available({ projectId });
+    const linear = await harness.test.db.connection.findFirstOrThrow({ where: { organizationId, kind: "linear", state: "active" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+    const connectionId = connectionIdSchema.parse(linear.id);
+    const team = (await asAdmin.boards.attachable({ projectId })).connections.find((group) => group.id === connectionId)?.items[0];
     if (team === undefined) {
       throw new Error("the tracker fake lists no team");
     }
@@ -438,7 +440,7 @@ describe("a project admin manages its project (F-003, F-087)", () => {
     };
     const edits: readonly (readonly [string, (caller: AppCaller) => Promise<unknown>])[] = [
       ["repos", (caller) => caller.projects.reorderRepos({ projectId, repoIds })],
-      ["boards", (caller) => caller.boards.attach({ projectId, teamExternalId: team.externalId })],
+      ["boards", (caller) => caller.boards.attach({ projectId, connectionId, externalId: team.externalId })],
       // F-097 (Q31): "Make a ticket for every prompt task", on the board just attached (none yet for the member).
       [
         "prompt tickets",
@@ -470,6 +472,10 @@ describe("a project admin manages its project (F-003, F-087)", () => {
     expect(await harness.test.db.automation.count({ where: { projectId } })).toBe(1);
     expect(await harness.test.db.board.count({ where: { projectId, detachedAt: null } })).toBe(1);
     expect(await harness.test.db.board.count({ where: { projectId, ticketsForPromptTasks: true } })).toBe(1);
+    // Milestone 11 (ticket 10): "Done is moved by" on the board just attached is the project admin's too.
+    const attachedBoard = boardIdSchema.parse((await harness.test.db.board.findFirstOrThrow({ where: { projectId, detachedAt: null }, select: { id: true } })).id);
+    expect(await outcomeOf(() => asMember.boards.setDoneBy({ boardId: attachedBoard, by: "tracker" }))).toBe("FORBIDDEN");
+    expect(await outcomeOf(() => asAdmin.boards.setDoneBy({ boardId: attachedBoard, by: "tracker" }))).toBe("ok");
     expect(await asMember.environments.get({ projectId })).toMatchObject({
       status: "saved",
       setupScript: "corepack enable\n",

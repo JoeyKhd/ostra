@@ -106,7 +106,14 @@ export type BareHarness = {
      * The tracker adapter every Linear connection gets (tickets 27 to 29). A test points it at the
      * adapter it wants to run against: the Jira fake, or Linear's adapter on the fake Linear server.
      */
-    readonly tracker: { adapter: TrackerAdapter };
+    readonly tracker: {
+      adapter: TrackerAdapter;
+      /**
+       * Milestone 11: an adapter of its own for one connection, by its Linear token or its Jira
+       * site's host, so a test holds several connections apart; the others get `adapter`.
+       */
+      readonly byConnection: Map<string, TrackerAdapter>;
+    };
     /** The tokens the tracker directory built an adapter with, to search an output for them. */
     readonly trackerTokens: string[];
     /** Milestone 11: the sites and service accounts the tracker directory built a Jira adapter for (never the token). */
@@ -189,7 +196,7 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
   const modelProvider = new FakeModelProvider();
   const codeHost = new FakeCodeHost();
   const outbox = memoryOutbox();
-  const tracker: { adapter: TrackerAdapter } = { adapter: new JiraFakeAdapter({ site: createJiraSite() }) };
+  const tracker: BareHarness["fakes"]["tracker"] = { adapter: new JiraFakeAdapter({ site: createJiraSite() }), byConnection: new Map() };
   const trackerTokens: string[] = [];
   const jiraTrackers: { readonly host: string; readonly cloudId: string; readonly email: string }[] = [];
   const hub = createStreamHub({ db: test.db, databaseUrl: test.url, logger: silentLogger, pollMs: 50 });
@@ -283,12 +290,12 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
       secretStore,
       makeLinear: (auth) => {
         trackerTokens.push(auth.token);
-        return tracker.adapter;
+        return tracker.byConnection.get(auth.token) ?? tracker.adapter;
       },
       makeJira: (auth) => {
         trackerTokens.push(auth.token);
         jiraTrackers.push({ host: auth.host, cloudId: auth.cloudId, email: auth.email });
-        return tracker.adapter;
+        return tracker.byConnection.get(auth.host) ?? tracker.adapter;
       },
     }),
     ports: {

@@ -201,7 +201,7 @@ describe("F-005: the whole flow, from start to active", () => {
     const status = await admin.linear.status();
     expect(status).toMatchObject({ state: "active", mode: "polling", pollSeconds: 60 });
     // The connection reads the tracker as in webhooks mode: its teams are there to attach as boards.
-    expect((await admin.boards.teams())?.length ?? 0).toBeGreaterThan(0);
+    expect((await admin.boards.teams()).connections.flatMap((group) => group.items).length).toBeGreaterThan(0);
     // Agent mode is the one thing it lacks: it says why, and turning it on is refused.
     expect(status.state === "active" ? status.agentMode : null).toMatchObject({ on: false, reachable: false, unreachableReason: "polling" });
     const refused = await trpcFailure(admin.linear.enableAgentMode());

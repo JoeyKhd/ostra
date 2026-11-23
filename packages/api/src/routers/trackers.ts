@@ -29,6 +29,7 @@ import { TRPCError } from "@trpc/server";
 import type { TRPC_ERROR_CODE_KEY } from "@trpc/server";
 import { z } from "zod";
 
+import { capabilitiesSchema } from "../services/ticket-trackers.ts";
 import type { ApiDeps } from "../trpc/context.ts";
 import { adminProcedure, memberProcedure, router, unwrap } from "../trpc/init.ts";
 import { connectionHolderSchema, linearConnectionStatusOf, linearConnectionStatusSchema, trackerChangeDepsOf, trackersLinearRouter } from "./linear.ts";
@@ -50,25 +51,6 @@ import { connectionHolderSchema, linearConnectionStatusOf, linearConnectionStatu
 const kindSchema = z.enum(trackerKinds);
 const stateSchema = z.enum(["pending", "active", "failed"]);
 const modeSchema = z.enum(["webhooks", "polling"]);
-
-/** What a connection's adapter declares (`TrackerCapabilities`): the panel shows a row only where it does. */
-const capabilitiesSchema = z.object({
-  agentSessions: z.boolean(),
-  subIssues: z.boolean(),
-  statusGraph: z.boolean(),
-  webhooks: z.boolean(),
-  commentEdit: z.boolean(),
-  attachments: z.boolean(),
-  transitions: z.boolean(),
-  mentions: z.boolean(),
-  agentScopes: z.array(z.string()).readonly(),
-  agentSessionLink: z.boolean(),
-  ticketFields: z.object({ acceptanceCriteria: z.boolean() }),
-  ticketFiles: z.enum(["all", "images", "none"]),
-  magicWords: z.boolean(),
-  richText: z.enum(["markdown", "adf"]),
-  jqlFilter: z.boolean(),
-});
 
 /** The token's date against today (Jira's, from the date the admin gave). */
 const tokenExpirySchema = z.discriminatedUnion("state", [

@@ -1,9 +1,10 @@
 import type { DbEnum } from "@ostra/db";
-import { modelTokenPrices } from "@ostra/domain";
+import { modelTokenPrices, moveOutcomeOf } from "@ostra/domain";
 import { blobIdSchema, boxSizeNameSchema, sessionIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 import type { SessionLimit } from "@ostra/protocol";
 import { z } from "zod";
 
+import { ticketConnectionOf, ticketConnectionSelect } from "../services/ticket-trackers.ts";
 import type { ApiDeps } from "../trpc/context.ts";
 
 // F-032, F-033, F-064, F-031, F-068, F-096 (ticket 30): what the task page shows beyond milestone 1's
@@ -16,8 +17,10 @@ import type { ApiDeps } from "../trpc/context.ts";
  * The trackers the task page names (`task-ticket.tsx`'s `trackerName`, `from Linear`): Linear's and
  * GitHub's. Milestone 11's migration added the `jira` kind (its ticket 01); the task page draws
  * Jira's name and mark from its ticket 16 on (`ticket-chips.md`), and until then answers no
- * tracker for a Jira ticket, so it shows no ticket card rather than another tracker's words. No
- * Jira ticket is cached before milestone 11's ticket 07 brings them in.
+ * tracker for a Jira ticket, so it shows no ticket card rather than another tracker's words.
+ * Milestone 11's ticket 10 built the card for every kind (its `connection`, sub-issue counts, and
+ * the "On Jira" rows' `move`); the card's gate is this function alone, which ticket 16 removes in
+ * the same commit as `trackerName`'s Jira case (the task page's folder is the thread build's).
  */
 export const taskPageTrackerOf = (kind: DbEnum.ConnectionKind): "linear" | "github" | null => {
   switch (kind) {
@@ -119,7 +122,7 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
   const [ticket, writes, sessions, boxes, restored, filesReady] = await Promise.all([
     task.ticketId === null
       ? Promise.resolve(null)
-      : db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, include: { board: { select: { name: true } }, connection: { select: { kind: true } } } }),
+      : db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, include: { board: { select: { name: true } }, connection: { select: ticketConnectionSelect } } }),
     db.ticketWrite.findMany({ where: { taskId: task.id, organizationId }, orderBy: { createdAt: "asc" } }),
     // Oldest first, a tie by ID: the last is the newest session as a reopen and the review loop pick it.
     db.session.findMany({ where: { taskId: task.id, organizationId }, orderBy: [{ startedAt: "asc" }, { id: "asc" }] }),
@@ -182,6 +185,15 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
   const spend = { ...spendBase, reached: spendBase.spent >= spendBase.cap };
 
   const tracker = ticket === null ? null : taskPageTrackerOf(ticket.connection.kind);
+  // F-077, F-008/c6: the ticket's sub-issues (Jira's sub-tasks) in the cache, and how many are done.
+  const children =
+    ticket === null || tracker === null
+      ? []
+      : await db.ticket.groupBy({
+          by: ["open"],
+          where: { organizationId, connectionId: ticket.connectionId, parentExternalId: ticket.externalId, removedAt: null },
+          _count: { _all: true },
+        });
   return {
     ticket:
       ticket === null || tracker === null
@@ -195,6 +207,13 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
             /** The board the ticket came in on, and its tracker's kind (task-ticket.md: `Board`, `from Linear`). */
             board: ticket.board.name,
             tracker,
+            /** Milestone 11 (F-152/c4, ticket-chips.md): its tracker, the board's connection: `Jira · Globex Jira`. */
+            connection: ticketConnectionOf(ticket.connection),
+            /** Its sub-issues (Jira's sub-tasks) in the cache: `Sub-tasks 2 · 1 done`. */
+            subIssues: {
+              count: children.reduce((sum, row) => sum + row._count._all, 0),
+              done: children.filter((row) => !row.open).reduce((sum, row) => sum + row._count._all, 0),
+            },
             /** The strip's label chips and priority (task-ticket.md, "Ticket strip"); Linear's 1 urgent to 4 low. */
             labels: z.array(z.string()).catch([]).parse(ticket.labels),
             priority: ticket.priority,
@@ -203,16 +222,27 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
           },
     contextFiles,
     /** Each write to the tracker and where it stands; a failed one can be retried. */
-    sync: writes.map((write) => ({
+    sync: writes.map((write) => {
+      // Milestone 11 (F-008/c5): a done move either went through (by the transitions in `via`) or
+      // stayed put; a move that stayed keeps its `movedNot` line in `error`, which is no failure.
+      const move = moveOutcomeOf(write);
+      return {
       id: ticketWriteIdSchema.parse(write.id),
       kind: write.kind,
       state: write.state,
       attempts: write.attempts,
-      /** Words and IDs, never content. */
-      error: write.error,
+      /** Why a write failed: words and IDs, never content. A done move that stayed put has none (`move.line` says it). */
+      error: move?.kind === "stays" ? null : write.error,
+      /**
+       * A done move's outcome for the "On Jira" rows: `moved` with the transitions taken (`[]` for a
+       * tracker that writes statuses, and for a move done before milestone 11), or `stays` with the
+       * progress comment's line. `null` for any other write, or a move not done yet.
+       */
+      move,
       createdAt: write.createdAt.getTime(),
       doneAt: write.doneAt?.getTime() ?? null,
-    })),
+      };
+    }),
     sessions: sessionViews,
     box:
       box === undefined

@@ -84,21 +84,21 @@ describe("F-086: creating a project", () => {
   });
 
   it("F-086/c1: an organization admin creates a project with Linear teams as its boards, the first attached as New project does once the project exists", async () => {
-    await seedLinearConnection(harness);
+    const connectionId = await seedLinearConnection(harness);
     const saved = harness.fakes.tracker.adapter;
     harness.fakes.tracker.adapter = new LinearAdapter({ auth: { kind: "api-key", token: fake.adminApiKey }, apiUrl: fake.apiUrl });
     try {
       const admin = await harness.as(harness.fixture.a.admin);
       const ops = fake.addTeam("OPZ", "Ops");
       // New project offers the organization's Linear teams before the project exists.
-      const offered = (await admin.boards.teams()) ?? [];
+      const offered = (await admin.boards.teams()).connections.find((group) => group.id === connectionId)?.items ?? [];
       const team = offered.find((candidate) => candidate.key === fake.team.key);
       const second = offered.find((candidate) => candidate.key === ops.key);
       if (team === undefined || second === undefined) throw new Error("the fake Linear's teams aren't offered");
       const created = await admin.projects.create({ name: "With Linear", slug: "with-linear", access: "open", repo: repoInput("ostra-test/web"), moreRepos: [repoInput("ostra-test/api")] });
-      const attached = await admin.boards.attach({ projectId: created.projectId, teamExternalId: team.externalId });
+      const attached = await admin.boards.attach({ projectId: created.projectId, connectionId, externalId: team.externalId });
       // A second team, from the project's Boards page: a project has several boards.
-      const alsoAttached = await admin.boards.attach({ projectId: created.projectId, teamExternalId: second.externalId });
+      const alsoAttached = await admin.boards.attach({ projectId: created.projectId, connectionId, externalId: second.externalId });
       // The project's boards are the Linear teams, each with the mapping drafted from its statuses.
       const boards = (await (await harness.as(harness.fixture.a.member)).boards.get({ projectId: created.projectId })).boards;
       expect(boards.map((board) => [board.id, board.key])).toEqual([
@@ -112,7 +112,7 @@ describe("F-086: creating a project", () => {
       // A member can't make a project, nor attach a board to one.
       const member = await harness.as(harness.fixture.a.member);
       await expect(member.projects.create({ name: "Mine", slug: "mine", access: "open", repo: repoInput("ostra-test/docs") })).rejects.toMatchObject({ code: "FORBIDDEN" });
-      await expect(member.boards.attach({ projectId: created.projectId, teamExternalId: team.externalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(member.boards.attach({ projectId: created.projectId, connectionId, externalId: team.externalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
     } finally {
       harness.fakes.tracker.adapter = saved;
     }

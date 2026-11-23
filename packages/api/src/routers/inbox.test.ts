@@ -72,7 +72,7 @@ describe("F-010: the Inbox lists the cache", () => {
     });
     expect(result.tickets[2]).toMatchObject({ priority: 2, assignee: { id: "u-1", name: "Sam Rivera" } });
     // The cache's age: the connection and the boards, never a call to the tracker.
-    expect(result.source).toMatchObject({ connection: { workspaceName: "ostra-test", state: "active", mode: "webhooks" }, stale: false });
+    expect(result.source).toMatchObject({ connections: [{ id: connectionId, kind: "linear", name: "ostra-test Linear", state: "active", mode: "webhooks" }], connected: true, stale: false });
     expect(result.source.boards).toHaveLength(1);
   });
 
@@ -120,7 +120,8 @@ describe("F-010: the Inbox lists the cache", () => {
     const shown = await (await member()).inbox.get({ projectId, ticketId: child });
     expect(shown).toMatchObject({ key: "ENG-21", imageCount: 2, parentKey: "ENG-20", driver: null, task: null });
     expect(shown.description).toContain("Text");
-    expect(shown.source.connection?.workspaceName).toBe("ostra-test");
+    expect(shown.source.connections.map((connection) => connection.id)).toEqual([connectionId]);
+    expect(shown.board.connection).toMatchObject({ id: connectionId, kind: "linear" });
     await expect((await member()).inbox.get({ projectId, ticketId: (await seedTicket(harness, { projectId, boardId, connectionId, key: "ENG-99", ...todo, removedAt: at(1) })) })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
@@ -173,14 +174,14 @@ describe("F-010: who sees what", () => {
     const result = await (await member()).inbox.list({ projectId: empty.projectId });
     expect(result).toMatchObject({ tickets: [], total: 0, nextCursor: null });
     expect(result.source.boards).toEqual([]);
-    expect(result.source.connection).not.toBeNull();
+    expect(result.source.connected).toBe(true);
   });
 
   it("marks the list stale while the connection can't be asked, and still lists", async () => {
     await harness.test.db.connection.update({ where: { id: connectionId }, data: { state: "failed" } });
     try {
       const result = await (await member()).inbox.list({ projectId });
-      expect(result.source).toMatchObject({ stale: true, connection: { state: "failed" } });
+      expect(result.source).toMatchObject({ stale: true, connections: [{ id: connectionId, state: "failed" }], boards: [{ paused: true }] });
       expect(result.tickets.length).toBeGreaterThan(0);
     } finally {
       await harness.test.db.connection.update({ where: { id: connectionId }, data: { state: "active" } });
@@ -499,14 +500,14 @@ describe("F-097: what the Boards page and New task read of the setting (prompt-t
     // On, on the second board: the page marks it, and New task names it.
     await (await admin()).projects.setPromptTickets({ projectId: project, boardId: second });
     expect(await page()).toEqual([{ id: first, ticketsForPromptTasks: false }, { id: second, ticketsForPromptTasks: true }]);
-    expect(await newTask()).toEqual({ id: second, board: { id: second, name: "Engineering", key: "PPB" } });
+    expect(await newTask()).toEqual({ id: second, board: { id: second, name: "Engineering", key: "PPB", connection: { id: connectionId, kind: "linear", name: "ostra-test Linear" } } });
 
     try {
       // Linear's connection isn't active: no ticket is made, and New task says nothing, but the page
       // still reads the board as the one that takes them (the paused state), with the connection's state.
       await harness.test.db.connection.update({ where: { id: connectionId }, data: { state: "failed" } });
       const paused = await (await member()).boards.get({ projectId: project });
-      expect(paused.connection?.state).toBe("failed");
+      expect(paused.boards.find((board) => board.id === second)).toMatchObject({ connection: { state: "failed" }, state: { state: "paused", pausedBy: "failed" } });
       expect(await page()).toEqual([{ id: first, ticketsForPromptTasks: false }, { id: second, ticketsForPromptTasks: true }]);
       expect(await newTask()).toEqual({ id: null, board: null });
       const task = await (await member()).tasks.create({ projectId: project, prompt: "While Linear is down" });
@@ -521,6 +522,6 @@ describe("F-097: what the Boards page and New task read of the setting (prompt-t
 
     // Back on once the connection is: the setting holds again.
     await (await admin()).projects.setPromptTickets({ projectId: project, boardId: first });
-    expect(await newTask()).toEqual({ id: first, board: { id: first, name: "Engineering", key: "PP" } });
+    expect(await newTask()).toEqual({ id: first, board: { id: first, name: "Engineering", key: "PP", connection: { id: connectionId, kind: "linear", name: "ostra-test Linear" } } });
   });
 });

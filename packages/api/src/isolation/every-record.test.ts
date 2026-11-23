@@ -177,9 +177,11 @@ const procedures: Readonly<Record<string, { readonly input: InputOf; readonly ab
   "boxSizes.list": { input: none, about: "organization" },
   "fleetUse.boxSizes": { input: none, about: "organization" },
   "fleetUse.project": { input: project, about: "project" },
-  "boards.available": { input: project, about: "project" },
+  // Milestone 11 (F-152/c4, F-008/c5; ticket 10): the attach picker of every connection, and a board's workflow.
+  "boards.attachable": { input: project, about: "project" },
   "boards.get": { input: project, about: "project" },
   "boards.teams": { input: none, about: "organization" },
+  "boards.workflow": { input: (target) => ({ boardId: row(target, "Board") }), about: "project" },
   "diff.comments.list": { input: task, about: "project" },
   // Milestone 6 (ticket 27): the fixture's task is a code task, which has no draft: `NOT_FOUND`. The drafts
   // tests call it on refine tasks of another organization and of a restricted project.
@@ -317,7 +319,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   OrganizationSetting: ["setup.status", "organization.get", "organization.previews"],
   AuditEntry: ["environments.snapshot.get", "email.settings.get", "audit.list", "registryUse.get"],
   ChangeNotice: ["stream.subscribe"],
-  Connection: ["github.connection", "linear.status", "setup.status", "trackers.list", "trackers.get", "trackers.linear.status", "trackers.jira.webhook"],
+  Connection: ["github.connection", "linear.status", "setup.status", "trackers.list", "trackers.get", "trackers.linear.status", "trackers.jira.webhook", "boards.attachable", "boards.teams"],
   CodeHostInstallation: ["github.installations", "github.repos", "github.connections", "github.reposByAccount"],
   ModelProvider: ["providers.list", "providers.models", "agentProfiles.providerOptions"],
   Model: ["providers.models", "agentProfiles.get", "agentProfiles.effortLevels", "spend.modelPrice"],
@@ -333,7 +335,7 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   ProjectMember: ["projects.get", "projects.access", "members.list"],
   ProjectPool: ["projects.get", "pools.list", "projects.runners", "tasks.runnerChoices", "fleetUse.project"],
   Repo: ["projects.get", "tasks.get", "projects.repos"],
-  Board: ["boards.get", "inbox.filters", "trackers.list", "trackers.get"],
+  Board: ["boards.get", "boards.workflow", "inbox.filters", "trackers.list", "trackers.get"],
   Ticket: ["inbox.list", "inbox.get", "tickets.parent"],
   TicketWrite: ["tasks.get"],
   Environment: ["environments.get"],
@@ -689,10 +691,13 @@ const matrix: Readonly<Record<string, readonly [Outcome, Outcome, Outcome, Outco
   "boxSizes.list": ["ok", "ok", "ok", "ok", "ok"],
   "fleetUse.boxSizes": ["ok", "ok", "ok", "ok", "ok"],
   "fleetUse.project": ["ok", "FORBIDDEN", "ok", "FORBIDDEN", "NOT_FOUND"],
-  "boards.available": ["PRECONDITION_FAILED", "FORBIDDEN", "PRECONDITION_FAILED", "FORBIDDEN", "NOT_FOUND"],
+  // Milestone 11: a project admin's; a connection that can't list its boards says so in its group.
+  "boards.attachable": ["ok", "FORBIDDEN", "ok", "FORBIDDEN", "NOT_FOUND"],
   "boards.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
-  // Create a project's tracker teams: an organization admin's alone, and a precondition as for boards.available.
-  "boards.teams": ["PRECONDITION_FAILED", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  // Create a project's tracker teams, grouped by connection: an organization admin's alone.
+  "boards.teams": ["ok", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN", "FORBIDDEN"],
+  // Everyone who can open the project reads it; the fixture's board is on a connection with no token, a precondition.
+  "boards.workflow": ["PRECONDITION_FAILED", "PRECONDITION_FAILED", "PRECONDITION_FAILED", "PRECONDITION_FAILED", "NOT_FOUND"],
   "diff.comments.list": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   "diff.get": ["ok", "ok", "ok", "ok", "NOT_FOUND"],
   // The fixture's task is a code task: it has no draft for anyone (ticket 27's tests hold the roles on a refine task).

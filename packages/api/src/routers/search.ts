@@ -5,6 +5,7 @@ import { memberIdSchema, projectIdSchema, repoIdSchema, taskIdSchema } from "@os
 import type { MemberId, ProjectId, RepoId } from "@ostra/protocol";
 import { z } from "zod";
 
+import { taskTicketConnectionsOf, ticketConnectionSchema } from "../services/ticket-trackers.ts";
 import { parseSearchQuery } from "../search/parse-query.ts";
 import { memberProcedure, router } from "../trpc/init.ts";
 
@@ -34,6 +35,8 @@ const resultSchema = z.object({
   projectName: z.string(),
   state: z.enum(["awaiting_approval", "queued", "preparing", "running", "needs_you", "in_review", "stopped", "merged", "done"]),
   ticketKey: z.string().nullable(),
+  /** Milestone 11 (F-152/c4): the ticket's tracker (its board's connection), for the mark and the name on the right; `null` without a ticket. */
+  connection: ticketConnectionSchema.nullable(),
   title: z.string(),
   snippets: z.array(snippetSchema),
   /** The task's repos in the project's order, its driver's name and its PRs (search.md, the block's line 2 and the panel). */
@@ -126,6 +129,7 @@ const runSearch = async (db: Db, scope: MemberScope, query: string, limit: numbe
         id: true,
         state: true,
         ticketKey: true,
+        ticketId: true,
         title: true,
         updatedAt: true,
         driverMemberId: true,
@@ -140,6 +144,7 @@ const runSearch = async (db: Db, scope: MemberScope, query: string, limit: numbe
     db.searchEntry.findMany({ where: { organizationId, id: { in: shown.flatMap((result) => [...result.matched]) } }, select: { taskId: true, createdAt: true } }),
   ]);
   const byId = new Map(tasks.map((task) => [task.id, task] as const));
+  const connections = await taskTicketConnectionsOf({ db }, organizationId, tasks);
   const drivers = await db.member.findMany({
     where: { organizationId, id: { in: tasks.flatMap((task) => (task.driverMemberId === null ? [] : [task.driverMemberId])) } },
     select: { id: true, user: { select: { name: true } } },
@@ -167,6 +172,7 @@ const runSearch = async (db: Db, scope: MemberScope, query: string, limit: numbe
               projectName: task.project.name,
               state: task.state,
               ticketKey: task.ticketKey,
+              connection: connections.get(task.id) ?? null,
               title: task.title,
               snippets: result.snippets.map((snippet) => ({ kind: snippet.kind, eventSeq: snippet.eventSeq, parts: [...snippet.parts], turn: turnOf(result.taskId, snippet.eventSeq) })),
               repos: task.repos.map((taskRepo) => taskRepo.repo.fullName),

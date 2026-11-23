@@ -6,6 +6,8 @@ import type { MemberScope } from "@ostra/domain";
 import type { TaskId } from "@ostra/protocol";
 import { z } from "zod";
 
+import { taskTicketConnectionsOf } from "../services/ticket-trackers.ts";
+import type { TicketConnection } from "../services/ticket-trackers.ts";
 import { ciJobsOf, sumCiJobs } from "./ci-jobs.ts";
 import type { CiJobs } from "./ci-jobs.ts";
 import { loadNeedsYouViews } from "./needs-you-view.ts";
@@ -82,6 +84,8 @@ export type CardStatus =
 export type BoardCard = {
   readonly taskId: TaskId;
   readonly key: string | null;
+  /** Milestone 11 (F-152/c4): the ticket's tracker (its board's connection), for the live list's mark; `null` without a ticket. */
+  readonly connection: TicketConnection | null;
   readonly title: string;
   readonly kind: DbEnum.TaskKind;
   /**
@@ -179,6 +183,7 @@ export const loadBoardColumn = async (
     include: { repos: { select: { prNumber: true }, orderBy: { createdAt: "asc" } }, project: { select: { id: true, name: true } } },
   });
   const byId = new Map(tasks.map((task) => [task.id, task] as const));
+  const connections = await taskTicketConnectionsOf(deps, organizationId, tasks);
   const ordered = page.ids.flatMap((id) => {
     const task = byId.get(id);
     return task === undefined ? [] : [task];
@@ -298,6 +303,7 @@ export const loadBoardColumn = async (
     cards: ordered.map((task) => ({
       taskId: taskIdSchema.parse(task.id),
       key: task.ticketKey,
+      connection: connections.get(task.id) ?? null,
       title: task.title,
       kind: task.kind,
       reviewOf: task.kind === "review" && task.reviewOfTaskId !== null ? (parentOf.get(task.reviewOfTaskId) ?? null) : null,

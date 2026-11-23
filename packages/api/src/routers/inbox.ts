@@ -1,11 +1,13 @@
-import { dispatchWaitFromDb, dispatchWaitSchema, parseBoardMapping, startMany } from "@ostra/domain";
+import { boardStateOf, dispatchWaitFromDb, dispatchWaitSchema, parseBoardMapping, startMany, trackerKinds } from "@ostra/domain";
 import type { BoardMapping, DispatchWait } from "@ostra/domain";
-import type { Prisma } from "@ostra/db";
+import type { DbEnum, Prisma } from "@ostra/db";
 import { agentProfileIdSchema, boardIdSchema, bulkStartIdSchema, connectionIdSchema, memberIdSchema, projectIdSchema, taskIdSchema, ticketIdSchema } from "@ostra/protocol";
 import type { OrganizationId, ProjectId } from "@ostra/protocol";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { ticketConnectionOf, ticketConnectionSchema, ticketConnectionSelect } from "../services/ticket-trackers.ts";
+import type { TicketConnection } from "../services/ticket-trackers.ts";
 import type { ApiDeps } from "../trpc/context.ts";
 import { projectProcedure, router, unwrap } from "../trpc/init.ts";
 import { cacheTree, leavesOf } from "./ticket-tree.ts";
@@ -15,6 +17,9 @@ import { cacheTree, leavesOf } from "./ticket-tree.ts";
 // age shows beside it (`source`). A ticket's text is untrusted: it is returned as data, and the
 // panel renders it as such. Members who can read the project read its Inbox; another organization's
 // project, and a restricted one the member isn't on, are `NOT_FOUND` (ADR 0026).
+// Milestone 11 (F-152, ADR 0071): the Inbox lists the open tickets of every attached board of every
+// tracker connection, each row naming its board's connection (kind and name: the mark and its
+// tooltip). A paused board's tickets still show, marked paused: no task starts from them.
 
 /** Tasks in these states no longer hold their ticket (spec section 11, item 12). */
 const FINISHED: readonly string[] = ["stopped", "merged", "done"];
@@ -37,7 +42,15 @@ const ticketRowSchema = z.object({
   key: z.string(),
   title: z.string(),
   url: z.string(),
-  board: z.object({ id: boardIdSchema, name: z.string(), key: z.string().nullable() }),
+  board: z.object({
+    id: boardIdSchema,
+    name: z.string(),
+    key: z.string().nullable(),
+    /** Milestone 11 (F-152/c4): the ticket's tracker, its board's connection (`Jira · Globex Jira`). */
+    connection: ticketConnectionSchema.nullable(),
+    /** Milestone 11 (F-152/c5): the board's connection isn't active: the ticket shows, and starts no task. */
+    paused: z.boolean(),
+  }),
   status: z.object({ id: z.string().nullable(), name: z.string().nullable(), category: statusCategorySchema.nullable() }),
   /** Linear's scale: 1 urgent to 4 low; `null` for none. */
   priority: z.number().int().nullable(),
@@ -46,7 +59,7 @@ const ticketRowSchema = z.object({
   /** Epoch ms of the tracker's last change to the ticket, as cached. */
   updatedAt: z.number().int(),
   task: taskMarkSchema.nullable(),
-  /** F-077: its open sub-issues in the cache; `0` for a ticket without any. */
+  /** F-077: its open sub-issues (Jira's sub-tasks) in the cache; `0` for a ticket without any. */
   subIssues: z.number().int(),
   /** What a code start on it starts: one task, or one per leaf of its sub-issues (none over the limit). */
   codeStart: z.object({ tasks: z.number().int(), overLimit: z.boolean() }),
@@ -54,21 +67,29 @@ const ticketRowSchema = z.object({
 type TicketRow = z.infer<typeof ticketRowSchema>;
 
 const sourceSchema = z.object({
-  /** The project's attached boards. Empty: the Inbox has nothing to list. */
-  boards: z.array(z.object({ id: boardIdSchema, name: z.string(), key: z.string().nullable(), lastPolledAt: z.number().int().nullable() })),
-  /** `null` until the organization connects Linear. */
-  connection: z
-    .object({
-      connectionId: connectionIdSchema,
-      workspaceName: z.string().nullable(),
-      state: z.enum(["pending", "active", "failed", "revoked"]),
-      mode: z.enum(["webhooks", "polling"]),
-      pollSeconds: z.number().int(),
-    })
-    .nullable(),
-  /** The newest of the boards' last poll and the connection's last event: the cache's age. */
+  /** The project's boards, attached or paused, each with its connection. Empty: the Inbox has nothing to list. */
+  boards: z.array(
+    z.object({
+      id: boardIdSchema,
+      name: z.string(),
+      key: z.string().nullable(),
+      lastPolledAt: z.number().int().nullable(),
+      connection: ticketConnectionSchema.nullable(),
+      /** Its connection isn't active: its tickets are the cache as it was, and start no task. */
+      paused: z.boolean(),
+    }),
+  ),
+  /** The connections behind the boards, each once, with their state and mode. */
+  connections: z.array(
+    z.object({ id: connectionIdSchema, kind: z.enum(trackerKinds), name: z.string(), state: z.enum(["pending", "active", "failed", "revoked"]), mode: z.enum(["webhooks", "polling"]) }),
+  ),
+  /** The organization holds a tracker connection that isn't revoked: `false` until one is made. */
+  connected: z.boolean(),
+  /** Polling mode's interval, in seconds. */
+  pollSeconds: z.number().int(),
+  /** The newest of the boards' last poll and their connections' last event: the cache's age. */
   cacheUpdatedAt: z.number().int().nullable(),
-  /** The connection can't be asked right now (failed, or revoked): the list is the cache as it was. */
+  /** A board's connection can't be asked right now (pending, failed or revoked): its part of the list is the cache as it was. */
   stale: z.boolean(),
 });
 
@@ -110,7 +131,25 @@ const decodeCursor = (cursor: string): { readonly at: Date; readonly id: string 
 
 const shortIdOf = (id: string): string => id.replaceAll("-", "").slice(-8);
 
-type BoardRow = { readonly id: string; readonly name: string; readonly key: string | null; readonly lastPolledAt: Date | null; readonly statusMap: unknown };
+type BoardRow = {
+  readonly id: string;
+  readonly name: string;
+  readonly key: string | null;
+  readonly lastPolledAt: Date | null;
+  readonly statusMap: unknown;
+  readonly detachedAt: Date | null;
+  readonly connection: {
+    readonly id: string;
+    readonly kind: DbEnum.ConnectionKind;
+    readonly name: string | null;
+    readonly externalWorkspaceName: string | null;
+    readonly state: DbEnum.ConnectionState;
+    readonly webhookMode: DbEnum.WebhookMode;
+    readonly lastEventAt: Date | null;
+  };
+};
+
+const isPaused = (board: BoardRow): boolean => boardStateOf(board, board.connection).state === "paused";
 
 /** The `where` for one board's status tokens. */
 const statusWhere = (mapping: BoardMapping | null, tokens: readonly string[]): Prisma.TicketWhereInput[] =>
@@ -149,27 +188,29 @@ const whereOf = (organizationId: string, projectId: ProjectId, boards: readonly 
   return { organizationId, projectId, removedAt: null, AND: and };
 };
 
-/** The project's attached boards and the connection behind them: what the cache's age and state are read from. */
-const sourceOf = async (deps: ApiDeps, organizationId: string, boards: readonly BoardRow[], connectionId: string | null) => {
-  const connection = await deps.db.connection.findFirst({
-    where: connectionId === null ? { organizationId, kind: "linear", state: { not: "revoked" } } : { id: connectionId, organizationId },
-  });
+/** The project's boards and the connections behind them: what the cache's age and state are read from. */
+const sourceOf = async (deps: ApiDeps, organizationId: string, boards: readonly BoardRow[]) => {
+  const connected = boards.length > 0 || (await deps.db.connection.count({ where: { organizationId, kind: { in: [...trackerKinds] }, state: { not: "revoked" } } })) > 0;
+  const behind = [...new Map(boards.map((board) => [board.connection.id, board.connection] as const)).values()];
   const polled = boards.flatMap((board) => (board.lastPolledAt === null ? [] : [board.lastPolledAt.getTime()]));
-  const newest = Math.max(0, ...polled, connection?.lastEventAt?.getTime() ?? 0);
+  const newest = Math.max(0, ...polled, ...behind.map((connection) => connection.lastEventAt?.getTime() ?? 0));
   return {
-    boards: boards.map((board) => ({ id: boardIdSchema.parse(board.id), name: board.name, key: board.key, lastPolledAt: board.lastPolledAt?.getTime() ?? null })),
-    connection:
-      connection === null
-        ? null
-        : {
-            connectionId: connectionIdSchema.parse(connection.id),
-            workspaceName: connection.externalWorkspaceName,
-            state: connection.state,
-            mode: connection.webhookMode,
-            pollSeconds: deps.settings.trackerPollSeconds,
-          },
+    boards: boards.map((board) => ({
+      id: boardIdSchema.parse(board.id),
+      name: board.name,
+      key: board.key,
+      lastPolledAt: board.lastPolledAt?.getTime() ?? null,
+      connection: ticketConnectionOf(board.connection),
+      paused: isPaused(board),
+    })),
+    connections: behind.flatMap((connection) => {
+      const named = ticketConnectionOf(connection);
+      return named === null ? [] : [{ ...named, state: connection.state, mode: connection.webhookMode }];
+    }),
+    connected,
+    pollSeconds: deps.settings.trackerPollSeconds,
     cacheUpdatedAt: newest === 0 ? null : newest,
-    stale: connection !== null && connection.state !== "active",
+    stale: boards.some(isPaused),
   };
 };
 
@@ -177,7 +218,15 @@ const attachedBoards = (deps: ApiDeps, organizationId: string, projectId: Projec
   deps.db.board.findMany({
     where: { organizationId, projectId, detachedAt: null, ...(boardId === undefined ? {} : { id: boardId }) },
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true, key: true, lastPolledAt: true, statusMap: true },
+    select: {
+      id: true,
+      name: true,
+      key: true,
+      lastPolledAt: true,
+      statusMap: true,
+      detachedAt: true,
+      connection: { select: { ...ticketConnectionSelect, state: true, webhookMode: true, lastEventAt: true } },
+    },
   });
 
 /** Each ticket's task: the active one, else the most recent finished one. */
@@ -260,13 +309,14 @@ const rowOf = (
   marks: ReadonlyMap<string, SubIssueMark> = new Map(),
 ): TicketRow => {
   const board = boards.get(record.boardId);
+  const connection: TicketConnection | null = board === undefined ? null : ticketConnectionOf(board.connection);
   const labels = z.array(z.string()).safeParse(record.labels);
   return {
     id: ticketIdSchema.parse(record.id),
     key: record.key,
     title: record.title,
     url: record.url,
-    board: { id: boardIdSchema.parse(record.boardId), name: board?.name ?? "", key: board?.key ?? null },
+    board: { id: boardIdSchema.parse(record.boardId), name: board?.name ?? "", key: board?.key ?? null, connection, paused: board === undefined ? false : isPaused(board) },
     status: { id: record.statusId, name: record.statusName, category: record.statusCategory },
     priority: record.priority === null || record.priority === 0 ? null : record.priority,
     labels: labels.success ? labels.data : [],
@@ -300,7 +350,7 @@ export const inboxRouter = router({
       const { db } = ctx.deps;
       const organizationId = ctx.scope.organizationId;
       const boards = await attachedBoards(ctx.deps, organizationId, input.projectId, input.boardId);
-      const source = await sourceOf(ctx.deps, organizationId, boards, null);
+      const source = await sourceOf(ctx.deps, organizationId, boards);
       if (boards.length === 0) {
         return { tickets: [], nextCursor: null, total: 0, source };
       }
@@ -359,7 +409,7 @@ export const inboxRouter = router({
       }
       const boards = await attachedBoards(ctx.deps, organizationId, input.projectId);
       const board = boards.find((candidate) => candidate.id === record.boardId);
-      const [tasks, source] = await Promise.all([tasksOf(ctx.deps, organizationId, [record.id]), sourceOf(ctx.deps, organizationId, board === undefined ? [] : [board], record.connectionId)]);
+      const [tasks, source] = await Promise.all([tasksOf(ctx.deps, organizationId, [record.id]), sourceOf(ctx.deps, organizationId, board === undefined ? [] : [board])]);
       const task = tasks.get(record.id) ?? null;
       const active = task?.active === true ? await db.task.findFirst({ where: { id: task.id, organizationId }, select: { driverMemberId: true } }) : null;
       const driverId = active?.driverMemberId ?? null;

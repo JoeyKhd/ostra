@@ -39,6 +39,7 @@ import type { AgentProfileId, AutomationId, OrganizationId, ProjectId, TaskId } 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { ticketConnectionSchema, ticketConnectionsOf } from "../services/ticket-trackers.ts";
 import type { ApiDeps } from "../trpc/context.ts";
 import { denied, loadProjectAccess, memberProcedure, projectProcedure, router, unwrap } from "../trpc/init.ts";
 import type { ProjectAccess } from "../trpc/init.ts";
@@ -404,7 +405,16 @@ const dryRunOutcomeSchema = z.union([
 ]);
 
 const dryRunSchema = z.object({
-  rows: z.array(z.object({ ticketId: ticketIdSchema, key: z.string(), title: z.string(), outcome: dryRunOutcomeSchema })),
+  rows: z.array(
+    z.object({
+      ticketId: ticketIdSchema,
+      key: z.string(),
+      title: z.string(),
+      /** Milestone 11 (F-152/c4): the ticket's tracker, its board's connection (only attached boards' tickets are listed). */
+      connection: ticketConnectionSchema.nullable(),
+      outcome: dryRunOutcomeSchema,
+    }),
+  ),
   /** Every ticket that matches, beyond the rows listed. */
   total: z.number().int(),
   /** The tickets a "Start all" would start now. */
@@ -432,11 +442,18 @@ const dryRunView = async (
     }),
   ]);
   const ticketOf = new Map(tickets.map((ticket) => [ticket.id, ticket] as const));
+  const connections = await ticketConnectionsOf(deps, scope.organizationId, tickets.map((ticket) => ticket.connectionId));
   const taskOf = new Map(tasks.flatMap((task) => (task.ticketId === null ? [] : [[task.ticketId, task.id] as const])));
   const rows: DryRunView["rows"] = [];
   for (const row of result.rows) {
     const ticket = ticketOf.get(row.ticketId);
-    rows.push({ ticketId: row.ticketId, key: row.key, title: ticket?.title ?? row.key, outcome: await outcomeOf(deps, row, ticket, taskOf, input.taskKind) });
+    rows.push({
+      ticketId: row.ticketId,
+      key: row.key,
+      title: ticket?.title ?? row.key,
+      connection: ticket === undefined ? null : (connections.get(ticket.connectionId) ?? null),
+      outcome: await outcomeOf(deps, row, ticket, taskOf, input.taskKind),
+    });
   }
   return { rows, total: result.total, wouldStart: rows.filter((row) => row.outcome.kind === "would-start").length };
 };

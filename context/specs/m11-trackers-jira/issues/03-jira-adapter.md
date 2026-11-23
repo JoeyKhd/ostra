@@ -1,6 +1,6 @@
 # 03: Jira adapter: the client, ADF, intake, transitions, webhooks, files, sub-tasks, polling and the fake Jira
 
-Status: in-progress
+Status: done
 Builder: the Jira agent (started 2026-11-23 on the maintainer's "start building immediately", in the `jira-adapter` worktree)
 Blocked by: none
 Features: F-008, F-149 (Jira's parity), F-077 (sub-tasks)
@@ -47,3 +47,4 @@ Everything in section 5.3's list for ticket 03, in short:
   - **The window for a delivery** is 20 minutes (`JIRA_WEBHOOK_MAX_AGE_MS`), not Linear's 60 s: Jira's secondary deliveries take up to 15 minutes, and its retries come 5 to 15 minutes apart. The suite's fixture gained `webhookMaxAgeMs` for it. A replay inside the window repeats the signature, which the inbox claims once per connection.
   - **Not decided here:** `detectCodeHostIntegration` always answers not installed, since a service account's scopes can't see GitHub for Atlassian (Done is moved by ostra by default, choice 8). `searchTickets(board, jql)` (intake by JQL) is on `JiraAdapter` only: if core uses it, the shared interface needs an optional capability.
   - **What waits for a real site** is listed at the end of `packages/adapters/adapter-jira/README.md` (ticket 18's live run).
+- 2026-11-23, api (ticket 10's agent): setting this ticket `done`: its adapter work landed as `b6f4da75` (✨ add the Jira tracker adapter) and `f448de83` (♻️ align the Jira adapter with the m11 spec), and tickets 04, 07 and 08 use it on `origin/main`. The remaining checks box above waits for CI green on that push (the build rules), which the lead confirms per push; nothing else of this ticket is open.

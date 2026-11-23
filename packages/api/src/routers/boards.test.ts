@@ -2,6 +2,7 @@ import { createFakeLinear, createJiraSite, JiraFakeAdapter } from "@ostra/adapte
 import type { FakeLinear, JiraSite } from "@ostra/adapter-sdk/testing";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { connectionIdSchema, projectIdSchema } from "@ostra/protocol";
+import type { ConnectionId, ProjectId } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createApiHarness, seedConnectionAndModel, seedLinearConnection, seedProject, seedTicket } from "../testing/index.ts";
@@ -15,6 +16,7 @@ let harness: ApiHarness;
 let world: Awaited<ReturnType<typeof seedConnectionAndModel>>;
 let projectId: Awaited<ReturnType<typeof seedProject>>["projectId"];
 let site: JiraSite;
+let linearId: ConnectionId;
 
 beforeAll(async () => {
   harness = await createApiHarness();
@@ -22,7 +24,7 @@ beforeAll(async () => {
   projectId = (await seedProject(harness, world, "boards")).projectId;
   site = createJiraSite({ projectKey: "CALC" });
   harness.fakes.tracker.adapter = new JiraFakeAdapter({ site });
-  await seedLinearConnection(harness);
+  linearId = await seedLinearConnection(harness);
 });
 
 afterAll(async () => {
@@ -32,8 +34,11 @@ afterAll(async () => {
 const admin = () => harness.as(harness.fixture.a.admin);
 const member = () => harness.as(harness.fixture.a.member);
 
+/** The attach picker's items of the fixture's one tracker connection (milestone 11: grouped by connection). */
+const itemsOf = async (of: ProjectId = projectId) => (await (await admin()).boards.attachable({ projectId: of })).connections.find((group) => group.id === linearId)?.items ?? [];
+
 const teamOf = async (key = "CALC") => {
-  const teams = await (await admin()).boards.available({ projectId });
+  const teams = await itemsOf();
   const team = teams.find((candidate) => candidate.key === key);
   if (team === undefined) {
     throw new Error(`the tracker has no team ${key}`);
@@ -44,12 +49,12 @@ const teamOf = async (key = "CALC") => {
 describe("F-007: the tracker's teams before a project exists", () => {
   it("lists the organization's teams for Create a project, for organization admins only", async () => {
     const teams = await (await admin()).boards.teams();
-    expect(teams?.map((team) => team.key)).toContain("CALC");
+    expect(teams.connections.find((group) => group.id === linearId)?.items.map((team) => team.key)).toContain("CALC");
     await expect((await member()).boards.teams()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("answers null while the organization has no tracker", async () => {
-    expect(await (await harness.as(harness.fixture.b.admin)).boards.teams()).toBeNull();
+  it("answers no groups while the organization has no tracker", async () => {
+    expect(await (await harness.as(harness.fixture.b.admin)).boards.teams()).toEqual({ connections: [] });
   });
 });
 
@@ -57,7 +62,7 @@ describe("F-007: attaching a board", () => {
   it("F-031/c4: drafts the mapping from the team's statuses and the integration check, saves the board and enqueues the first poll", async () => {
     harness.fakes.jobs.clear();
     const team = await teamOf();
-    const attached = await (await admin()).boards.attach({ projectId, teamExternalId: team.externalId });
+    const attached = await (await admin()).boards.attach({ projectId, connectionId: linearId, externalId: team.externalId });
 
     // The Jira fake's workflow: To Do (open), In Progress, In Review (started), Done and Won't Do (done).
     expect(attached.mapping).toMatchObject({ started: "10001", inReview: "10002", done: "10003", doneBy: "ostra", magicWord: "Closes" });
@@ -86,10 +91,10 @@ describe("F-007: attaching a board", () => {
     harness.fakes.tracker.adapter = new JiraFakeAdapter({ site: other });
     try {
       const second = (await harness.test.db.project.create({ data: { organizationId: harness.fixture.a.organization.id, name: "integrated", slug: "integrated" } })).id;
-      const teams = await (await admin()).boards.available({ projectId: projectIdOf(second) });
+      const teams = await itemsOf(projectIdOf(second));
       const team = teams.find((candidate) => candidate.key === "WEB");
       expect(team).toBeDefined();
-      const attached = await (await admin()).boards.attach({ projectId: projectIdOf(second), teamExternalId: team?.externalId ?? "" });
+      const attached = await (await admin()).boards.attach({ projectId: projectIdOf(second), connectionId: linearId, externalId: team?.externalId ?? "" });
       expect(attached.integrationInstalled).toBe(true);
       expect(attached.mapping.doneBy).toBe("ostra");
       expect((await harness.test.db.board.findUniqueOrThrow({ where: { id: attached.boardId } })).integrationDetected).toBe(true);
@@ -100,41 +105,41 @@ describe("F-007: attaching a board", () => {
 
   it("refuses the same team twice in one project, and a team the connection can't see", async () => {
     const team = await teamOf();
-    await expect((await admin()).boards.attach({ projectId, teamExternalId: team.externalId })).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect((await admin()).boards.attach({ projectId, teamExternalId: "no-such-team" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect((await admin()).boards.attach({ projectId, connectionId: linearId, externalId: team.externalId })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect((await admin()).boards.attach({ projectId, connectionId: linearId, externalId: "no-such-team" })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("marks attached teams, and says which other projects have the team too", async () => {
-    const teams = await (await admin()).boards.available({ projectId });
-    expect(teams.find((team) => team.key === "CALC")).toMatchObject({ attached: true, alsoOn: [] });
+    const teams = await itemsOf();
+    expect(teams.find((team) => team.key === "CALC")).toMatchObject({ attachedHere: true, alsoOn: [] });
 
     const second = await seedProject(harness, world, "boards-two");
-    const fromSecond = await (await admin()).boards.available({ projectId: second.projectId });
-    expect(fromSecond.find((team) => team.key === "CALC")).toMatchObject({ attached: false, alsoOn: [{ projectId, name: "boards" }] });
+    const fromSecond = await itemsOf(second.projectId);
+    expect(fromSecond.find((team) => team.key === "CALC")).toMatchObject({ attachedHere: false, alsoOn: [{ projectId, name: "boards" }] });
     // A team may be a board of several projects, each a board of its own.
-    const attached = await (await admin()).boards.attach({ projectId: second.projectId, teamExternalId: (await teamOf()).externalId });
+    const attached = await (await admin()).boards.attach({ projectId: second.projectId, connectionId: linearId, externalId: (await teamOf()).externalId });
     expect(attached.boardId).toBeTruthy();
     expect(await harness.test.db.board.count({ where: { externalId: (await teamOf()).externalId } })).toBe(2);
   });
 
   it("is for project admins: a member, another project's admin and another organization are refused", async () => {
     const team = await teamOf();
-    await expect((await member()).boards.attach({ projectId, teamExternalId: team.externalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect((await member()).boards.available({ projectId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect((await harness.as(harness.fixture.b.admin)).boards.attach({ projectId, teamExternalId: team.externalId })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect((await member()).boards.attach({ projectId, connectionId: linearId, externalId: team.externalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect((await member()).boards.attachable({ projectId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect((await harness.as(harness.fixture.b.admin)).boards.attach({ projectId, connectionId: linearId, externalId: team.externalId })).rejects.toMatchObject({ code: "NOT_FOUND" });
     // An admin of the restricted project is not an admin of this one.
     await harness.test.db.projectMember.update({
       where: { projectId_memberId: { projectId: harness.fixture.a.restrictedProject.id, memberId: harness.fixture.a.insider.id } },
       data: { role: "admin" },
     });
-    await expect((await harness.as(harness.fixture.a.insider)).boards.attach({ projectId, teamExternalId: team.externalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(harness.anonymous().boards.attach({ projectId, teamExternalId: team.externalId })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect((await harness.as(harness.fixture.a.insider)).boards.attach({ projectId, connectionId: linearId, externalId: team.externalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(harness.anonymous().boards.attach({ projectId, connectionId: linearId, externalId: team.externalId })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("needs a Linear connection first, and says so", async () => {
+  it("needs a tracker connection first, and says so by listing none", async () => {
     const { b } = harness.fixture;
-    await expect((await harness.as(b.admin)).boards.available({ projectId: b.project.id })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
-    expect(await (await harness.as(b.admin)).boards.get({ projectId: b.project.id })).toEqual({ connection: null, canEdit: true, boards: [] });
+    expect(await (await harness.as(b.admin)).boards.attachable({ projectId: b.project.id })).toEqual({ connections: [] });
+    expect(await (await harness.as(b.admin)).boards.get({ projectId: b.project.id })).toEqual({ connections: [], pollSeconds: 60, canEdit: true, boards: [] });
   });
 });
 
@@ -197,8 +202,12 @@ describe("F-007: what the boards page shows a member", () => {
 
     const view = await (await member()).boards.get({ projectId });
     expect(view.canEdit).toBe(false);
-    expect(view.connection).toMatchObject({ workspaceName: "ostra-test", mode: "webhooks", state: "active", pollSeconds: 60 });
+    expect(view.pollSeconds).toBe(60);
+    expect(view.connections).toEqual([{ id: linearId, kind: "linear", name: "ostra-test Linear", state: "active" }]);
     const shown = view.boards[0];
+    expect(shown?.connection).toEqual({ id: linearId, kind: "linear", name: "ostra-test Linear", state: "active", mode: "webhooks", agentMode: false });
+    expect(shown?.state).toEqual({ state: "attached" });
+    expect(shown?.capabilities).toMatchObject({ statusGraph: false, magicWords: true, agentSessions: true });
     expect(shown).toMatchObject({ key: "CALC", name: "Jira fake", openTickets: 2, integration: "not_installed", missingStatuses: [] });
     expect(shown?.lastPolledAt).not.toBeNull();
     expect(shown?.lastEvent).toMatchObject({ type: "Issue", ticketKey: "CALC-2" });
@@ -243,12 +252,20 @@ describe("F-007: what the boards page shows a member", () => {
   });
 
   it("says why the statuses are missing when the tracker can't be asked, and still answers", async () => {
+    const ref = (await harness.test.db.connection.findUniqueOrThrow({ where: { id: linearId } })).accessTokenSecretRef;
+    await harness.test.db.connection.update({ where: { id: linearId }, data: { accessTokenSecretRef: null } });
+    try {
+      const view = await (await member()).boards.get({ projectId });
+      expect(view.boards[0]).toMatchObject({ statusGroups: null, state: { state: "attached" } });
+      expect(view.boards[0]?.statusesError).toContain("has no token");
+    } finally {
+      await harness.test.db.connection.update({ where: { id: linearId }, data: { accessTokenSecretRef: ref } });
+    }
+    // A failed connection pauses the board instead: it isn't asked at all (F-152/c5's own tests are in boards-trackers.test.ts).
     await harness.test.db.connection.updateMany({ where: { kind: "linear", organizationId: harness.fixture.a.organization.id }, data: { state: "failed" } });
     try {
       const view = await (await member()).boards.get({ projectId });
-      expect(view.connection?.state).toBe("failed");
-      expect(view.boards[0]).toMatchObject({ statusGroups: null });
-      expect(view.boards[0]?.statusesError).toBeTruthy();
+      expect(view.boards[0]).toMatchObject({ statusGroups: null, statusesError: null, connection: { state: "failed" }, state: { state: "paused", pausedBy: "failed" } });
     } finally {
       await harness.test.db.connection.updateMany({ where: { kind: "linear", organizationId: harness.fixture.a.organization.id }, data: { state: "active" } });
     }
@@ -273,7 +290,7 @@ describe("F-007: detaching a board", () => {
   it("stops it for new tasks, keeps its cached tickets and its tasks' links, and allows attaching it again", async () => {
     const fresh = await seedProject(harness, world, "boards-detach");
     const team = await teamOf();
-    const attached = await (await admin()).boards.attach({ projectId: fresh.projectId, teamExternalId: team.externalId });
+    const attached = await (await admin()).boards.attach({ projectId: fresh.projectId, connectionId: linearId, externalId: team.externalId });
     const connectionId = await connectionIdOfOrg();
     const ticketId = await seedTicket(harness, { projectId: fresh.projectId, boardId: attached.boardId, connectionId, key: "CALC-9" });
     const task = await harness.test.db.task.create({
@@ -299,10 +316,10 @@ describe("F-007: detaching a board", () => {
     expect(await harness.test.db.ticket.count({ where: { boardId: attached.boardId } })).toBe(1);
     expect(await harness.test.db.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({ boardId: attached.boardId, ticketId });
     await expect((await admin()).boards.detach({ boardId: attached.boardId })).rejects.toMatchObject({ code: "CONFLICT" });
-    expect((await (await admin()).boards.available({ projectId: fresh.projectId })).find((candidate) => candidate.key === "CALC")?.attached).toBe(false);
+    expect((await itemsOf(fresh.projectId)).find((candidate) => candidate.key === "CALC")?.attachedHere).toBe(false);
 
     // Attaching the team again brings the same board back, with the mapping it had.
-    const again = await (await admin()).boards.attach({ projectId: fresh.projectId, teamExternalId: team.externalId });
+    const again = await (await admin()).boards.attach({ projectId: fresh.projectId, connectionId: linearId, externalId: team.externalId });
     expect(again.boardId).toBe(attached.boardId);
     expect((await harness.test.db.board.findUniqueOrThrow({ where: { id: attached.boardId } })).detachedAt).toBeNull();
   });
@@ -328,10 +345,10 @@ describe("F-007 on Linear: the same flow on the fake Linear server", () => {
     harness.fakes.tracker.adapter = linear;
     try {
       const fresh = await seedProject(harness, world, "boards-linear");
-      const teams = await (await admin()).boards.available({ projectId: fresh.projectId });
+      const teams = await itemsOf(fresh.projectId);
       const team = teams.find((candidate) => candidate.key === fake.team.key);
       expect(team).toBeDefined();
-      const attached = await (await admin()).boards.attach({ projectId: fresh.projectId, teamExternalId: team?.externalId ?? "" });
+      const attached = await (await admin()).boards.attach({ projectId: fresh.projectId, connectionId: linearId, externalId: team?.externalId ?? "" });
       const states = fake.states(fake.team.id);
       const idOf = (type: string, predicate: (name: string) => boolean = () => true) => states.find((state) => state.type === type && predicate(state.name))?.id;
       expect(attached.mapping.started).toBe(idOf("started"));
@@ -341,7 +358,7 @@ describe("F-007 on Linear: the same flow on the fake Linear server", () => {
 
       fake.setGithubIntegration(true);
       const other = await seedProject(harness, world, "boards-linear-two");
-      const integrated = await (await admin()).boards.attach({ projectId: other.projectId, teamExternalId: team?.externalId ?? "" });
+      const integrated = await (await admin()).boards.attach({ projectId: other.projectId, connectionId: linearId, externalId: team?.externalId ?? "" });
       expect(integrated.mapping.doneBy).toBe("integration");
     } finally {
       harness.fakes.tracker.adapter = new JiraFakeAdapter({ site });

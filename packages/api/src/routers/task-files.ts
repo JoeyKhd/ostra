@@ -35,6 +35,8 @@ import type { MessageFileView } from "@ostra/task-view";
 import type { DbEnum } from "@ostra/db";
 import { z } from "zod";
 
+import { ticketConnectionOf, ticketConnectionSelect } from "../services/ticket-trackers.ts";
+import type { TicketConnection } from "../services/ticket-trackers.ts";
 import { taskProcedure, unwrap } from "../trpc/init.ts";
 import { taskPageTrackerOf } from "./task-extras.ts";
 
@@ -204,6 +206,11 @@ export type TicketContextView = {
    * or is one the task page doesn't name yet (`taskPageTrackerOf`: Jira's, until milestone 11's ticket 16).
    */
   readonly tracker: ReturnType<typeof taskPageTrackerOf>;
+  /**
+   * Milestone 11 (F-152/c4, ticket-chips.md): the ticket's tracker for the meta line
+   * (`PROJ-12 from Jira`), its board's connection, for every kind; `null` when the ticket is gone.
+   */
+  readonly connection: TicketConnection | null;
   /** The ticket's limits (`OSTRA_TICKET_FILES_*`), for the left-out notes. */
   readonly limits: FileLimits;
   /** The rendered first prompt, for "Show the prompt": text, never HTML. `null` until rendered. */
@@ -259,7 +266,7 @@ export const ticketContextProcedure = taskProcedure("read", taskInput).query(asy
     return null;
   }
   const [ticket, events, reads, rows, model] = await Promise.all([
-    db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, select: { key: true, connection: { select: { kind: true } } } }),
+    db.ticket.findFirst({ where: { id: task.ticketId, organizationId }, select: { key: true, connection: { select: ticketConnectionSelect } } }),
     db.event.findMany({ where: { taskId: task.id, organizationId, kind: "ticket.context_read" }, orderBy: { seq: "asc" }, take: 500 }),
     db.taskTicketRead.findMany({ where: { taskId: task.id, organizationId }, orderBy: { round: "asc" }, select: { round: true, eventSeq: true, comments: true } }),
     db.messageFile.findMany({
@@ -380,6 +387,7 @@ export const ticketContextProcedure = taskProcedure("read", taskInput).query(asy
     state: rounds.length === 0 && task.prompt === null ? "fetching" : "read",
     ticketKey: ticket?.key ?? task.ticketKey ?? "",
     tracker: ticket === null ? null : taskPageTrackerOf(ticket.connection.kind),
+    connection: ticket === null ? null : ticketConnectionOf(ticket.connection),
     limits: ticketFileLimits(settings.files),
     prompt: task.prompt,
     model,

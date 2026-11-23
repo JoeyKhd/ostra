@@ -22,6 +22,7 @@ import { agentProfileIdSchema, boardIdSchema, environmentIdSchema, memberIdSchem
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { ticketConnectionOf, ticketConnectionSchema, ticketConnectionSelect } from "../services/ticket-trackers.ts";
 import type { Context } from "../trpc/context.ts";
 import { adminProcedure, memberProcedure, projectProcedure, router, unwrap } from "../trpc/init.ts";
 import { inboxCounts } from "./inbox.ts";
@@ -140,7 +141,15 @@ const projectDetailSchema = projectSummarySchema.extend({
    * That board with its team's name and key, for New task's line and `Ticket` row
    * (prompt-tickets.md, "New task"): `null` exactly when `promptTicketBoardId` is.
    */
-  promptTicketBoard: z.object({ id: boardIdSchema, name: z.string(), key: z.string().nullable() }).nullable(),
+  promptTicketBoard: z
+    .object({
+      id: boardIdSchema,
+      name: z.string(),
+      key: z.string().nullable(),
+      /** Milestone 11 (F-008/c7, ticket-chips.md "New task"): the board's tracker, for the mark beside its name. */
+      connection: ticketConnectionSchema.nullable(),
+    })
+    .nullable(),
 });
 
 const createdSchema = z.object({
@@ -274,7 +283,9 @@ export const projectsRouter = router({
       // Read at every page load, and reused for 10 minutes (`BRANCH_RULES_CACHE_MS`).
       const checkedRepos = await checkProjectRepos({ db, clock: ctx.deps.ports.clock, adapters: ctx.deps.ports.adapters }, { organizationId, projectId: input.projectId, force: false });
       const installationOf = await installationsOfRepos(db, organizationId, input.projectId);
-      const promptTicketBoard = await promptTicketBoardViewInTx(db, organizationId, input.projectId);
+      const promptBoard = await promptTicketBoardViewInTx(db, organizationId, input.projectId);
+      const promptBoardRow = promptBoard === null ? null : await db.board.findFirst({ where: { id: promptBoard.id, organizationId }, select: { connection: { select: ticketConnectionSelect } } });
+      const promptTicketBoard = promptBoard === null ? null : { ...promptBoard, connection: promptBoardRow === null ? null : ticketConnectionOf(promptBoardRow.connection) };
       const [needsYou, running, active] = await Promise.all([
         db.task.count({ where: { organizationId, projectId: project.id, state: "needs_you" } }),
         db.task.count({ where: { organizationId, projectId: project.id, state: { in: ["running", "preparing"] } } }),

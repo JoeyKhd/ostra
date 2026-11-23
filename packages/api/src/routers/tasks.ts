@@ -85,6 +85,7 @@ import { loadChecksView } from "./task-checks.ts";
 import { loadLocalView } from "./task-local.ts";
 import { loadApprovalsAndPlan, previewApproval } from "./task-m3.ts";
 import { loadUsageView } from "./task-usage.ts";
+import { taskTicketConnectionsOf } from "../services/ticket-trackers.ts";
 import { levelRefusal, loadModelEffort, toLevelViews } from "../services/agent-effort.ts";
 import { agentTakesQuestionFreeText } from "../services/agent-questions.ts";
 import type { ApiDeps } from "../trpc/context.ts";
@@ -337,12 +338,16 @@ export const tasksRouter = router({
     const driverName = new Map(members.map((member) => [member.id, member.user.name] as const));
 
     const places = await queuePlacesOf(db, organizationId, rows);
+    // Milestone 11 (F-152/c4): each task's ticket's tracker, for the live list's mark (ticket-chips.md, "Sidebar, live").
+    const connections = await taskTicketConnectionsOf(ctx.deps, organizationId, rows);
     const summaries = rows.map((row) => {
       const runner = runnerById.get(leaseRunner.get(row.id) ?? row.runnerId ?? "");
       const id = taskIdSchema.parse(row.id);
       return {
         id,
         key: row.ticketKey ?? shortKeyOf(row.id),
+        /** Milestone 11: the ticket's tracker (its board's connection), `null` for a task without a ticket. */
+        connection: connections.get(row.id) ?? null,
         title: row.title,
         kind: row.kind,
         /** 2026-11-21 (F-147): the code task a follow-up (its AI review) belongs to, which a live list nests it under. */
