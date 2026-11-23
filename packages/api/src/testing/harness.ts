@@ -146,6 +146,12 @@ export type BareHarness = {
 export type ApiHarness = BareHarness & { readonly fixture: IsolationFixture };
 
 export type BareHarnessOptions = {
+  /**
+   * A migrated database to build the harness on instead of a fresh one: a test that drives core's
+   * ingest into a database of its own (`apps/core`'s loop harness) and then reads a router's view
+   * against the same rows. The caller keeps its own `dispose`; this harness's leaves the database.
+   */
+  readonly test?: TestDatabase;
   /** `OSTRA_ALLOW_DEFAULT_PASSWORD`: off by default, as on an install. */
   readonly allowDefaultPassword?: boolean;
   /** The model provider adapter the routers use. Default: the fake (`fakes.modelProvider`). */
@@ -171,7 +177,9 @@ export type BareHarnessOptions = {
 
 /** A harness on an empty install: no account, no organization (the first-run tests). */
 export const createBareHarness = async (options: BareHarnessOptions = {}): Promise<BareHarness> => {
-  const test = await createTestDatabase();
+  // A reused database is the caller's to dispose, as its loop harness does at the end.
+  const ownsTest = options.test === undefined;
+  const test = options.test ?? (await createTestDatabase());
   const baseUrl = "http://localhost:3000";
   const allowDefaultPassword = options.allowDefaultPassword ?? false;
   const invitationDays = options.invitationDays ?? 7;
@@ -380,7 +388,9 @@ export const createBareHarness = async (options: BareHarnessOptions = {}): Promi
     contextOf,
     dispose: async () => {
       await hub.stop();
-      await test.dispose();
+      if (ownsTest) {
+        await test.dispose();
+      }
     },
   };
 };

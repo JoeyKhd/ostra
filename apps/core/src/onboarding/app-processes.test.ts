@@ -18,7 +18,11 @@ import {
 } from "@ostra/domain";
 import type { MemberScope, PreviewDeps } from "@ostra/domain";
 import type { SeededMember } from "@ostra/db/testing";
+import { createBareHarness, pngBytes } from "@ostra/api/testing";
+import type { BareHarness } from "@ostra/api/testing";
 import {
+  APP_SCREENSHOT_CONTENT_TYPE,
+  attachmentIdSchema,
   boxIdSchema,
   encodeTaskSpecForMinor,
   environmentProposalIdSchema,
@@ -30,14 +34,17 @@ import {
   ONE_ORIGIN_RULE,
   previewKeySchema,
   previewRefusalWords,
+  projectIdSchema,
   repoIdSchema,
   runnerPaths,
+  sessionIdSchema,
   taskIdSchema,
   taskSpecSchemaV6,
   turnIdSchema,
 } from "@ostra/protocol";
-import type { EnvironmentProposal, EnvironmentProposalId, RepoId, TaskId, TaskSpecAppProcess } from "@ostra/protocol";
+import type { EnvironmentProposal, EnvironmentProposalId, RepoId, TaskEvent, TaskId, TaskSpecAppProcess } from "@ostra/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { buildTaskSpec } from "../dispatch/task-spec.ts";
 import type { SpecDeps } from "../dispatch/task-spec.ts";
@@ -46,6 +53,7 @@ import { FakeModelProvider } from "../testing/fake-adapters.ts";
 import { postJson, startGateway } from "../testing/harness.ts";
 import type { GatewayHarness } from "../testing/harness.ts";
 import { leaseEpochOne, REPO, seedTaskInCi, startLoopHarness } from "../testing/review-loop.ts";
+import { drive } from "../testing/turns.ts";
 import type { LoopHarness } from "../testing/review-loop.ts";
 import { APP_ID, APP_PRIVATE_KEY, ENV_SECRET, INSTALLATION_ID } from "../testing/world.ts";
 
@@ -59,6 +67,8 @@ const fixtureDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 
 let h: LoopHarness;
 let gateway: GatewayHarness;
+/** The panel's own procedures, on the harness's database: the view the proposal page reads. */
+let api: BareHarness;
 let repoId: RepoId;
 
 beforeAll(async () => {
@@ -72,9 +82,12 @@ beforeAll(async () => {
   gateway = await startGateway(h.db, h.test.url, {}, (gw) => [
     handleEnvironmentProposalEndpoint({ db: h.db, tokens: gw.context.tokens, taskTokens: gw.context.taskTokens, jobs: h.jobs, notices: postgresChangeNotices, clock: h.clock, secretStore: h.secretStore, logger: h.logger }),
   ]);
+  // The panel's procedures on the same rows: `environments.proposal` and `environments.appProcesses.list`.
+  api = await createBareHarness({ test: h.test });
 });
 
 afterAll(async () => {
+  await api.dispose();
   await gateway.stop();
   await h.stop();
 });
@@ -270,6 +283,66 @@ describe("F-140: onboarding", () => {
     expect(old.prompt).toContain(ONBOARDING_NO_APP_TOOLS_LINE);
     expect(old.tools).toEqual(["environment", "pr-text"]);
 
+    // The agent's turn through core's real ingest: it starts the declared processes in order, each
+    // ready, and takes the primary's screenshot. The event log, the stored attachment and the
+    // panel's own view all read the turn back, before any admin accepts the proposal.
+    const session = await h.db.session.findFirstOrThrow({ where: { taskId } });
+    const driven = drive(h.ingest, { taskId, sessionId: sessionIdSchema.parse(session.id), organizationId: h.world.organizationId }, h.runner, leaseEpochOne);
+    const shot = await h.blobs.put(
+      { organizationId: h.world.organizationId, task: { projectId: h.world.projectId, taskId } },
+      { purpose: "app-screenshot", contentType: APP_SCREENSHOT_CONTENT_TYPE, bytes: pngBytes(512) },
+    );
+    if (!shot.ok) throw new Error(shot.message);
+    const caption = "Web, ready, its /api answered";
+    const turnId = turnIdSchema.parse("turn-onboarding");
+    const testedProcesses = [
+      { name: "web", port: 5173 },
+      { name: "api", port: 3001 },
+      { name: "docs", port: 4000 },
+    ] as const;
+    const turn: TaskEvent[] = [
+      { kind: "turn.started", turnId },
+      ...testedProcesses.flatMap(({ name, port }): TaskEvent[] => [
+        { kind: "app.process", name, state: "starting", port, exitCode: null, reason: null, logBlobId: null },
+        { kind: "app.process", name, state: "ready", port, exitCode: null, reason: null, logBlobId: null },
+      ]),
+      {
+        kind: "attachment.added",
+        attachmentId: attachmentIdSchema.parse("shot-primary"),
+        attachmentKind: "screenshot",
+        blobId: shot.value.blobId,
+        source: "agent",
+        target: { process: "web" },
+        path: "/",
+        width: 1440,
+        height: 900,
+        durationMs: null,
+        frameCount: null,
+        caption,
+        browser: { name: "Chromium", version: "142.0.7444.59" },
+        memberId: null,
+        requestId: null,
+      },
+      { kind: "turn.ended", turnId, stopReason: "end_turn" },
+    ];
+    await driven.send(...turn);
+    // The event view: each process's starting and ready, in the list's order.
+    const processEvent = z.object({ name: z.string(), state: z.string() });
+    const storedEvents = await h.db.event.findMany({ where: { taskId, kind: "app.process" }, orderBy: { seq: "asc" }, select: { payload: true } });
+    expect(storedEvents.map((row) => { const parsed = processEvent.parse(row.payload); return [parsed.name, parsed.state]; })).toEqual([
+      ["web", "starting"],
+      ["web", "ready"],
+      ["api", "starting"],
+      ["api", "ready"],
+      ["docs", "starting"],
+      ["docs", "ready"],
+    ]);
+    // The screenshot, stored: its row names what it shows, and its blob holds the bytes.
+    const attachment = await h.db.taskAttachment.findFirstOrThrow({ where: { taskId, attachmentId: attachmentIdSchema.parse("shot-primary") } });
+    expect(attachment).toMatchObject({ kind: "screenshot", blobId: shot.value.blobId, targetKind: "process", targetName: "web", path: "/", caption });
+    expect(await h.db.blob.findFirstOrThrow({ where: { id: shot.value.blobId, taskId }, select: { purpose: true, size: true } })).toEqual({ purpose: "app-screenshot", size: 512 });
+    expect(JSON.stringify(h.records)).not.toContain(caption);
+
     // A command holding a secret's value is refused, as a script is.
     const base: EnvironmentProposal = { repos: [{ repoId, setupScript: "npm install", checks: [], variableNames: [] }], services: [], notes: "The frontend calls /api through Vite's proxy." };
     const leaked = await postJson(`${gateway.url}${runnerPaths.taskEnvironmentProposal(taskId)}`, { ...base, appProcesses: [tested("api", 3001, `API_SECRET=${ENV_SECRET} npm run api`)] }, token);
@@ -293,6 +366,27 @@ describe("F-140: onboarding", () => {
     expect(stored.source).toBe("onboarding");
     expect(environmentProposalSchema.parse(stored.body).appProcesses?.map((process) => process.name)).toEqual(["web", "api", "docs"]);
 
+    // The panel's own view, on the same rows: the processes it tested, and the screenshot the task
+    // took of the primary, downloadable from the task, before an admin has accepted anything.
+    const projectId = projectIdSchema.parse(h.world.projectId);
+    const caller = await api.as(h.fixture.a.admin);
+    const view = await caller.environments.proposal({ projectId });
+    expect(view?.appProcesses.proposed.map((process) => [process.name, process.port])).toEqual([
+      ["web", 5173],
+      ["api", 3001],
+      ["docs", 4000],
+    ]);
+    expect(view?.screenshot).toMatchObject({
+      attachmentId: attachment.attachmentId,
+      kind: "screenshot",
+      target: { kind: "process", name: "web" },
+      width: 1440,
+      height: 900,
+      path: "/",
+      caption,
+    });
+    expect(view?.screenshot?.downloadPath).toBe(`/api/tasks/${taskId}/attachments/${attachment.attachmentId}`);
+
     const accepted = await decideEnvironmentProposal(decideDeps(), admin(), { proposalId, decision: { kind: "accept", edited: null } });
     expect(accepted).toMatchObject({ ok: true });
     // Web takes the frontend's place (same port), Storybook stays without the primary, API and Docs are added.
@@ -306,6 +400,9 @@ describe("F-140: onboarding", () => {
     expect(environment.setupScript).toBe("npm install");
     const entry = await h.db.auditEntry.findFirstOrThrow({ where: { action: "environment.proposal-accepted" }, orderBy: { createdAt: "desc" } });
     expect(entry.data).toMatchObject({ proposalId, appProcesses: 3, source: "onboarding" });
+    // The environment page's view of a saved process reads the turn's newest event: web got ready.
+    const listed = await caller.environments.appProcesses.list({ projectId });
+    expect(listed.processes.find((process) => process.name === "web")?.lastBox).toMatchObject({ state: "ready", taskId, exitCode: null, reason: null });
     expect(JSON.stringify(h.records)).not.toContain("npm run docs");
   });
 });
