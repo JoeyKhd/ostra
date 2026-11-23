@@ -350,6 +350,10 @@ _Avoid_: check, check run (each is ostra's), build
 The corrected environment an onboarding task hands in after running the setup, the services, the checks and the app's processes: scripts, checks and variable names per repo, and the processes it saw ready, never a secret's value. "Keep it" on a port an agent announced makes one too, with that one app process alone, whose command a project admin names. A project admin accepts, edits or rejects it.
 _Avoid_: suggestion, draft (a refine task hands in drafts), proposal (alone, that's memory)
 
+**Repo draft**:
+What detection drafts for a repo added to a project whose environment is saved: its setup lines, and its variables and secrets by name, held beside the saved setup, which keeps running as it is. A project admin applies it (a save, at once), edits it first in the page's editors, or dismisses it.
+_Avoid_: proposal (an onboarding task or a kept port hands those in), draft (alone, that's refine)
+
 ### Seeing the running app
 
 **Attachment**:
