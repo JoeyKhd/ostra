@@ -461,6 +461,18 @@ describe("the guards (F-049)", () => {
     const restrictedFiles = await asInsider.tasks.files({ taskId: taskIdSchema.parse(row({ rows: restricted, projectId: a.restrictedProject.id }, "Task")) });
     expect(restrictedFiles.files.map((file) => file.fileId)).toContain(restricted.get("MessageFile"));
   });
+
+  it("F-112/c2: a new repo's draft reaches who can open its project: its reader returns the row by its repo, so the leak checks below would see one crossing", async () => {
+    const { a, b } = harness.fixture;
+    const draftsOf = async (member: SeededMember, projectId: string): Promise<readonly string[]> =>
+      (await (await harness.as(member)).environments.repoDrafts({ projectId: projectIdSchema.parse(projectId) })).map((draft) => draft.repoId);
+    expect(await draftsOf(a.member, a.openProject.id)).toEqual([open.get("Repo")]);
+    expect(await draftsOf(a.insider, a.restrictedProject.id)).toEqual([restricted.get("Repo")]);
+    expect(await draftsOf(b.admin, b.project.id)).toEqual([other.get("Repo")]);
+    // The repo's ID is among the ones every procedure of every role is checked for.
+    expect(idsOfRestricted).toContain(restricted.get("Repo"));
+    expect(idsOfB).toContain(other.get("Repo"));
+  });
 });
 
 // ---------- the roles ----------

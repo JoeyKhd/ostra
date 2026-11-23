@@ -509,19 +509,24 @@ export const isolationModels: Readonly<Record<IsolationModelName, FixtureBuilder
     ).id,
   TaskTicketRead: async ({ db, organizationId, projectId }, ensure) =>
     (await db.taskTicketRead.create({ data: { organizationId, projectId, taskId: await ensure("Task"), round: 1, reason: "start", descriptionSha256: randomBytes(32).toString("hex"), comments: [], fileKeys: [] } })).id,
-  EnvironmentRepoDraft: async ({ db, organizationId, projectId, memberId }, ensure) =>
-    (
+  EnvironmentRepoDraft: async ({ db, organizationId, projectId, memberId }, ensure) => {
+    // A draft waits only beside a saved environment: saved, with a plain script the draft would
+    // change, so its readers return it and a leak check would see it cross.
+    const environmentId = await ensure("Environment");
+    await db.environment.update({ where: { id: environmentId }, data: { status: "saved", setupScript: "corepack enable\npnpm install\n", savedAt: new Date() } });
+    return (
       await db.environmentRepoDraft.create({
         data: {
           organizationId,
           projectId,
-          environmentId: await ensure("Environment"),
+          environmentId,
           repoId: await ensure("Repo"),
           createdByMemberId: memberId,
           detection: { baseImage: null, setupLines: ["uv sync --frozen"], setupScript: "set -euo pipefail\nuv sync --frozen\n", variables: [], tools: [], services: [], appProcesses: [], reasons: [{ file: "uv.lock", finding: "uv" }] },
         },
       })
-    ).id,
+    ).id;
+  },
 };
 
 /** The models without `organizationId`, each with why it has none (reviewed: ADR 0053). */
