@@ -1,4 +1,4 @@
-import { attachBoard, attachBoardInputSchema, boardMappingSchema, detachBoard, parseBoardMapping, saveBoardMapping, unknownMappedStatuses, visibleProjects } from "@ostra/domain";
+import { attachBoard, boardMappingSchema, detachBoard, parseBoardMapping, saveBoardMapping, unknownMappedStatuses, visibleProjects } from "@ostra/domain";
 import type { TrackerStatus } from "@ostra/adapter-sdk";
 import { boardIdSchema, connectionIdSchema, organizationIdSchema, projectIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
@@ -252,7 +252,7 @@ export const boardsRouter = router({
    * Attaches a team as a board: drafts its mapping from the team's statuses and the integration
    * check (spec section 3, step 2), and enqueues the first full poll, in the same transaction.
    */
-  attach: projectProcedure("admin", attachBoardInputSchema)
+  attach: projectProcedure("admin", z.strictObject({ projectId: projectIdSchema, teamExternalId: z.string().min(1).max(256) }))
     .output(z.object({ boardId: boardIdSchema, mapping: boardMappingSchema, integrationInstalled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       const { db, ports } = ctx.deps;
@@ -260,7 +260,8 @@ export const boardsRouter = router({
       const tracker = await requireTracker(ctx.deps, organizationId);
       const result = await db.$transaction(
         async (tx) => {
-          const attached = await attachBoard({ tx, scope: ctx.scope, tracker, ...ports }, input);
+          // The board's own connection, by its ID: ticket 10 takes it from the panel's picker.
+          const attached = await attachBoard({ tx, scope: ctx.scope, tracker, ...ports }, { projectId: input.projectId, connectionId: tracker.connectionId, externalId: input.teamExternalId });
           if (attached.ok) {
             await ports.jobs.enqueueInTx(tx, "tracker.poll-board", { organizationId, boardId: attached.boardId }, { group: { id: tracker.connectionId } });
           }
@@ -288,7 +289,7 @@ export const boardsRouter = router({
       const board = await db.board.findFirstOrThrow({ where: { id: input.boardId, organizationId: ctx.scope.organizationId }, select: { connectionId: true } });
       const tracker = await trackerOf(ctx.deps, ctx.scope.organizationId, connectionIdSchema.parse(board.connectionId));
       const result = await db.$transaction((tx) => saveBoardMapping({ tx, scope: ctx.scope, tracker, ...ports }, input), { timeout: 30_000, maxWait: 10_000 });
-      const saved = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "unknown-status": "BAD_REQUEST", "tracker-failed": "BAD_GATEWAY" });
+      const saved = unwrap(result, { "not-found": "NOT_FOUND", forbidden: "FORBIDDEN", "unknown-status": "BAD_REQUEST", "tracker-failed": "BAD_GATEWAY", "board-paused": "PRECONDITION_FAILED" });
       return { mapping: saved.mapping };
     }),
 

@@ -15,6 +15,7 @@ import type { AgentProfileId, MemberId, OrganizationId, ProjectId, SessionId, Ta
 
 import type { MemberScope } from "../access.ts";
 import { branchSlugFor, titleFromPrompt } from "../branch-name.ts";
+import { isBoardAttached } from "../lifecycles/m11-trackers.ts";
 import { taskToColumns } from "../lifecycles/mapping.ts";
 import { newTask } from "../lifecycles/task.ts";
 import { dispatchWaitColumns } from "../dispatch-wait.ts";
@@ -231,8 +232,9 @@ export const startTask: StartTask = async (deps, input: StartTaskInput) => {
     }
     const row = await tx.ticket.findUniqueOrThrow({ where: { id: input.ticketId } });
     const board = await tx.board.findFirst({ where: { id: row.boardId, projectId: project.id, organizationId }, include: { connection: { select: { state: true } } } });
-    if (row.removedAt !== null || board?.detachedAt !== null || board.connection.state === "revoked") {
-      return refuse("not-found", "That ticket's board is detached, or the ticket left it: no new task starts from it");
+    // A paused board (its connection isn't active, ADR 0071) starts nothing, as a detached one.
+    if (row.removedAt !== null || board === null || !isBoardAttached(board, board.connection)) {
+      return refuse("not-found", "That ticket's board is detached or paused, or the ticket left it: no new task starts from it");
     }
     if (input.kind === "code") {
       // F-077: the parent of open sub-issues never runs code; its leaves start instead

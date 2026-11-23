@@ -55,7 +55,7 @@ An organization's link to one tracker account: one Linear workspace through its 
 _Avoid_: integration, tracker (alone, that's the tool), workspace (that's the tracker's own word)
 
 **Paused board**:
-A board whose tracker connection isn't active: disconnected or failed. It stays attached to its project with its mapping, tickets and tasks, read-only; nothing moves on the tracker and nothing starts from it until its connection is active again, or the same workspace or site is connected again.
+A board whose tracker connection isn't active: disconnected (or not connected yet) or failed. It stays attached to its project with its mapping, tickets and tasks, read-only; nothing moves on the tracker, it isn't polled, and nothing starts from it until its connection is active again, or the same workspace or site is connected again, which takes it.
 _Avoid_: detached (that's a board a project admin removed), disabled
 
 **Status mapping**:

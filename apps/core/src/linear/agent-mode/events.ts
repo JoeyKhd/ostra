@@ -2,6 +2,7 @@ import type { AgentSessionEvent, Logger, TrackerAdapter } from "@ostra/adapter-s
 import type { Db, Tx } from "@ostra/db";
 import {
   appendServerEvent,
+  attachedBoardWhere,
   boardsOnSameTeam,
   closeItemsOfEndedTaskInTx,
   sendMemberMessageInTx,
@@ -224,7 +225,8 @@ const handleCreated = async (
       connectionId,
       externalId: event.teamExternalId,
       agentMode: true,
-      detachedAt: null,
+      // An attached board only (ADR 0071): a paused or detached one starts nothing.
+      ...attachedBoardWhere,
     },
     select: { id: true, projectId: true, externalId: true },
   });

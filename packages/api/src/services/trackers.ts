@@ -1,6 +1,7 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { SecretStoreAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
+import { defaultConnectionName } from "@ostra/domain";
 import type { ConnectionTracker } from "@ostra/domain";
 import { connectionIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
@@ -60,7 +61,13 @@ export const createTrackerDirectory = (input: TrackerDirectoryInput): TrackerDir
     const auth: LinearTrackerAuth = row.credentialKind === "api_key" ? { kind: "api-key", token: token.value } : { kind: "oauth", token: token.value };
     return {
       ok: true,
-      tracker: { connectionId: connectionIdSchema.parse(row.id), tracker: input.makeLinear(auth), ownUserId: row.appUserId },
+      tracker: {
+        connectionId: connectionIdSchema.parse(row.id),
+        kind: "linear",
+        name: row.name ?? defaultConnectionName("linear", row.externalWorkspaceName),
+        tracker: input.makeLinear(auth),
+        ownUserId: row.appUserId,
+      },
     };
   },
 });

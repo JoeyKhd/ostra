@@ -136,6 +136,17 @@ export const auditActions = {
   "linear.token-refresh-failed": "connection",
   // Milestone 6 (F-012, ticket 13): agent mode turned on, after the re-authorization with its scopes.
   "linear.agent-mode-enabled": "connection",
+  // Milestone 11 (F-152, F-008, ADR 0071): a tracker connection of any kind. The `linear.*` entries
+  // already written stay, and the setup timeline reads `linear.connected` beside `tracker.connected`.
+  "tracker.connection-created": "connection",
+  "tracker.renamed": "connection",
+  "tracker.site-found": "connection",
+  "tracker.token-saved": "connection",
+  "tracker.connected": "connection",
+  "tracker.secret-rotated": "connection",
+  "tracker.token-replaced": "connection",
+  "tracker.disconnected": "connection",
+  "tracker.resumed": "connection",
   "board.attached": "project",
   "board.mapping-saved": "project",
   "board.detached": "project",

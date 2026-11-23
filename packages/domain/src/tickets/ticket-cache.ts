@@ -4,6 +4,7 @@ import { externalTicketIdSchema, organizationIdSchema, projectIdSchema, ticketId
 import type { BoardId, ExternalTicketId, TicketId, TicketKey } from "@ostra/protocol";
 
 import type { IngestTicketHint, IngestTicketHintResult } from "../use-cases/tickets.ts";
+import { attachedBoardWhere } from "../lifecycles/m11-trackers.ts";
 import { updateTicketSearchEntries } from "../search/entries.ts";
 import { enqueueIntakeMatchesInTx } from "../automations/intake-enqueue.ts";
 import { isOpenCategory } from "./contracts.ts";
@@ -141,10 +142,10 @@ export const markTicketRemovedInTx = async (
 
 const projectsOf = (boards: readonly CacheBoard[]): readonly string[] => [...new Set(boards.map((board) => board.projectId))];
 
-/** The connection's attached boards. */
+/** The connection's attached boards: never another connection's, whatever their external IDs (ADR 0071). */
 const boardsOf = async (db: Db, connectionId: string): Promise<readonly CacheBoard[]> =>
   db.board.findMany({
-    where: { connectionId, detachedAt: null },
+    where: { connectionId, ...attachedBoardWhere },
     select: { id: true, organizationId: true, projectId: true, connectionId: true, externalId: true },
   });
 
@@ -262,7 +263,7 @@ export const boardsOnSameTeam = async (db: Db, boardId: BoardId): Promise<readon
   const board = await db.board.findUnique({ where: { id: boardId }, select: { connectionId: true, externalId: true } });
   if (board === null) return [];
   return db.board.findMany({
-    where: { connectionId: board.connectionId, externalId: board.externalId, detachedAt: null },
+    where: { connectionId: board.connectionId, externalId: board.externalId, ...attachedBoardWhere },
     select: { id: true, organizationId: true, projectId: true, connectionId: true, externalId: true },
   });
 };

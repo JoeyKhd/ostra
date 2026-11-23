@@ -309,14 +309,38 @@ export const linearRouter = router({
    * "Connect Linear": makes the connection `pending` (or picks up the pending one), decides the mode
    * and answers the manifest link with the callback and webhook URLs in it. A second connection
    * while one is active is refused.
+   *
+   * Milestone 11: the domain makes a new named connection on every start (ADR 0071). This page is
+   * still the panel's one Linear page until `trackers.*` takes connections of any kind (tickets 09
+   * and 14), so it keeps its one-connection behaviour here, on the organization's first Linear
+   * connection: a pending one is picked up, an active or failed one refuses a second.
    */
   start: adminProcedure.output(startedSchema).mutation(async ({ ctx }) => {
     const { db, ports, settings, linear } = ctx.deps;
+    const organizationId = ctx.scope.organizationId;
     const mode = modeOf(ctx.deps);
-    const result = await db.$transaction((tx) =>
-      startLinearConnection({ tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, corePublicUrlProblem: mode.reason, publicUrl: settings.publicUrl, linear, ...ports }),
-    );
-    const started = unwrap(result, { forbidden: "FORBIDDEN", "already-connected": "CONFLICT" });
+    const result = await db.$transaction(async (tx) => {
+      const first = await tx.connection.findFirst({
+        where: { organizationId, kind: "linear", state: { not: "revoked" } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, state: true },
+      });
+      if (first !== null && first.state !== "pending") {
+        return { ok: false, error: "already-connected", message: "This organization is already connected to Linear. Disconnect it first to connect another workspace" } as const;
+      }
+      return startLinearConnection(
+        { tx, scope: ctx.scope, corePublicUrl: mode.corePublicUrl, corePublicUrlProblem: mode.reason, publicUrl: settings.publicUrl, linear, ...ports },
+        first === null ? {} : { connectionId: connectionIdSchema.parse(first.id) },
+      );
+    });
+    const started = unwrap(result, {
+      forbidden: "FORBIDDEN",
+      "already-connected": "CONFLICT",
+      "invalid-name": "BAD_REQUEST",
+      "name-taken": "CONFLICT",
+      "not-found": "NOT_FOUND",
+      "not-pending": "CONFLICT",
+    });
     return {
       connectionId: started.connectionId,
       manifestUrl: started.manifestUrl,

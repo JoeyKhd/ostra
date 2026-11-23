@@ -74,6 +74,15 @@ beforeAll(async () => {
   open = need(rowsA.get(a.openProject.id));
   restricted = need(rowsA.get(a.restrictedProject.id));
   other = need(rowsB.get(b.project.id));
+  // Milestone 11 (F-152, ADR 0071): B holds several tracker connections, two of one kind and one of
+  // another, each with a board and a ticket on its project; none of them may reach A's answers.
+  for (const [kind, name] of [["linear", "B's second Linear"], ["jira", "B's Jira"], ["jira", "B's second Jira"]] as const) {
+    const connection = await harness.test.db.connection.create({ data: { organizationId: b.organization.id, kind, name, appId: `${kind}-${randomUUID()}`, externalWorkspaceId: randomUUID() } });
+    const board = await harness.test.db.board.create({ data: { organizationId: b.organization.id, projectId: b.project.id, connectionId: connection.id, externalId: "10000", name, statusMap: {} } });
+    await harness.test.db.ticket.create({
+      data: { organizationId: b.organization.id, projectId: b.project.id, boardId: board.id, connectionId: connection.id, externalId: randomUUID(), key: "B-1", title: "B's", url: "https://tracker.invalid/b-1", trackerUpdatedAt: new Date() },
+    });
+  }
   idsOfB = [b.organization.id, ...(await idsWhere(harness.test.db, "organizationId", b.organization.id))];
   idsOfRestricted = [a.restrictedProject.id, ...(await idsWhere(harness.test.db, "projectId", a.restrictedProject.id))];
   // A project admin of the restricted project, who is an ordinary member of the organization.

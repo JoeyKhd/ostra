@@ -63,7 +63,7 @@ const trackers: Pick<ConnectionTrackers, "forConnection"> = {
     Promise.resolve(
       trackerDown
         ? { ok: false, reason: "no-token", message: "down" }
-        : { ok: true, value: { connectionId, tracker: new JiraFakeAdapter({ site }), ownUserId: null, kind: "linear" } },
+        : { ok: true, value: { connectionId, tracker: new JiraFakeAdapter({ site }), ownUserId: null, kind: "linear", name: "Acme Linear" } },
     ),
 };
 

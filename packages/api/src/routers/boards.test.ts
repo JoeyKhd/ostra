@@ -78,7 +78,9 @@ describe("F-007: attaching a board", () => {
     expect(audit?.data).toMatchObject({ boardId: attached.boardId, key: "CALC", doneBy: "ostra" });
   });
 
-  it("F-031/c3: drafts doneBy integration when the tracker's GitHub integration is installed", async () => {
+  // Linear's case (doneBy integration once its GitHub integration is installed) is F-031/c3's test
+  // below, on the fake Linear. This fake moves by transitions, as Jira does: milestone 11's choice 8.
+  it("F-008/c7: a tracker that moves by transitions drafts Done moved by ostra, even with its GitHub integration installed", async () => {
     const other = createJiraSite({ projectKey: "WEB" });
     other.devPanelInstalled = true;
     harness.fakes.tracker.adapter = new JiraFakeAdapter({ site: other });
@@ -89,7 +91,7 @@ describe("F-007: attaching a board", () => {
       expect(team).toBeDefined();
       const attached = await (await admin()).boards.attach({ projectId: projectIdOf(second), teamExternalId: team?.externalId ?? "" });
       expect(attached.integrationInstalled).toBe(true);
-      expect(attached.mapping.doneBy).toBe("integration");
+      expect(attached.mapping.doneBy).toBe("ostra");
       expect((await harness.test.db.board.findUniqueOrThrow({ where: { id: attached.boardId } })).integrationDetected).toBe(true);
     } finally {
       harness.fakes.tracker.adapter = new JiraFakeAdapter({ site });

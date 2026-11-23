@@ -8,8 +8,11 @@ import type { AuditAction } from "../audit/actions.ts";
 // API's `setup.timeline` (ticket 24) reads the rows and hands them here. A step with no entry is
 // `missing`, never 0, so a measure can't pass on a step that didn't happen.
 
-/** The steps, in the checklist's order, ending with the first agent-made PR. */
-export const setupTimelineSteps = ["password", "model-provider", "github", "linear", "project", "runner", "first-task", "first-pr"] as const;
+/**
+ * The steps, in the checklist's order, ending with the first agent-made PR. Milestone 11 (F-152/c7):
+ * `tracker` replaced `linear`, for a tracker connection of either kind.
+ */
+export const setupTimelineSteps = ["password", "model-provider", "github", "tracker", "project", "runner", "first-task", "first-pr"] as const;
 export type SetupTimelineStep = (typeof setupTimelineSteps)[number];
 
 /**
@@ -20,7 +23,8 @@ export const setupStepMarks = {
   password: ["password.changed"],
   "model-provider": ["provider.added"],
   github: ["github.connected", "installation.linked"],
-  linear: ["linear.connected"],
+  // Any tracker connection that became active: `linear.connected` is what milestones 2 to 10 wrote.
+  tracker: ["tracker.connected", "linear.connected"],
   project: ["project.created"],
   // A personal runner registers (and may wait for approval); a pool runner joins with a token.
   runner: ["runner.registered", "runner.approved", "runner.joined"],
@@ -28,8 +32,8 @@ export const setupStepMarks = {
   "first-pr": [],
 } as const satisfies Record<SetupTimelineStep, readonly AuditAction[]>;
 
-/** Linear is optional (F-076): its step is shown, but never counted against setup being done. */
-export const optionalSetupSteps: ReadonlySet<SetupTimelineStep> = new Set<SetupTimelineStep>(["linear"]);
+/** The tracker is optional (F-076): its step is shown, but never counted against setup being done. */
+export const optionalSetupSteps: ReadonlySet<SetupTimelineStep> = new Set<SetupTimelineStep>(["tracker"]);
 
 /** One audit entry as the timeline reads it: IDs and times only. */
 export type SetupAuditEntry = {

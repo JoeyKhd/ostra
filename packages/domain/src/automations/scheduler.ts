@@ -8,7 +8,7 @@ import type { StartPorts } from "../starts/start-task-body.ts";
 import { BULK_START_MAX_DEFAULT } from "../starts/bulk.ts";
 import { minimumIntervalOk, nextOccurrence, parseCron, planOccurrences } from "./cron.ts";
 import type { Cron } from "./cron.ts";
-import { filterTicketOf } from "./intake.ts";
+import { filterTicketOf, openAttachedTicketsInTx } from "./intake.ts";
 import { matchesFilter, parseIntakeFilter } from "./intake-filter.ts";
 import { SCHEDULE_MIN_INTERVAL_MINUTES_DEFAULT } from "./manage.ts";
 
@@ -259,11 +259,7 @@ const startFilterMatches = async (deps: StartPorts & SchedulerOptions, organizat
   }
   const already = await deps.db.automationRun.findMany({ where: { automationId, kind: "ticket_match" }, select: { ticketId: true } });
   const done = new Set(already.map((row) => row.ticketId));
-  const tickets = await deps.db.ticket.findMany({
-    where: { organizationId, projectId: automation.projectId, open: true, removedAt: null, board: { detachedAt: null } },
-    include: { connection: { select: { appUserId: true } } },
-    orderBy: [{ trackerUpdatedAt: "asc" }, { id: "asc" }],
-  });
+  const tickets = await openAttachedTicketsInTx(deps.db, { organizationId, projectId: automation.projectId, order: "asc" });
   const matches = tickets.filter((ticket) => !done.has(ticket.id) && matchesFilter(filterTicketOf(ticket), filter.filter, { appUserId: ticket.connection.appUserId }));
   const started: TaskId[] = [];
   for (const ticket of matches.slice(0, deps.bulkStartMax ?? BULK_START_MAX_DEFAULT)) {

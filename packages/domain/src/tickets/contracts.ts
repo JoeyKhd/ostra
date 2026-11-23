@@ -100,6 +100,9 @@ export const linearAppIdPlaceholders = { pending: "pending", apiKey: "api-key" }
  */
 export const isPendingAppId = (appId: string): boolean => appId === linearAppIdPlaceholders.pending || appId.startsWith(`${linearAppIdPlaceholders.pending}:`);
 
+/** A pending tracker row's `appId`: `pending:<connectionId>`, unique per row (ADR 0071). */
+export const pendingAppIdOf = (connectionId: string): string => `${linearAppIdPlaceholders.pending}:${connectionId}`;
+
 export type ConnectionCredential = DbEnum.ConnectionCredential;
 
 /** The panel's label for the development seed's credential. */

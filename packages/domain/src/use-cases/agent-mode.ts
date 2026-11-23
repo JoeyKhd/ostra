@@ -2,6 +2,7 @@ import { Prisma } from "@ostra/db";
 import { boardIdSchema, connectionIdSchema, projectIdSchema } from "@ostra/protocol";
 
 import { requireOrganizationAdmin, requireProjectAccess } from "../access.ts";
+import { isBoardAttached } from "../lifecycles/m11-trackers.ts";
 import { missingAgentModeScopes } from "./linear-connection.ts";
 import type { EnableAgentMode, SetBoardAgentMode } from "./m6-signatures.ts";
 
@@ -113,8 +114,7 @@ export const setBoardAgentMode: SetBoardAgentMode = async (deps, scope, input) =
         input.on &&
         (board.connection.kind !== "linear" ||
           board.connection.agentModeAt === null ||
-          board.connection.state === "revoked" ||
-          board.detachedAt !== null)
+          !isBoardAttached(board, board.connection))
       ) {
         return {
           ok: false,

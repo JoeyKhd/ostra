@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
+import { attachedBoardWhere } from "../lifecycles/m11-trackers.ts";
 import type { Ports } from "../ports.ts";
 import type { UseCaseResult } from "./common.ts";
 
@@ -29,13 +30,13 @@ export type PromptTicketBoard = { readonly id: BoardId; readonly name: string; r
 
 /**
  * The board the project's prompt tasks get their tickets on, with its name and key (as of the last
- * read), or `null` while the setting is off. Also `null` while that board's tracker connection
- * isn't active: tasks then get no ticket, the board keeps `ticketsForPromptTasks`, and the setting
- * is back once the connection is.
+ * read), or `null` while the setting is off. Also `null` while that board is paused (its tracker
+ * connection isn't active, ADR 0071): tasks then get no ticket, the board keeps
+ * `ticketsForPromptTasks`, and the setting is back once the connection is.
  */
 export const promptTicketBoardViewInTx = async (tx: Pick<Tx, "board">, organizationId: string, projectId: ProjectId): Promise<PromptTicketBoard | null> => {
   const board = await tx.board.findFirst({
-    where: { organizationId, projectId, ticketsForPromptTasks: true, detachedAt: null, connection: { state: "active" } },
+    where: { organizationId, projectId, ticketsForPromptTasks: true, ...attachedBoardWhere },
     select: { id: true, name: true, key: true },
   });
   return board === null ? null : { id: boardIdSchema.parse(board.id), name: board.name, key: board.key };
@@ -67,7 +68,7 @@ export const setPromptTickets = (
     }
     if (input.boardId !== null) {
       const board = await tx.board.findFirst({
-        where: { id: input.boardId, organizationId: scope.organizationId, projectId, detachedAt: null, connection: { state: "active" } },
+        where: { id: input.boardId, organizationId: scope.organizationId, projectId, ...attachedBoardWhere },
         select: { id: true },
       });
       if (board === null) {

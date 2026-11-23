@@ -2,6 +2,7 @@ import type { DbEnum, Prisma, Tx } from "@ostra/db";
 import { organizationIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 import type { BoardId, OrganizationId, RepoId, TaskId, TicketWriteId } from "@ostra/protocol";
 
+import { boardStateOf } from "../lifecycles/m11-trackers.ts";
 import type { JobQueue } from "../ports.ts";
 import { parseBoardMapping } from "./board-mapping.ts";
 import { ticketWriteKey } from "./contracts.ts";
@@ -157,8 +158,13 @@ export const writeTicketStepsInTx = async (
   if (boardId === null) {
     return [];
   }
-  const board = await deps.tx.board.findFirst({ where: { id: boardId, projectId: task.projectId }, select: { id: true, statusMap: true } });
-  if (board === null) {
+  const board = await deps.tx.board.findFirst({
+    where: { id: boardId, projectId: task.projectId },
+    select: { id: true, statusMap: true, detachedAt: true, connection: { select: { state: true } } },
+  });
+  // A paused board's ticket isn't written (ADR 0071): nothing moves on a tracker whose connection
+  // isn't active. A detached board's tasks keep their ticket, and its sync.
+  if (board === null || boardStateOf(board, board.connection).state === "paused") {
     return [];
   }
   const doneByOstra = parseBoardMapping(board.statusMap)?.doneBy === "ostra";

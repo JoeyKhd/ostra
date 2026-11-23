@@ -283,3 +283,8 @@ export * from "./files/model-image-input.ts";
 // Milestone 9 (ticket 06, ADR 0070): a ticket's files and its changes, and reading it again.
 export * from "./tickets/ticket-files.ts";
 export * from "./tickets/read-ticket.ts";
+// Milestone 11 (ticket 05, ADR 0071): tracker connections of any kind, boards per connection, their
+// lifecycles, and the setup step "Connect a tracker".
+export * from "./lifecycles/m11-trackers.ts";
+export * from "./use-cases/tracker-connections.ts";
+export * from "./setup/tracker-step.ts";

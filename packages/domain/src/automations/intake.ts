@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
 import type { AutomationSkipReason } from "../lifecycles/m6.ts";
+import { attachedBoardWhere, isBoardAttached } from "../lifecycles/m11-trackers.ts";
 import { startTask } from "../starts/start-task-body.ts";
 import type { StartPorts } from "../starts/start-task-body.ts";
 import { startRuleFor } from "../starts/start-task.ts";
@@ -107,9 +108,13 @@ export const matchIntakeRules = async (deps: Parameters<MatchIntakeRules>[0] & I
   const skipped: { readonly automationId: AutomationId; readonly reason: AutomationSkipReason }[] = [];
   const ticket = await tx.ticket.findFirst({
     where: { id: input.ticketId, organizationId: input.organizationId },
-    include: { connection: { select: { appUserId: true } } },
+    include: { connection: { select: { appUserId: true } }, board: { select: { detachedAt: true, connection: { select: { state: true } } } } },
   });
   if (ticket?.removedAt !== null) {
+    return { started, skipped };
+  }
+  // A paused or detached board starts nothing (ADR 0071); its ticket's next change after a resume matches again.
+  if (!isBoardAttached(ticket.board, ticket.board.connection)) {
     return { started, skipped };
   }
   const rules = await tx.automation.findMany({ where: activeRulesWhere(input.organizationId, [ticket.projectId]), orderBy: { createdAt: "asc" } });
@@ -174,6 +179,23 @@ export const matchIntakeRules = async (deps: Parameters<MatchIntakeRules>[0] & I
   return { started, skipped };
 };
 
+// ---------- the tickets a rule's dry run and a filter schedule read ----------
+
+/**
+ * The project's open tickets on its attached boards, each with its own connection's app user (what
+ * the filter's "ostra" assignee means on that board): what a rule's dry run and a filter
+ * schedule's occurrence read. A paused board's tickets start nothing (ADR 0071), nor a detached one's.
+ */
+export const openAttachedTicketsInTx = (
+  tx: Pick<Tx, "ticket">,
+  input: { readonly organizationId: string; readonly projectId: string; readonly order: "asc" | "desc" },
+) =>
+  tx.ticket.findMany({
+    where: { organizationId: input.organizationId, projectId: input.projectId, open: true, removedAt: null, board: attachedBoardWhere },
+    include: { connection: { select: { appUserId: true } } },
+    orderBy: [{ trackerUpdatedAt: input.order }, { id: "asc" }],
+  });
+
 // ---------- the dry run (F-011) ----------
 
 /** The most tickets a dry run lists. */
@@ -200,11 +222,7 @@ export const dryRunAutomation = async (deps: Pick<StartPorts, "db">, scope: Para
     }
     requireApproval = automation.requireApproval;
   }
-  const tickets = await deps.db.ticket.findMany({
-    where: { organizationId: scope.organizationId, projectId: project.id, open: true, removedAt: null, board: { detachedAt: null } },
-    include: { connection: { select: { appUserId: true } } },
-    orderBy: [{ trackerUpdatedAt: "desc" }, { id: "asc" }],
-  });
+  const tickets = await openAttachedTicketsInTx(deps.db, { organizationId: scope.organizationId, projectId: project.id, order: "desc" });
   const matching = tickets.filter((ticket) => matchesFilter(filterTicketOf(ticket), input.filter, { appUserId: ticket.connection.appUserId }));
   const ids = matching.map((ticket) => ticket.id);
   const [active, matched] = await Promise.all([

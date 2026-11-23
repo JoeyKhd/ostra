@@ -6,7 +6,7 @@
 
 ```
 Install ── Organization ─┬─ Member (admin | member)
-                         ├─ Connection (GitHub Apps, the Linear app) ── Installation (linked)
+                         ├─ Connection (GitHub Apps; tracker connections: Linear workspaces, Jira sites) ── Installation (linked)
                          ├─ Model provider ── Model
                          ├─ Runner pool ── Runner        (a personal runner belongs to one member)
                          ├─ Agent profile ── Library item (attached, or on every profile)
@@ -36,7 +36,7 @@ Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ P
 |---|---|---|
 | **Organization** | the install | The data model holds many. An install starts with one, and the first account is the instance admin (Q102, F-049). In v1 an install runs that one organization, with a team's clients as projects inside it; installs with several come after v1 (F-134, 2026-11-19). Every other record belongs to exactly one organization (ADR 0026). |
 | **Member** | an organization | An account with a unique username, an email address and a password (Q54, F-002). One account can be a member of several organizations in the data model, and in the product after v1 (F-134). Is an admin or a member of the organization (Q35, F-003). Links a GitHub account once, for identity only: co-author credit, `@ostra` and matching reviewers (Q55, F-119, F-053). |
-| **Connection** | an organization | The organization's own GitHub App and Linear app, and any App a client's GitHub organization owns, connected beside it. Webhooks are routed by connection, not by one install-wide address (Q102, F-005, F-006, F-136). |
+| **Connection** | an organization | The organization's own GitHub App and any App a client's GitHub organization owns, connected beside it; and its tracker connections, each one Linear workspace or one Jira Cloud site, named, any number of any kind, one per workspace or site (ADR 0071). Webhooks are routed by connection, not by one install-wide address, and a board's tickets move only through its own connection (Q102, F-005, F-006, F-136, F-152). |
 | **Installation** | a connection | A GitHub account's install of the App, with the repos that account chose. ostra works only through a linked one: the App owner's own account is linked when seen, any other waits until an organization admin links it. For an installation that isn't linked, ostra mints no token, offers no repo and stores no webhook delivery (Q279, Q280, F-136). |
 | **Model provider** | an organization | An API base URL and a token, in one of the two API formats that "Test connection" detects (Q34, F-088). Each is one key, and an organization may hold several that serve the same models, one per client (F-135). Usable on personal runners only when an admin allows it for that provider; off by default (Q47). |
 | **Model** | a model provider | Listed from the endpoint itself. Names, limits and prices come from the models.dev catalog, the endpoint's own list, or a price an admin enters (Q34, Q105). |
@@ -55,7 +55,7 @@ Outside ostra:  Ticket (the tracker) ── source of ──▶ Task ──▶ P
 | **Project** | an organization | A product the organization works on: its repos, boards, environment, automations, memory and tasks (Q28, Q29, F-086). Open to the whole organization, or restricted to listed members (Q35, F-087). Names the pools it may use, a default box size and a default agent profile per task kind (Q32, Q43). Follows the organization's default provider list or has its own, which only an organization admin edits. The list decides which agent profiles run there (those whose provider it holds), and serves each model of a profile with no provider from exactly one provider on it (Q270, Q272, Q273, F-135). |
 | **Project member** | a project | A member's role in a restricted project: admin or member (Q35, F-087). |
 | **Repo** | a project | A GitHub repo from a linked installation of one of the organization's Apps, linked to the project. A project's repos may come from several GitHub accounts (F-136). A repo linked to two projects is two links, with a separate set of secrets in each environment (Q29). |
-| **Board** | a project | A Linear team or Linear project, later a Jira project or board. Maps ticket statuses, "ready" among them (Q67, F-007, F-031). A project may have no board and run on prompts only (Q31). |
+| **Board** | a project | A Linear team or Linear project, or a Jira project, through one tracker connection; a project may attach boards of several connections and kinds, and the same external ID under two connections is two boards. Maps ticket statuses to its steps' target statuses, "ready" among them (Q67, F-007, F-031, F-152). A project may have no board and run on prompts only (Q31). |
 | **Environment** | a project | One per project: the recipe for every box. A base image, a setup script, services, checks, and variables, secrets and files that each belong to one repo (Q33, F-050). Drafted by detection (Q2, F-112), and checked by the onboarding task (Q49, F-113). |
 | **Variable or secret** | an environment | Names one repo. A secret marked "available during setup" is mounted for the snapshot's build only (Q39). Secrets stay visible to the code under test (Q17). |
 | **Service** | an environment | A program started beside the agent for its tests, such as a database: image, variables, port, health check (Q40, Q96, F-094). The `host` executor starts none (ADR 0029). |
@@ -370,6 +370,37 @@ A task in `queued` waits in the pool queue of every pool of its project that cou
 | **removed** | Kept for history: their name shows with "(removed)". Their project roles, personal runners, CLI sessions, driving and pending invitations ended with the removal | Never. Invited again, they get a new membership |
 
 An **invitation** is `pending` until it's accepted, revoked or expired (7 days *(working value)*), and works once. Its link is its ID.
+
+## A tracker connection's lifecycle
+
+*Added 2026-11-23 for milestone 11 (ADR 0071, F-152, F-008). The code: `packages/domain/src/lifecycles/m11-trackers.ts`.*
+
+```
+ pending ──▶ active ◀──▶ failed
+    │          │           │
+    └──────────┴─────┬─────┘
+                     ▼
+                  revoked ──▶ (resumed into the next connection of its site, once)
+```
+
+| State | Means | Leaves when |
+|---|---|---|
+| **pending** | Made, not connected yet: Linear's app waits for its values or its consent, Jira's steps for the site, the token and the first signed delivery. Its `appId` is `pending:<id>`, so several connections can be pending at once | It connects: Linear's consent, Jira's first signed delivery or its polling finish (→ active), or an admin disconnects it (→ revoked) |
+| **active** | Connected: its events arrive and its boards are attached | Its token stops working: refused, expired, not refreshed (→ failed), or an admin disconnects it (→ revoked) |
+| **failed** | Its token stopped working, with the reason in words and IDs. Its boards pause | The token is fixed: re-authorized, replaced (→ active), or an admin disconnects it (→ revoked) |
+| **revoked** | Disconnected: its secrets are deleted and its `appId` given back. It keeps its history, and holds neither its name nor its site | Never. When a later connection of the same kind and site becomes active, it takes this one's paused boards and their tickets in the same transaction, and this one names it (`resumedInto`) |
+
+An organization holds one connection per workspace or site among those not revoked, and each has a name no other of them has.
+
+## A board's state
+
+*Added 2026-11-23 for milestone 11 (ADR 0071, F-152). Derived, never stored: `boardStateOf(board, connection)` is the one derivation, and `attachedBoardWhere` the same rule as a query.*
+
+| State | Means | Leaves when |
+|---|---|---|
+| **attached** | Its connection is active: polled, its tickets start tasks, ticket sync moves them | Its connection fails or is disconnected (→ paused), or a project admin detaches it (→ detached) |
+| **paused** | Its connection isn't active: `pausedBy` is `failed`, or `disconnected` (revoked, or not connected yet). It stays the project's board with its mapping, tickets and tasks, read-only: nothing moves on the tracker, it isn't polled, and no rule, schedule, prompt ticket or start begins a task from it | Its connection is active again, or the same site connects again and takes it (→ attached), or a project admin detaches it (→ detached) |
+| **detached** | A project admin detached it: no polling, no new task; its tickets stay cached and its tasks keep their links and their ticket sync | Its team or project is attached again, through its active connection (→ attached) |
 
 ## The library's lifecycles
 

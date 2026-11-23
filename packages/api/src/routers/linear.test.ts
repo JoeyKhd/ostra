@@ -101,7 +101,8 @@ describe("F-005: the whole flow, from start to active", () => {
     });
     expect(manifest.webhook?.resourceTypes).toEqual(["Issue", "Comment", "Attachment", "IssueLabel", "OAuthAuthorization", "AgentSessionEvent"]);
     const pending = await rowOf();
-    expect(pending).toMatchObject({ id: started.connectionId, state: "pending", appId: "pending", webhookMode: "webhooks", credentialKind: "app_oauth", createdByMemberId: harness.fixture.a.admin.id });
+    // Milestone 11 (ADR 0071): a pending row's placeholder names the row, so several can be pending.
+    expect(pending).toMatchObject({ id: started.connectionId, state: "pending", appId: `pending:${started.connectionId}`, webhookMode: "webhooks", credentialKind: "app_oauth", createdByMemberId: harness.fixture.a.admin.id });
     const waiting = await admin.linear.status();
     expect(waiting).toMatchObject({ state: "pending", appSaved: false, manifestUrl: started.manifestUrl });
     expect(waiting.state === "none" ? null : waiting.startedByName).not.toBeNull();
@@ -213,7 +214,7 @@ describe("F-005: the whole flow, from start to active", () => {
     const admin = await adminOn("session-1");
     const { started, app } = await startAndCreateApp(admin);
     await expect(admin.linear.saveApp({ connectionId: started.connectionId, clientId: app.clientId, clientSecret: app.clientSecret })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    expect((await rowOf())?.appId).toBe("pending");
+    expect((await rowOf())?.appId).toBe(`pending:${started.connectionId}`);
   });
 });
 
@@ -364,7 +365,7 @@ describe("F-005: who may do what", () => {
     await expect(other.linear.disconnect({ connectionId: started.connectionId })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(other.linear.saveApp({ connectionId: started.connectionId, clientId: app.clientId, clientSecret: app.clientSecret, webhookSecret: app.webhookSecret })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(other.linear.authorizeUrl({ connectionId: started.connectionId })).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect((await rowOf())?.appId).toBe("pending");
+    expect((await rowOf())?.appId).toBe(`pending:${started.connectionId}`);
   });
 
   it("never returns a secret: not the client secret, not the webhook secret, not a token, not the verifier", async () => {

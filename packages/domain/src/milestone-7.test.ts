@@ -195,13 +195,13 @@ describe("setup's timeline (F-076)", () => {
     expect(timeline.steps.map((row) => row.step)).toEqual([...setupTimelineSteps]);
     expect(timeline.steps.map((row) => (row.state === "done" ? row.sinceStartMs / minute : row.state))).toEqual([1, 3, 6, "missing", 9, 12, 14, 22]);
     expect(timeline.steps.find((row) => row.step === "project")).toMatchObject({ state: "done", at: start + 9 * minute });
-    // Linear is optional: missing, but setup is complete without it.
-    expect(timeline.steps.find((row) => row.step === "linear")).toEqual({ step: "linear", state: "missing", optional: true });
+    // The tracker is optional: missing, but setup is complete without it.
+    expect(timeline.steps.find((row) => row.step === "tracker")).toEqual({ step: "tracker", state: "missing", optional: true });
     expect(timeline.missing).toEqual([]);
     expect(timeline.totalMs).toBe(22 * minute);
     // Connected, it's measured like any other step.
     const withLinear = setupTimeline(organizationId, { start, entries: [...entries, entry("linear.connected", 7)], firstPullRequestOpenedAt: start + 22 * minute });
-    expect(withLinear.steps.find((row) => row.step === "linear")).toMatchObject({ state: "done", sinceStartMs: 7 * minute });
+    expect(withLinear.steps.find((row) => row.step === "tracker")).toMatchObject({ state: "done", sinceStartMs: 7 * minute });
   });
 
   it("F-076: a missing step is reported missing, not zero, and leaves no total", () => {

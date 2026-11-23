@@ -2,7 +2,7 @@ import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger, SecretStoreAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import type { Db, DbEnum } from "@ostra/db";
-import { postgresIdempotencyStore, postgresRateBudgetStore } from "@ostra/domain";
+import { defaultConnectionName, isTrackerKind, postgresIdempotencyStore, postgresRateBudgetStore } from "@ostra/domain";
 import type { Clock, ConnectionTracker } from "@ostra/domain";
 import { connectionIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
@@ -13,7 +13,8 @@ import type { ConnectionId, OrganizationId } from "@ostra/protocol";
 // never leaves this module or the adapter: never a log line, never an error message.
 
 export type TrackerLookup =
-  | { readonly ok: true; readonly value: ConnectionTracker & { readonly kind: DbEnum.ConnectionKind } }
+  /** The connection's tracker, with its kind and name (milestone 11). */
+  | { readonly ok: true; readonly value: ConnectionTracker }
   | {
       readonly ok: false;
       /** `not-active`: pending, failed or revoked; writes and polling stop for it, visibly. */
@@ -86,10 +87,14 @@ export const createConnectionTrackers = (deps: ConnectionTrackersDeps): Connecti
     forConnection: async (organizationId, connectionId) => {
       const row = await deps.db.connection.findFirst({
         where: { id: connectionId, organizationId },
-        select: { id: true, kind: true, state: true, credentialKind: true, accessTokenSecretRef: true, appUserId: true },
+        select: { id: true, kind: true, name: true, externalWorkspaceName: true, state: true, credentialKind: true, accessTokenSecretRef: true, appUserId: true },
       });
       if (row === null) {
         return { ok: false, reason: "not-found", message: "no such connection" };
+      }
+      const kind = row.kind;
+      if (!isTrackerKind(kind)) {
+        return { ok: false, reason: "unsupported", message: `a ${kind} connection has no tracker` };
       }
       if (row.state !== "active") {
         cache.delete(connectionId);
@@ -121,7 +126,7 @@ export const createConnectionTrackers = (deps: ConnectionTrackersDeps): Connecti
       }
       const value = {
         ok: true,
-        value: { connectionId: connectionIdSchema.parse(row.id), tracker, ownUserId: row.appUserId, kind: row.kind },
+        value: { connectionId: connectionIdSchema.parse(row.id), kind, name: row.name ?? defaultConnectionName(kind, row.externalWorkspaceName), tracker, ownUserId: row.appUserId },
       } as const;
       cache.set(connectionId, { value, secretRef: row.accessTokenSecretRef, until: now + CACHE_MS });
       return value;

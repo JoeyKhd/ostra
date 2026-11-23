@@ -1,6 +1,6 @@
 import type { AdapterError } from "@ostra/adapter-sdk";
 import type { Tx } from "@ostra/db";
-import { boardIdSchema, projectIdSchema } from "@ostra/protocol";
+import { boardIdSchema, connectionIdSchema, projectIdSchema } from "@ostra/protocol";
 import type { BoardId } from "@ostra/protocol";
 import { z } from "zod";
 
@@ -9,8 +9,10 @@ import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import { boardMappingSchema, draftBoardMapping, parseBoardMapping, unknownMappedStatuses } from "../tickets/board-mapping.ts";
 import type { BoardMapping } from "../tickets/board-mapping.ts";
+import { boardStateOf } from "../lifecycles/m11-trackers.ts";
 import type { UseCaseResult } from "./common.ts";
-import type { ConnectionTracker } from "./linear-connection.ts";
+import { isTrackerKind, trackerServesBoard } from "./tracker-connections.ts";
+import type { ConnectionTracker } from "./tracker-connections.ts";
 
 // F-007, F-031: a project admin attaches a tracker's team to the project as a board, and edits its
 // status mapping (spec section 3, step 2). Attaching reads the team's statuses and the GitHub
@@ -18,11 +20,16 @@ import type { ConnectionTracker } from "./linear-connection.ts";
 // saves the board; the admin can change any of the four targets, `doneBy` and the magic word.
 // Written by ticket 28. The tracker is asked inside the caller's transaction, so the board and
 // the answer it was drafted from commit together.
+// Milestone 11 (F-152, ADR 0071): a board is a team or project of one of the organization's
+// active connections, of any kind, named by the connection and its external ID; the same external
+// ID under two connections is two boards. A connection's tracker only ever serves its own boards.
 
 export const attachBoardInputSchema = z.strictObject({
   projectId: projectIdSchema,
-  /** The tracker's ID of the team (`listBoards`). */
-  teamExternalId: z.string().min(1).max(256),
+  /** The connection the team or project is on: one of the organization's, active. */
+  connectionId: connectionIdSchema,
+  /** The tracker's ID of the team or project (`listBoards`). */
+  externalId: z.string().min(1).max(256),
 });
 export type AttachBoardInput = z.infer<typeof attachBoardInputSchema>;
 
@@ -30,6 +37,7 @@ export type AttachBoardResult = UseCaseResult<
   { readonly boardId: BoardId; readonly mapping: BoardMapping; readonly integrationInstalled: boolean },
   | "not-found"
   | "forbidden"
+  /** The connection isn't the organization's, isn't a tracker's, or isn't active: a paused one's board can't be attached. */
   | "no-connection"
   | "already-attached"
   | "no-started-status"
@@ -62,11 +70,18 @@ export const attachBoard: AttachBoard = async (deps, input) => {
   if (!access.ok) {
     return access.code === "not-found" ? refuseAttach("not-found", "No such project") : refuseAttach("forbidden", "Only the project's admins attach a board");
   }
-  const connection = await tx.connection.findFirst({ where: { id: tracker.connectionId, organizationId, kind: "linear" } });
-  if (connection?.state !== "active") {
-    return refuseAttach("no-connection", "This organization isn't connected to a tracker yet");
+  // The board's own connection, by its ID and the organization: never "the organization's" tracker.
+  if (!trackerServesBoard(tracker, { connectionId: input.connectionId })) {
+    return refuseAttach("no-connection", "That tracker isn't this connection's");
   }
-  const existing = await tx.board.findFirst({ where: { projectId: project.id, organizationId, externalId: input.teamExternalId } });
+  const connection = await tx.connection.findFirst({ where: { id: input.connectionId, organizationId }, select: { id: true, kind: true, state: true } });
+  if (connection === null || !isTrackerKind(connection.kind)) {
+    return refuseAttach("no-connection", "No such tracker connection in this organization");
+  }
+  if (connection.state !== "active") {
+    return refuseAttach("no-connection", "That tracker connection isn't connected: finish or fix it on Trackers first");
+  }
+  const existing = await tx.board.findFirst({ where: { projectId: project.id, organizationId, connectionId: connection.id, externalId: input.externalId } });
   if (existing !== null && existing.detachedAt === null) {
     return refuseAttach("already-attached", "That team is already a board of this project");
   }
@@ -75,7 +90,7 @@ export const attachBoard: AttachBoard = async (deps, input) => {
   if (!boards.ok) {
     return refuseAttach("tracker-failed", trackerWords(boards.error));
   }
-  const team = boards.value.find((candidate) => candidate.externalId === input.teamExternalId);
+  const team = boards.value.find((candidate) => candidate.externalId === input.externalId);
   if (team === undefined) {
     return refuseAttach("not-found", "The connection can't see that team");
   }
@@ -89,7 +104,8 @@ export const attachBoard: AttachBoard = async (deps, input) => {
   const integration = await tracker.tracker.detectCodeHostIntegration({ externalId: team.externalId });
   const installed = integration.ok && integration.value.installed;
 
-  const draft = draftBoardMapping(statuses.value, { installed });
+  // A tracker that moves by transitions (Jira) has Done moved by ostra by default (choice 8).
+  const draft = draftBoardMapping(statuses.value, { installed, transitions: tracker.tracker.capabilities.transitions });
   if (!draft.ok) {
     return refuseAttach(draft.reason, draft.reason === "no-started-status" ? "The team has no started status to move tickets to" : "The team has no done status to move tickets to");
   }
@@ -101,7 +117,7 @@ export const attachBoard: AttachBoard = async (deps, input) => {
   const board =
     existing === null
       ? await tx.board.create({ data: { organizationId, projectId: project.id, connectionId: connection.id, externalId: team.externalId, ...data }, select: { id: true } })
-      : await tx.board.update({ where: { id: existing.id }, data: { ...data, connectionId: connection.id, pollCursor: null }, select: { id: true } });
+      : await tx.board.update({ where: { id: existing.id }, data: { ...data, pollCursor: null }, select: { id: true } });
   const boardId = boardIdSchema.parse(board.id);
   const projectId = projectIdSchema.parse(project.id);
 
@@ -112,7 +128,7 @@ export const attachBoard: AttachBoard = async (deps, input) => {
     action: "board.attached",
     entity: "project",
     entityId: projectId,
-    data: { boardId, key: team.key, doneBy: mapping.doneBy, integrationInstalled: installed },
+    data: { boardId, connectionId: input.connectionId, kind: connection.kind, key: team.key, doneBy: mapping.doneBy, integrationInstalled: installed },
   });
   await deps.notices.emitInTx(tx, { organizationId, projectId, entity: "project", entityId: projectId });
   return { ok: true, boardId, mapping, integrationInstalled: installed };
@@ -126,7 +142,12 @@ export type SaveBoardMappingInput = z.infer<typeof saveBoardMappingInputSchema>;
 
 export type SaveBoardMappingResult = UseCaseResult<
   { readonly mapping: BoardMapping },
-  "not-found" | "forbidden" | "unknown-status" | "tracker-failed"
+  | "not-found"
+  | "forbidden"
+  | "unknown-status"
+  | "tracker-failed"
+  /** Milestone 11 (F-152/c5): the board's connection isn't active: its mapping reads only until it is. */
+  | "board-paused"
 >;
 
 export type SaveBoardMapping = (deps: AttachBoardDeps, input: SaveBoardMappingInput) => Promise<SaveBoardMappingResult>;
@@ -136,13 +157,23 @@ const refuseSave = (error: Exclude<SaveBoardMappingResult, { readonly ok: true }
 export const saveBoardMapping: SaveBoardMapping = async (deps, input) => {
   const { tx, scope, tracker } = deps;
   const organizationId = scope.organizationId;
-  const board = await tx.board.findFirst({ where: { id: input.boardId, organizationId }, include: { project: { select: { id: true, access: true } } } });
+  const board = await tx.board.findFirst({
+    where: { id: input.boardId, organizationId },
+    include: { project: { select: { id: true, access: true } }, connection: { select: { state: true } } },
+  });
   if (board === null) {
     return refuseSave("not-found", "No such board");
   }
   const access = requireProjectAccess(scope, { id: projectIdSchema.parse(board.project.id), organizationId, access: board.project.access }, "admin");
   if (!access.ok) {
     return access.code === "not-found" ? refuseSave("not-found", "No such board") : refuseSave("forbidden", "Only the project's admins change a board's mapping");
+  }
+  if (boardStateOf(board, board.connection).state === "paused") {
+    return refuseSave("board-paused", "This board's tracker connection isn't connected: its mapping reads only until it is");
+  }
+  // Only the board's own connection's tracker reads its statuses (ADR 0071).
+  if (!trackerServesBoard(tracker, board)) {
+    return refuseSave("tracker-failed", "That tracker isn't this board's connection's");
   }
   const statuses = await tracker.tracker.listStatuses({ externalId: board.externalId });
   if (!statuses.ok) {

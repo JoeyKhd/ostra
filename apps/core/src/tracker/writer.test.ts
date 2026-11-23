@@ -314,13 +314,18 @@ describe("the tracker writer, on the Jira fake", () => {
     expect((await issueOf(ticketId))?.statusId).toBe("10001");
 
     const failedConnection = await bench(jira, { externalId: projectId(), mappingFrom: jira, doneBy: "ostra" }, { where: "b" });
-    await test.db.connection.update({ where: { id: failedConnection.connectionId }, data: { state: "failed" } });
     const issue = site.createIssue(projectId(), { summary: "Stranded" });
     const stranded = await ticketTask(failedConnection, await jira.getTicket({ externalId: projectId() }, { externalId: issue.externalId }));
+    // Written while the connection was active, applied after it failed: each fails, visibly.
     await write(stranded.taskId, started(stranded.taskId));
+    await test.db.connection.update({ where: { id: failedConnection.connectionId }, data: { state: "failed" } });
     await syncAll(failedConnection.deps(), stranded.taskId);
     const rows = await writesOf(stranded.taskId);
+    expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((row) => row.state === "failed" && (row.error ?? "").includes("the connection is failed"))).toBe(true);
+    // Milestone 11 (ADR 0071): its board is paused now, and ticket sync writes nothing more to it.
+    expect(await write(stranded.taskId, { kind: "progress", reason: "state", revision: "paused:1" })).toEqual([]);
+    expect(await writesOf(stranded.taskId)).toHaveLength(rows.length);
   });
 
   it("Create ticket makes one ticket holding the task's link, caches it, links the task, and survives a 500 after the create", async () => {

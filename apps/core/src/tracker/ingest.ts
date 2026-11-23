@@ -1,6 +1,6 @@
 import type { Logger, Ticket } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { boardsOnSameTeam, enqueueIntakeMatchesInTx, ingestTicketHint, markTicketRemovedInTx, recordTicketsClosed, upsertTicketCacheInTx } from "@ostra/domain";
+import { boardStateOf, boardsOnSameTeam, enqueueIntakeMatchesInTx, ingestTicketHint, markTicketRemovedInTx, recordTicketsClosed, upsertTicketCacheInTx } from "@ostra/domain";
 import type { ChangeNotices, Clock, JobQueue, TicketClosedDeps } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { boardIdSchema, connectionIdSchema, organizationIdSchema, projectIdSchema } from "@ostra/protocol";
@@ -121,13 +121,15 @@ export const pollBoard = async (
   const { db } = deps;
   const board = await db.board.findFirst({
     where: { id: input.boardId, organizationId: input.organizationId },
-    select: { id: true, externalId: true, pollCursor: true, detachedAt: true, connectionId: true, connection: { select: { webhookMode: true, lastEventAt: true } } },
+    select: { id: true, externalId: true, pollCursor: true, detachedAt: true, connectionId: true, connection: { select: { webhookMode: true, lastEventAt: true, state: true } } },
   });
   if (board === null) {
     return { outcome: "skipped", reason: "no such board" };
   }
-  if (board.detachedAt !== null) {
-    return { outcome: "skipped", reason: "the board is detached" };
+  // Only an attached board is polled (ADR 0071): a paused one's connection isn't active.
+  const state = boardStateOf(board, board.connection);
+  if (state.state !== "attached") {
+    return { outcome: "skipped", reason: `the board is ${state.state}` };
   }
   const lookup = await deps.trackers.forConnection(input.organizationId, connectionIdSchema.parse(board.connectionId));
   if (!lookup.ok) {
@@ -264,8 +266,11 @@ export const createPollSchedules = (deps: PollScheduleDeps) => {
       let scheduled = 0;
       let dropped = 0;
       for (const board of boards) {
+        // Attached boards only: a paused board (its connection pending, failed or revoked) isn't
+        // polled, and is again once its connection is active (ADR 0071). Linear's only until
+        // ticket 07 builds Jira's adapter here.
         const wanted =
-          board.detachedAt === null && board.connection.kind === "linear" && board.connection.state !== "revoked"
+          boardStateOf(board, board.connection).state === "attached" && board.connection.kind === "linear"
             ? cronEveryMinutes(board.connection.webhookMode === "polling" ? deps.pollSeconds / 60 : deps.reconcileMinutes)
             : null;
         const had = known.get(board.id);

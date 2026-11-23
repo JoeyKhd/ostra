@@ -52,11 +52,11 @@ const records: LogRecord[] = [];
 const logger = createLogger((record) => records.push(record));
 const PUBLIC_URL = "http://localhost:3000";
 
-const tracker = (): ConnectionTracker => ({ connectionId, tracker: linear, ownUserId: fake.appUser()?.id ?? null });
+const tracker = (): ConnectionTracker => ({ connectionId, kind: "linear", name: "Acme Linear", tracker: linear, ownUserId: fake.appUser()?.id ?? null });
 const boardDeps = () => ({ scope: admin, tracker: tracker(), notices: postgresChangeNotices, audit: postgresAuditLog, clock: systemClock });
 
 const attach = async (teamExternalId: string) => {
-  const attached = await test.db.$transaction((tx) => attachBoard({ tx, ...boardDeps() }, { projectId: world.projectId, teamExternalId }));
+  const attached = await test.db.$transaction((tx) => attachBoard({ tx, ...boardDeps() }, { projectId: world.projectId, connectionId, externalId: teamExternalId }));
   if (!attached.ok) throw new Error(`attach: ${attached.message}`);
   return { boardId: attached.boardId, mapping: attached.mapping, integrationInstalled: attached.integrationInstalled };
 };

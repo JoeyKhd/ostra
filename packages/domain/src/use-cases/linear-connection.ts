@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { secretRefSchema } from "@ostra/adapter-sdk";
-import type { SecretRef, TrackerAdapter, TrackerCapabilities } from "@ostra/adapter-sdk";
+import type { SecretRef, TrackerCapabilities } from "@ostra/adapter-sdk";
 import type { Db, Tx } from "@ostra/db";
 import { connectionIdSchema, organizationIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
@@ -10,13 +10,16 @@ import { z } from "zod";
 import { requireOrganizationAdmin } from "../access.ts";
 import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
-import { isPendingAppId, linearAppIdPlaceholders } from "../tickets/contracts.ts";
+import { isPendingAppId, linearAppIdPlaceholders, pendingAppIdOf } from "../tickets/contracts.ts";
 import type { UseCaseResult } from "./common.ts";
+import { connectionNameSchema, defaultConnectionName, freeConnectionName, nameTakenBy } from "./tracker-connections.ts";
 
 // F-005: an organization connects its own Linear app (spec section 3, step 1; section 11, items 2
 // and 3). Three steps, each a use case:
 // 1. `startLinearConnection`: an admin presses "Connect Linear". A `pending` connection row is
-//    made first, so the manifest link can name its webhook URL, and the link is returned.
+//    made first, so the manifest link can name its webhook URL, and the link is returned. Since
+//    milestone 11 (F-152, ADR 0071) every start makes a new named connection: an organization
+//    holds several Linear workspaces, one connection each, and several may be pending at once.
 // 2. `connectLinear`: the admin pastes the app's client ID, client secret and webhook signing
 //    secret. They go to the secret store, and an `OAuthState` (state and PKCE verifier) is made,
 //    bound to the admin's panel session; the answer is Linear's authorize URL (`actor=app`).
@@ -169,9 +172,21 @@ const adminOnly = <E extends string>(scope: MemberScope, error: E): { readonly o
 
 // ---------- 1. start ----------
 
+export const startLinearConnectionInputSchema = z.strictObject({
+  /** The connection's name; prefilled from the kind (`Linear`, then `Linear 2`…) when not given. */
+  name: connectionNameSchema.optional(),
+  /**
+   * A pending Linear connection of the organization to pick up where it was left (its page's
+   * manifest link again), instead of a new one.
+   */
+  connectionId: connectionIdSchema.optional(),
+});
+export type StartLinearConnectionInput = z.infer<typeof startLinearConnectionInputSchema>;
+
 export type StartLinearConnectionResult = UseCaseResult<
   {
     readonly connectionId: ConnectionId;
+    readonly name: string;
     /** Linear's "create an app from this manifest" link, pre-filled. */
     readonly manifestUrl: string;
     readonly callbackUrl: string;
@@ -181,17 +196,18 @@ export type StartLinearConnectionResult = UseCaseResult<
     /** Why polling, as the pre-check's code, when it is and the pre-check said; otherwise `null`. */
     readonly modeReason: LinearAddressProblem | null;
   },
-  "forbidden" | "already-connected"
+  "forbidden" | "invalid-name" | "name-taken" | "not-found" | "not-pending"
 >;
 
-export type StartLinearConnection = (deps: LinearConnectionDeps) => Promise<StartLinearConnectionResult>;
+export type StartLinearConnection = (deps: LinearConnectionDeps, input?: StartLinearConnectionInput) => Promise<StartLinearConnectionResult>;
 
 /**
- * Makes the `pending` connection row (or finds the one this organization started and left), and
- * the manifest link for it. One Linear connection per organization: a second start while one is
- * active or failed is refused, and a pending one is picked up where it was left.
+ * Makes a new named `pending` connection row and the manifest link for it (milestone 11: always a
+ * new row, `appId` `pending:<id>`, so several connections, pending ones too, sit side by side). A
+ * name another connection of the organization holds is `name-taken`. With `connectionId`, picks up
+ * that pending connection instead: its mode follows the address as it is now.
  */
-export const startLinearConnection: StartLinearConnection = async (deps) => {
+export const startLinearConnection: StartLinearConnection = async (deps, input = {}) => {
   const { tx, scope } = deps;
   const organizationId = scope.organizationId;
   const denied = adminOnly(scope, "forbidden" as const);
@@ -199,42 +215,58 @@ export const startLinearConnection: StartLinearConnection = async (deps) => {
 
   const mode = deps.corePublicUrl === null ? ("polling" as const) : ("webhooks" as const);
   const modeReason = mode === "polling" ? (deps.corePublicUrlProblem ?? null) : null;
-  const existing = await tx.connection.findFirst({ where: { organizationId, kind: "linear", state: { not: "revoked" } } });
-  if (existing !== null && existing.state !== "pending") {
-    return { ok: false, error: "already-connected", message: "This organization is already connected to Linear. Disconnect it first to connect another workspace" };
-  }
-  const row =
-    existing !== null
-      ? await tx.connection.update({ where: { id: existing.id }, data: { webhookMode: mode } })
-      : await tx.connection.create({
-          data: {
-            organizationId,
-            kind: "linear",
-            appId: linearAppIdPlaceholders.pending,
-            state: "pending",
-            webhookMode: mode,
-            credentialKind: "app_oauth",
-            createdByMemberId: scope.memberId,
-          },
-        });
-  const connectionId = connectionIdSchema.parse(row.id);
-  const callbackUrl = linearCallbackUrl(deps.publicUrl);
-  const webhookUrl = deps.corePublicUrl === null ? null : linearWebhookUrl(deps.corePublicUrl, connectionId);
-  const manifestUrl = deps.linear.manifestUrl({ name: linearAppName(deps.publicUrl), callbackUrl, webhookUrl });
-
-  if (existing === null) {
+  let row: { readonly id: string; readonly name: string | null };
+  if (input.connectionId !== undefined) {
+    // A lookup by ID; the kind only guards that it's Linear's.
+    const pending = await tx.connection.findFirst({ where: { id: input.connectionId, organizationId, kind: "linear" }, select: { id: true, state: true } });
+    if (pending === null || pending.state === "revoked") {
+      return { ok: false, error: "not-found", message: "No such Linear connection" };
+    }
+    if (pending.state !== "pending") {
+      return { ok: false, error: "not-pending", message: "This connection is already set up" };
+    }
+    row = await tx.connection.update({ where: { id: pending.id }, data: { webhookMode: mode }, select: { id: true, name: true } });
+  } else {
+    const named = input.name === undefined ? null : connectionNameSchema.safeParse(input.name);
+    if (named?.success === false) {
+      return { ok: false, error: "invalid-name", message: "A connection's name is 1 to 60 characters" };
+    }
+    const name = named?.data ?? (await freeConnectionName(tx, organizationId, defaultConnectionName("linear", null)));
+    const holder = await nameTakenBy(tx, organizationId, name);
+    if (holder !== null) {
+      return { ok: false, error: "name-taken", message: `Another connection is already called ${holder.name}. Pick another name` };
+    }
+    const created = await tx.connection.create({
+      data: {
+        organizationId,
+        kind: "linear",
+        name,
+        // Unique under (organization, kind, app) until the row's own ID replaces it, a moment later.
+        appId: pendingAppIdOf(randomBytes(16).toString("hex")),
+        state: "pending",
+        webhookMode: mode,
+        credentialKind: "app_oauth",
+        createdByMemberId: scope.memberId,
+      },
+      select: { id: true },
+    });
+    row = await tx.connection.update({ where: { id: created.id }, data: { appId: pendingAppIdOf(created.id) }, select: { id: true, name: true } });
     await deps.audit.recordInTx(tx, {
       organizationId,
       projectId: null,
       actor: { kind: "member", id: scope.memberId },
-      action: "linear.started",
+      action: "tracker.connection-created",
       entity: "connection",
-      entityId: connectionId,
-      data: { mode },
+      entityId: connectionIdSchema.parse(row.id),
+      data: { kind: "linear", mode },
     });
   }
+  const connectionId = connectionIdSchema.parse(row.id);
+  const callbackUrl = linearCallbackUrl(deps.publicUrl);
+  const webhookUrl = deps.corePublicUrl === null ? null : linearWebhookUrl(deps.corePublicUrl, connectionId);
+  const manifestUrl = deps.linear.manifestUrl({ name: linearAppName(deps.publicUrl), callbackUrl, webhookUrl });
   await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
-  return { ok: true, connectionId, manifestUrl, callbackUrl, webhookUrl, mode, modeReason };
+  return { ok: true, connectionId, name: row.name ?? defaultConnectionName("linear", null), manifestUrl, callbackUrl, webhookUrl, mode, modeReason };
 };
 
 // ---------- 2. the three values ----------
@@ -654,51 +686,4 @@ export const disconnectLinear = async (deps: DisconnectLinearDeps, input: Discon
     await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
   });
   return { ok: true, connectionId, revokedAtLinear: revoked };
-};
-
-// ---------- "Skip for now" (ticket 27) ----------
-
-export const skipSetupStepInputSchema = z.strictObject({ step: z.enum(["linear"]) });
-export type SkipSetupStepInput = z.infer<typeof skipSetupStepInputSchema>;
-
-export type SkipSetupStepResult = UseCaseResult<{ readonly skippedAt: number }, "forbidden">;
-
-export type SkipSetupStep = (
-  deps: Pick<Ports, "audit" | "clock" | "notices"> & { readonly tx: Tx; readonly scope: MemberScope },
-  input: SkipSetupStepInput,
-) => Promise<SkipSetupStepResult>;
-
-/** Home's checklist: the admin sets the Linear step aside. An active connection still makes it done. */
-export const skipSetupStep: SkipSetupStep = async (deps) => {
-  const { tx, scope } = deps;
-  const organizationId = scope.organizationId;
-  const denied = adminOnly(scope, "forbidden" as const);
-  if (denied !== null) return denied;
-  const skippedAt = deps.clock.now();
-  await tx.organizationSetting.upsert({
-    where: { organizationId },
-    create: { organizationId, linearSkippedAt: new Date(skippedAt), linearSkippedByMemberId: scope.memberId },
-    update: { linearSkippedAt: new Date(skippedAt), linearSkippedByMemberId: scope.memberId },
-  });
-  await deps.audit.recordInTx(tx, {
-    organizationId,
-    projectId: null,
-    actor: { kind: "member", id: scope.memberId },
-    action: "setup.step-skipped",
-    entity: "organization",
-    entityId: organizationId,
-    data: { step: "linear" },
-  });
-  await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "organization", entityId: organizationId });
-  return { ok: true, skippedAt };
-};
-
-// ---------- the connection's tracker ----------
-
-/** What core needs to act for a connection: its tracker adapter, built with its token. */
-export type ConnectionTracker = {
-  readonly connectionId: ConnectionId;
-  readonly tracker: TrackerAdapter;
-  /** The connection's own user, for the echo check; `null` with an API key. */
-  readonly ownUserId: string | null;
 };

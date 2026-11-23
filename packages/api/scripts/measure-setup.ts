@@ -24,7 +24,7 @@ const stepLabels = {
   password: "Password changed",
   "model-provider": "Model provider added",
   github: "GitHub App connected",
-  linear: "Linear connected (optional)",
+  tracker: "Tracker connected (optional)",
   project: "Project created",
   runner: "Runner connected",
   "first-task": "First task started",

@@ -98,7 +98,7 @@ const trackers: Pick<ConnectionTrackers, "forConnection"> = {
     trackerDown ? Promise.resolve({ ok: false, reason: "no-token", message: "down" }) : linear.forConnection(organization, connection),
 };
 const tinyTrackers: Pick<ConnectionTrackers, "forConnection"> = {
-  forConnection: (_organization, connection) => Promise.resolve({ ok: true, value: { connectionId: connection, tracker: tiny, ownUserId: null, kind: "linear" } }),
+  forConnection: (_organization, connection) => Promise.resolve({ ok: true, value: { connectionId: connection, tracker: tiny, ownUserId: null, kind: "linear", name: "Acme Linear" } }),
 };
 
 beforeAll(async () => {

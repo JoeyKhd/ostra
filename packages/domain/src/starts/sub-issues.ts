@@ -5,8 +5,9 @@ import type { AgentProfileId, BoardId, ConnectionId, ExternalTicketId, MemberId,
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
+import { attachedBoardWhere, boardStateOf, isBoardAttached } from "../lifecycles/m11-trackers.ts";
 import { ingestTicketHintBody } from "../tickets/ticket-cache.ts";
-import type { ConnectionTracker } from "../use-cases/linear-connection.ts";
+import type { ConnectionTracker } from "../use-cases/tracker-connections.ts";
 import type { StartTaskOptions } from "../use-cases/m6-signatures.ts";
 import type { UseCaseResult } from "../use-cases/common.ts";
 import { leavesToStart } from "./start-task.ts";
@@ -150,10 +151,14 @@ export const startSubIssues = async (
   }
   const parent = await deps.db.ticket.findFirst({
     where: { id: input.ticketId, projectId, organizationId, removedAt: null },
-    select: { id: true, externalId: true, key: true, connectionId: true, board: { select: { externalId: true, detachedAt: true } } },
+    select: { id: true, externalId: true, key: true, connectionId: true, board: { select: { externalId: true, detachedAt: true, connection: { select: { state: true } } } } },
   });
-  if (parent?.board.detachedAt !== null) {
+  if (parent === null || boardStateOf(parent.board, parent.board.connection).state === "detached") {
     return { ok: false, error: "not-found", message: "No such ticket in this project" };
+  }
+  // A paused board's tickets start nothing (ADR 0071): its connection isn't active.
+  if (!isBoardAttached(parent.board, parent.board.connection)) {
+    return { ok: false, error: "tracker-failed", message: "The ticket's board is paused: its tracker connection isn't connected" };
   }
   const tracker = await deps.trackerFor(organizationId, connectionIdSchema.parse(parent.connectionId));
   if (tracker === null) {
@@ -162,7 +167,7 @@ export const startSubIssues = async (
   if (!tracker.tracker.capabilities.subIssues) {
     return { ok: true, bulkStartId: null, leaves: { ok: false, reason: "no-children" }, outcomes: [] };
   }
-  const boards = await deps.db.board.findMany({ where: { organizationId, projectId, detachedAt: null }, select: { id: true, externalId: true, connectionId: true } });
+  const boards = await deps.db.board.findMany({ where: { organizationId, projectId, ...attachedBoardWhere }, select: { id: true, externalId: true, connectionId: true } });
   const read = await readTree(
     deps,
     tracker,

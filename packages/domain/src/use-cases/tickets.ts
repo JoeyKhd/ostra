@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { requireProjectAccess } from "../access.ts";
 import type { MemberScope } from "../access.ts";
+import { isBoardAttached } from "../lifecycles/m11-trackers.ts";
 import type { Ports } from "../ports.ts";
 import { startTask } from "../starts/start-task-body.ts";
 import { ingestTicketHintBody } from "../tickets/ticket-cache.ts";
@@ -22,7 +23,7 @@ import type { TicketWritePayload, TicketWriteStep } from "../tickets/contracts.t
 import { writeTicketOutboxInTx } from "../tickets/ticket-outbox.ts";
 import type { TicketWriteTarget } from "../tickets/ticket-outbox.ts";
 import type { UseCaseResult } from "./common.ts";
-import type { ConnectionTracker } from "./linear-connection.ts";
+import type { ConnectionTracker } from "./tracker-connections.ts";
 
 // Tickets in (F-010, F-042, F-064, F-097, spec section 4, "A ticket change" and "A ticket becomes a
 // task"). A ticket's text is untrusted throughout: it's data in the cache and the prompt, never a
@@ -286,8 +287,8 @@ export const createTicketForTask: CreateTicketForTask = async (deps, input) => {
     return refuse("already-has-ticket", "This task already has a ticket, or one is being made for it");
   }
   const board = await tx.board.findFirst({ where: { id: input.boardId, projectId: project.id, organizationId }, include: { connection: { select: { state: true } } } });
-  if (board?.detachedAt !== null || board.connection.state !== "active") {
-    return refuse("not-found", "No such board on this project, or its connection isn't active");
+  if (board === null || !isBoardAttached(board, board.connection)) {
+    return refuse("not-found", "No such board on this project, or it's paused: its connection isn't active");
   }
 
   const title = (input.title ?? task.title).replace(/\s+/g, " ").trim().slice(0, 512);

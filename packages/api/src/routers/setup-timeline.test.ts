@@ -183,8 +183,8 @@ describe("setup.timeline (F-076)", () => {
     await seed(Object.keys(seeded).filter((action) => action !== "provider.added" && action !== "linear.connected"));
     const timeline = await (await harness.as(harness.fixture.a.admin)).setup.timeline({ start });
     expect(timeline.steps.find((row) => row.step === "model-provider")).toEqual({ step: "model-provider", state: "missing", optional: false });
-    // Linear is optional: missing, but not what holds the total back.
-    expect(timeline.steps.find((row) => row.step === "linear")).toEqual({ step: "linear", state: "missing", optional: true });
+    // The tracker step (Linear's, before milestone 11) is optional: missing, but not what holds the total back.
+    expect(timeline.steps.find((row) => row.step === "tracker")).toEqual({ step: "tracker", state: "missing", optional: true });
     // No PR yet either: the last step is missing too.
     expect(timeline.missing).toEqual(["model-provider", "first-pr"]);
     expect(timeline.totalMs).toBeNull();

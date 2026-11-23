@@ -49,7 +49,7 @@ const { logger, records } = recordingLogger();
 const STARTS_PER_HOUR = 3;
 
 const trackers: Pick<ConnectionTrackers, "forConnection" | "forget"> = {
-  forConnection: (_organizationId, connection) => Promise.resolve({ ok: true, value: { connectionId: connection, tracker: new JiraFakeAdapter({ site }), ownUserId: null, kind: "linear" } }),
+  forConnection: (_organizationId, connection) => Promise.resolve({ ok: true, value: { connectionId: connection, tracker: new JiraFakeAdapter({ site }), ownUserId: null, kind: "linear", name: "Acme Linear" } }),
   forget: () => undefined,
 };
 

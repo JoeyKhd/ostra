@@ -19,6 +19,7 @@ import {
   writeTaskSearchEntries,
   appendServerEvent,
   branchSlugFor,
+  isBoardAttached,
 } from "@ostra/domain";
 import type { MatchableMember, MemberScope, Ports, ProjectRole, StartRule, TrackerUser, TrackerUserMatch } from "@ostra/domain";
 import { memberIdSchema, projectIdSchema, sessionIdSchema, taskIdSchema } from "@ostra/protocol";
@@ -199,8 +200,8 @@ const startOutsideInTx = async (deps: TrackerStartDeps, input: TrackerStartInput
   }
   const ticket = await tx.ticket.findUniqueOrThrow({ where: { id: input.ticketId } });
   const board = await tx.board.findFirst({ where: { id: ticket.boardId, projectId: project.id, organizationId }, include: { connection: { select: { state: true } } } });
-  if (ticket.removedAt !== null || board?.detachedAt !== null || board.connection.state === "revoked") {
-    return { ok: false, error: "not-found", message: "That ticket's board is detached, or the ticket left it: no new task starts from it" };
+  if (ticket.removedAt !== null || board === null || !isBoardAttached(board, board.connection)) {
+    return { ok: false, error: "not-found", message: "That ticket's board is detached or paused, or the ticket left it: no new task starts from it" };
   }
   const existing = await tx.task.findFirst({
     where: { projectId: project.id, organizationId, ticketId: ticket.id, kind: "code", state: { notIn: [...TERMINAL_TASK_STATES] } },

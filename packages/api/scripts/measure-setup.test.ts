@@ -69,7 +69,7 @@ beforeAll(async () => {
     logger: harness.deps.logger,
   });
   if (seeded === null) throw new Error("the install already had an account");
-  // The steps' entries, as the panel's use cases write them; no PR yet, and Linear left out.
+  // The steps' entries, as the panel's use cases write them; no PR yet, and the tracker left out.
   const marks: readonly (readonly [string, number])[] = [
     ["password.changed", 1],
     ["provider.added", 3],
@@ -126,7 +126,7 @@ describe("pnpm measure:setup (F-076)", () => {
     expect(code, out).toBe(0);
     expect(out).toContain("Model provider added          +3m 00s");
     expect(out).toContain("Runner connected              +12m 00s");
-    expect(out).toContain("Linear connected (optional)   skipped");
+    expect(out).toContain("Tracker connected (optional)  skipped");
     expect(out).toContain("First PR opened               missing");
     expect(out).toContain("Total: not complete (missing: first-pr)");
 
