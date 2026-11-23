@@ -114,6 +114,8 @@ export const queueSettings: Readonly<Record<JobName, QueueSettings>> = {
   "files.sweep-unsent": { ...base, retryLimit: 2, expireInSeconds: 1800 },
   // Reads the tracker and its files: retried when it doesn't answer, as `ticket.fetch-context`.
   "ticket.read-changes": { ...base, retryLimit: 5, expireInSeconds: 600 },
+  // Milestone 11: a daily pass over the Jira tokens' dates; what it misses is tomorrow's.
+  "tracker.token-expiry": { ...base, retryLimit: 2, expireInSeconds: 600 },
 };
 
 /**

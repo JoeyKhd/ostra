@@ -25,6 +25,7 @@ import { FakeCodeHost, FakeSecretStore } from "../../testing/fake-adapters.ts";
 import { seedBoard } from "../../testing/tickets.ts";
 import { seedWorld } from "../../testing/world.ts";
 import { createConnectionTrackers } from "../../tracker/connections.ts";
+import { verifyOnlyTrackers } from "../../tracker/connections.ts";
 import { createWebhookInbox } from "../../webhooks/inbox.ts";
 import { agentEventHandler } from "./events.ts";
 import { activitySendHandler } from "./outbox.ts";
@@ -62,10 +63,10 @@ const startInbox = async (db: Db, insertDeadlineMs = 2_000): Promise<string> => 
     db,
     jobs,
     secretStore,
-    trackerVerifiers: {
-      linear: new LinearAdapter({ auth: { kind: "oauth", token: "verify-only" } }),
-    },
+    trackerVerifiers: verifyOnlyTrackers(),
     codeHost,
+    audit: postgresAuditLog,
+    notices: postgresChangeNotices,
     clock: systemClock,
     logger: silentLogger,
     insertDeadlineMs,

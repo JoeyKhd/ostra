@@ -3,12 +3,12 @@ import { createHmac, randomUUID } from "node:crypto";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import { createLogger, silentLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
-import type { CodeHostAdapter, LogRecord, TrackerAdapter } from "@ostra/adapter-sdk";
+import type { CodeHostAdapter, LogRecord } from "@ostra/adapter-sdk";
 import { createJiraSite, JiraFakeAdapter } from "@ostra/adapter-sdk/testing";
 import type { JiraSite } from "@ostra/adapter-sdk/testing";
 import { createTestDatabase, seedInstallation, seedIsolationFixture } from "@ostra/db/testing";
 import type { IsolationFixture, TestDatabase } from "@ostra/db/testing";
-import { systemClock } from "@ostra/domain";
+import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
 import { createJobs, jobIdSchema } from "@ostra/jobs";
 import type { JobContext, Jobs } from "@ostra/jobs";
 import { connectionIdSchema, webhookDeliveryIdSchema } from "@ostra/protocol";
@@ -19,7 +19,7 @@ import { createCoreServer } from "../server.ts";
 import type { CoreServer } from "../server.ts";
 import { FakeCodeHost, FakeSecretStore } from "../testing/fake-adapters.ts";
 import { createWebhookInbox, parseBlockedWebhooks, WEBHOOK_BODY_MAX_BYTES } from "./inbox.ts";
-import type { WebhookKind } from "./inbox.ts";
+import type { TrackerVerifier, WebhookKind } from "./inbox.ts";
 import { webhookProcessHandler } from "./process.ts";
 import type { WebhookDeliveryContext, WebhookOutcome } from "./process.ts";
 
@@ -58,15 +58,17 @@ const startInbox = async (
     readonly deadlineMs?: number;
     readonly blocked?: ReadonlySet<WebhookKind>;
     /** The real adapters' verifiers in place of the fakes: the vendors' own headers and signatures. */
-    readonly vendors?: { readonly linear: Pick<TrackerAdapter, "verifyWebhook">; readonly github: Pick<CodeHostAdapter, "verifyWebhook"> };
+    readonly vendors?: { readonly linear: TrackerVerifier; readonly github: Pick<CodeHostAdapter, "verifyWebhook"> };
   } = {},
 ): Promise<string> => {
   const inbox = createWebhookInbox({
     db: test.db,
     jobs,
     secretStore,
-    trackerVerifiers: { linear: options.vendors?.linear ?? new JiraFakeAdapter({ site }) },
+    trackerVerifiers: { linear: options.vendors?.linear ?? new JiraFakeAdapter({ site }), jira: new JiraFakeAdapter({ site }) },
     codeHost: options.vendors?.github ?? codeHost,
+    audit: postgresAuditLog,
+    notices: postgresChangeNotices,
     clock: systemClock,
     logger,
     insertDeadlineMs: options.deadlineMs ?? 2000,
@@ -244,13 +246,13 @@ describe("the webhook inbox", () => {
     expect(JSON.stringify(records)).not.toContain(marker);
   });
 
-  it("refuses another organization's connection, an unknown one and a revoked one, and stores nothing", async () => {
+  it("refuses another organization's connection, an unknown one and a revoked one (410, ADR 0071), and stores nothing", async () => {
     // Organization A's delivery sent to organization B's address: B's secret doesn't verify it.
     const delivery = issueDelivery();
     expect((await post(`/webhooks/linear/${linearB}`, delivery)).status).toBe(400);
     expect(await rowsOf(linearB, deliveryIdOf(delivery))).toHaveLength(0);
     expect((await post(`/webhooks/linear/${randomUUID()}`, delivery)).status).toBe(404);
-    expect((await post(`/webhooks/linear/${revoked}`, delivery)).status).toBe(404);
+    expect((await post(`/webhooks/linear/${revoked}`, delivery)).status).toBe(410);
     // A GitHub connection's ID on the Linear route is no Linear connection.
     expect((await post(`/webhooks/linear/${githubA}`, delivery)).status).toBe(404);
     expect(await test.db.webhookDelivery.count({ where: { deliveryId: deliveryIdOf(delivery) } })).toBe(0);
@@ -407,7 +409,7 @@ describe("webhook.process", () => {
       set: (next: WebhookOutcome | Error) => {
         answer = next;
       },
-      deps: { db: test.db, clock: systemClock, handlers: { linear: handler, github: handler } },
+      deps: { db: test.db, clock: systemClock, handlers: { linear: handler, jira: handler, github: handler } },
     };
   };
 

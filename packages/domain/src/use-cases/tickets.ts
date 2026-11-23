@@ -51,7 +51,8 @@ export type IngestTicketHintResult = UseCaseResult<
     /** Milestone 3 (F-066): the rows this read moved from an open category to `done` or `cancelled`. */
     readonly closedTicketIds?: readonly TicketId[];
   },
-  "tracker-failed" | "rate-limited"
+  /** Milestone 11 (ticket 07): the tracker refused the connection's token (401), which core fails it for. */
+  "tracker-failed" | "rate-limited" | "token-refused"
 >;
 
 export type IngestTicketHintDeps = Pick<Ports, "notices" | "clock"> & {

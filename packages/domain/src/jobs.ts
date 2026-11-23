@@ -120,6 +120,8 @@ export const jobNames = [
   // ---- milestone 9 (spec section 5.4, ADR 0070) ----
   "files.sweep-unsent",
   "ticket.read-changes",
+  // ---- milestone 11 (spec section 4, "The token's date") ----
+  "tracker.token-expiry",
 ] as const;
 
 export type JobName = (typeof jobNames)[number];
@@ -340,6 +342,12 @@ export const jobPayloadSchemas = {
     memberId: memberIdSchema,
     requestId: z.string().min(1).max(200).regex(/^[A-Za-z0-9_:.-]+$/, "an ID"),
   }),
+  // ---- milestone 11 ----
+  /**
+   * The Jira tokens' dates (F-008/c8, ticket 07), once a day: the admins warned once per connection
+   * and date from 14 days before, and the connection failed on the day.
+   */
+  "tracker.token-expiry": z.strictObject({}),
 } as const satisfies Record<JobName, z.ZodType>;
 
 export type JobPayload<N extends JobName> = z.infer<(typeof jobPayloadSchemas)[N]>;
@@ -414,6 +422,7 @@ const jobKeys: { readonly [N in JobName]: (payload: JobPayload<N>) => string } =
   "preview.codes-sweep": () => "previews:codes-sweep",
   "files.sweep-unsent": () => "files:sweep-unsent",
   "ticket.read-changes": (payload) => `task:${payload.taskId}:read-changes:${payload.requestId}`,
+  "tracker.token-expiry": () => "trackers:token-expiry",
 };
 
 /** How a job is sent (ADR 0037, as amended after spike 8). */
@@ -505,7 +514,11 @@ export const jobSending: Readonly<Record<JobName, JobSending>> = {
   "files.sweep-unsent": { kind: "schedule" },
   // Sent by a reopen, a member's press or a Retry, in its transaction.
   "ticket.read-changes": { kind: "event" },
+  "tracker.token-expiry": { kind: "schedule" },
 };
+
+/** `tracker.token-expiry`'s pg-boss schedule: once a day, early in the morning (UTC). */
+export const TOKEN_EXPIRY_CRON = "15 3 * * *";
 
 /** `files.sweep-unsent`'s pg-boss schedule: at the top of every hour. */
 export const FILES_SWEEP_CRON = "0 * * * *";

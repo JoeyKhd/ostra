@@ -1,6 +1,6 @@
 # 07: Core: Jira's webhook and polling, routed by connection
 
-Status: ready-for-agent
+Status: done
 Builder: core
 Blocked by: 03, 05, 06
 Features: F-008, F-152, F-042, F-044
@@ -18,13 +18,23 @@ Spec: `../spec.md`, sections 4 ("An event", "Polling", "The token's date") and 6
 
 ## Done when
 
-- [ ] Tests named for `F-008/c3`: a signed delivery from the fake Jira is claimed once, answered before its job runs, and its ticket fetched before ingest; five replays make one row and one action; a wrong signature is 401 and stored nowhere; an echo of the service account is recorded and not acted on (break-it: verify with another connection's secret, and the isolation case fails).
-- [ ] Tests named for `F-008/c1`: a pending Jira connection's first valid delivery activates it; a bad one sets `badSignatureAt` and leaves it pending.
-- [ ] Tests named for `F-008/c4`: with no webhook, a ticket edited on the fake Jira is ingested by polling within one poll period; with webhooks, the 5-minute backstop finds a change no delivery brought and sets `webhooksSilentSince`.
-- [ ] Tests named for `F-152/c3`: two Jira connections and two Linear connections in one organization: a delivery to one's URL signed with the other's secret is refused; each poll and fetch uses its own connection's credential (the fakes' request records).
-- [ ] Tests named for `F-152/c5`: a revoked connection's URL answers `410`; its boards aren't polled; after a resume they're polled from their cursors.
-- [ ] Tests named for `F-008/c8`: the expiry job opens one needs-you item 14 days before and fails the connection on the day; a 401 fails it at once.
-- [ ] Checks for `apps/core` pass, and the whole-repo checks (spec section 10).
-- [ ] Committed as `✨ take Jira's webhook and poll every tracker`.
+- [x] Tests named for `F-008/c3`: a signed delivery from the fake Jira is claimed once, answered before its job runs, and its ticket fetched before ingest; five replays make one row and one action; a wrong signature is 401 and stored nowhere; an echo of the service account is recorded and not acted on (break-it: verify with another connection's secret, and the isolation case fails).
+- [x] Tests named for `F-008/c1`: a pending Jira connection's first valid delivery activates it; a bad one sets `badSignatureAt` and leaves it pending.
+- [x] Tests named for `F-008/c4`: with no webhook, a ticket edited on the fake Jira is ingested by polling within one poll period; with webhooks, the 5-minute backstop finds a change no delivery brought and sets `webhooksSilentSince`.
+- [x] Tests named for `F-152/c3`: two Jira connections and two Linear connections in one organization: a delivery to one's URL signed with the other's secret is refused; each poll and fetch uses its own connection's credential (the fakes' request records).
+- [x] Tests named for `F-152/c5`: a revoked connection's URL answers `410`; its boards aren't polled; after a resume they're polled from their cursors.
+- [ ] Tests named for `F-008/c8`: the expiry job opens one needs-you item 14 days before and fails the connection on the day; a 401 fails it at once. *2026-11-23: the warning (once per connection and date), the failure on the day and the 401 are built and tested; the admins' needs-you item isn't, since a needs-you item belongs to a task and nothing yet holds one for a connection (Q354).*
+- [x] Checks for `apps/core` pass, and the whole-repo checks (spec section 10).
+- [x] Committed as `✨ take Jira's webhook and poll every tracker`.
 
 ## Comments
+
+- 2026-11-23, core: built as `✨ take Jira's webhook and poll every tracker`. Tests in `apps/core/src/tracker/jira-intake.test.ts` (7, on Postgres, through the real inbox, `webhook.process`, `pollBoard` and the expiry job, against two HTTP fake Jiras and two fake Linears); `inbox.test.ts`'s revoked Linear address now expects `410`. Readings and differences:
+  - **The adapter per connection:** `tracker/connections.ts`'s `buildTracker(endpoints)` builds Jira's from the row (`externalWorkspaceId` the cloud ID, `externalWorkspaceKey` the host for browse links, `accountEmail`, the `jira-token` secret) through `OSTRA_JIRA_API_URL` when set; a Jira row without its site builds nothing (`unsupported`). It's exported so a test can point each site at its own fake (one setting can name one fake). `verifyOnlyTrackers()` gives the inbox both kinds' verifiers. `apps/core` now depends on `@ostra/adapter-jira`.
+  - **The route:** `/webhooks/jira/<id>` finds the row by ID and kind in any state: `revoked`, or no such Jira row, is `410` (`{ error: "gone" }`); a revoked Linear row is `410` too now (ADR 0071), an unknown Linear or GitHub ID stays `404`, and a pending Linear row stays refused (`404`) as before. A pending Jira row takes a delivery: `activateOnFirstDelivery` runs in the claim's transaction after the insert, so a duplicate never activates. A missing or bad signature on a Jira row is `401`, sets `badSignatureAt` and emits the connection's change; a stale or malformed one is `400` and sets nothing. A Jira row with no secret (polling) is `404` (`no-secret`), as Linear's.
+  - **The 20-minute window:** settled against the inbox: deliveries are never pruned, and Jira's claim is `(connectionId, X-Atlassian-Webhook-Identifier)` and the signature's hash, so a replay inside or after the window is a duplicate. A late Jira delivery logs no clock skew (Jira's timestamp is the event's, and its secondary flow and retries come minutes later); one dated ahead of core's clock still warns.
+  - **Agent mode's lane** is taken only when the kind's verifier declares `agentSessions` (Linear), so a Jira event can never reach `linear.agent-event`. The token refresh already runs only for connections with a refresh token (`app_oauth`), which no Jira row has.
+  - **Processing:** `WebhookHandlers` gains `jira`, dispatched by an exhaustive switch; core wires it to `trackerWebhookHandler` as Linear's. A hint naming a board (Jira project, Linear team) no attached board of the connection holds, about a ticket the connection holds no copy of, is `ignored` (`the ticket is on no attached board`) with no read; a ticket that moved off a held board still has its copy, so it's still read and marked.
+  - **Polling:** `createPollSchedules` schedules every tracker kind's attached boards (`isTrackerKind`), so a resumed board is scheduled again and polled from its own cursor. The backstop is `OSTRA_RECONCILE_MINUTES` (5 by default), as Linear's.
+  - **A refused token:** `failRefusedToken` (`tracker/token-expiry.ts`) fails an active connection with `token-refused` when the tracker answers 401 (`unauthorized`) and the connection has no refresh token; core passes it as `TrackerIngestDeps.tokenRefused`. A poll's 401 then answers `skipped`, and a webhook job's marks the delivery `failed` (no retry); a Linear app connection, whose token renews, isn't failed and its job retries as before (a Linear API key's 401 now fails its connection too). The domain's `ingestTicketHint` gained the error `token-refused` for it. Ticket sync's and context's 401s don't fail the connection yet: the poll that follows does, within 5 minutes.
+  - **The token's date:** `tracker.token-expiry` (domain `jobs.ts`, daily at 03:15 UTC, `TOKEN_EXPIRY_CRON`) checks every active Jira row with a date: from 14 days before, it records `tracker.token-expiring` (a new audit action, `{ kind, expiresOn, days }`, by the system) once per connection and date, and emits the connection's change; on the day, `failConnection(…, "token-expired")`. **Not built:** the admins' needs-you item the spec names, here and on a failure. A `NeedsYouItem` requires a task, and Linear's failed token opens none either (the spec's section 1 says it does); the warning's place in Home and on the Trackers page reads the connection (`tokenExpiryState`, `failedReason`). Q354 asks how the admins hear of it; the recommendation is a tracker notice kind beside the runner notices (F-091).

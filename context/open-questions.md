@@ -2,7 +2,7 @@
 
 **Who answers:** 👤 = the maintainer's call · 🔬 = research informs it, then we decide together · 🔧 = a build task with a known fix: no decision is needed, and the row leaves when the fix is committed.
 
-A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q353). They are two separate ranges: Q-20 and Q20 are different questions.
+A settled question leaves this file. Its answer lives on in the ADR (`decisions/`) or ledger row (`features.md`) that settles it. IDs are permanent. The early questions are written with a dash (Q-01 to Q-28), and the later rounds without one (Q1 to Q354). They are two separate ranges: Q-20 and Q20 are different questions.
 
 ## Settled
 
@@ -549,6 +549,8 @@ Ticket 19 of that spec asks the maintainer to look at the lead's calls; any the 
 ## Open
 
 ### Raised by milestone 11 (2026-11-23)
+
+**Q354 👤 How do an organization's admins hear that a tracker connection's token is near its date, or failed?** (F-008/c8, F-152, milestone 11's ticket 07; found building it, 2026-11-23). The spec (section 4, "The token's date") and the approved targets (`brand/app-targets/m11-trackers/trackers.md`) say a Jira token 14 days from its date, and a failed connection, open "a needs-you item for the organization's admins, as Linear's failed token does today". No such item exists: a needs-you item belongs to a task (`NeedsYouItem.taskId` is required), and Linear's refused refresh only fails its connection and audits it. Ticket 07 records the warning once per connection and date (`tracker.token-expiring`, by the system, with the connection's change notice) and fails the connection on the day or on a 401 (`tracker.failed`); the Trackers page and Home (tickets 14 and 16) read the connection's own state. What's missing is the admins' notice, in the panel's list and by mail. *Options:* (a) a tracker notice kind beside the runner notices (F-091): `tracker_token_expiring` and `tracker_failed` in `NotificationKind` (an additive migration), sent to each admin once per connection and date, as `runner_joined` is, from core's expiry job and `failConnection`'s callers; (b) the Trackers page's and Home's rows only, with no notification; (c) a needs-you item without a task, which every reader of needs-you items would have to learn. *Recommendation:* (a): it's the pattern milestone 5 built for this audience, it leaves the per-task item alone, and its once-per-key delivery is exactly "once per connection and date".
 
 **Q353 👤 May the Jira adapter use a markdown parser for ADF?** (F-008, milestone 11's spec, section 11). ostra turns the agent's and its own markdown into Jira's ADF for comments and descriptions. Agents write full GitHub-flavoured markdown (nested lists, tables, emphasis edge cases), which a hand-written converter handles only as well as its own parser. `mdast-util-from-markdown` 2.1.0, `micromark-extension-gfm` 3.0.0 and `mdast-util-gfm` 3.1.0 (MIT) are already in the lockfile through `apps/docs`, and would parse it exactly as CommonMark and GFM do. *Options:* (a) a hand-written converter for the subset ostra and agents write, round-trip tested, with no dependency; (b) the three packages in `adapter-jira`. *Recommendation:* (a) now, which milestone 11's ticket 03 builds; (b) if real tickets show the hand-written parse getting agents' markdown wrong. Nothing waits on it.
 

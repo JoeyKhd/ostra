@@ -204,7 +204,7 @@ Read by the dev setup and the live test cases, never by an install (`docs/develo
 | `OSTRA_DEV_GITHUB_ORG` | (none) | The test GitHub org, from `~/.config/ostra-dev/github-test.env`. |
 | `OSTRA_DEV_GITHUB_REPOS` | (none) | Its test repos, comma-separated. |
 | `OSTRA_DEV_PUBLIC_URL` | (none) | A public address that reaches core's port, from `~/.config/ostra-dev/tunnel.env`, for webhook tests. |
-| `OSTRA_DEV_BLOCK_WEBHOOKS` | (none) | `linear`, `github` or both, comma-separated: core answers those webhook routes with 503 and stores nothing, so a test sees the polling and the reconcile catch up (milestone 2's demo and failure suite). Ignored when `NODE_ENV=production`. |
+| `OSTRA_DEV_BLOCK_WEBHOOKS` | (none) | Any of `linear`, `jira` and `github`, comma-separated: core answers those webhook routes with 503 and stores nothing, so a test sees the polling and the reconcile catch up (milestone 2's demo and failure suite). Ignored when `NODE_ENV=production`. |
 | `OSTRA_DEV_CORE_REPLICAS` | `1` | How many core replicas `pnpm dev` starts, 1 to 8, each on the next port after `OSTRA_CORE_PORT`, with one panel, for milestone 5's demo and load test. Runners are told the first one's address. |
 | `OSTRA_DEV_DATA_DIR` | `.ostra-dev` at the repo root | Where milestone 5's dev tools write what other processes read: the fake cluster's kubeconfig, the proxies' CA. |
 | `OSTRA_DEV_FAKE_KUBE_PORT` | `16443` | The port of `pnpm dev:fake-kube`, the fake Kubernetes API, on loopback. |

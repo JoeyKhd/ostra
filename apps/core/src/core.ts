@@ -6,7 +6,7 @@ import type { AdapterContext, Logger } from "@ostra/adapter-sdk";
 import { S3BlobStore } from "@ostra/adapter-blob-s3";
 import { GitHubAdapter } from "@ostra/adapter-github";
 import { OpenCodeAdapter } from "@ostra/adapter-opencode";
-import { LinearAdapter, linearAppEndpoints } from "@ostra/adapter-linear";
+import { linearAppEndpoints } from "@ostra/adapter-linear";
 import { ModelEndpointAdapter } from "@ostra/adapter-model-endpoint";
 import { createDb } from "@ostra/db";
 import type { Db } from "@ostra/db";
@@ -83,9 +83,10 @@ import { cleanupSettingsOf, sessionTimersOf } from "./settings-timers.ts";
 import { createReconcileSchedules, ensureBehindSchedule, githubWebhookHandler, reconcileBehindHandler, reconcileHandler } from "./code-host/pull-requests.ts";
 import { githubCommentHandler, prCommentHook, reconciledCommentHook } from "./code-host/pr-comments.ts";
 import { diffFetchHandler } from "./diff/diff-fetch.ts";
-import { createConnectionTrackers } from "./tracker/connections.ts";
+import { createConnectionTrackers, verifyOnlyTrackers } from "./tracker/connections.ts";
 import { createPollSchedules, pollBoardHandler, trackerWebhookHandler } from "./tracker/ingest.ts";
 import { ensureTokenRefreshes, refreshTokenHandler } from "./tracker/refresh-token.ts";
+import { ensureTokenExpirySchedule, failRefusedToken, tokenExpiryHandler } from "./tracker/token-expiry.ts";
 import { fetchContextHandler } from "./tracker/context.ts";
 import { readChangesHandler } from "./tracker/read-changes.ts";
 import { fetchFollowUpFiles } from "./tracker/ticket-reads.ts";
@@ -183,7 +184,7 @@ export const startCore = async (
   options: {
     readonly host?: string;
     readonly adapters?: ServerAdapters;
-    /** OSTRA_DEV_BLOCK_WEBHOOKS, development only: `linear`, `github`, comma separated. */
+    /** OSTRA_DEV_BLOCK_WEBHOOKS, development only: `linear`, `jira`, `github`, comma separated. */
     readonly devBlockWebhooks?: string;
     /** Tests only (ticket 21's restart harness): a fake Linear's GraphQL endpoint. */
     readonly linearApiUrl?: string;
@@ -467,9 +468,12 @@ export const startCore = async (
     db,
     jobs,
     secretStore: adapters.secretStore,
-    // Verifying is pure: the adapter needs no token for it.
-    trackerVerifiers: { linear: new LinearAdapter({ auth: { kind: "oauth", token: "verify-only" } }, { logger, clock: adapterClock }) },
+    // Verifying is pure: the adapter needs no token or site for it, only the connection's secret.
+    trackerVerifiers: verifyOnlyTrackers({ logger, clock: adapterClock }),
     codeHost: adapters.codeHost,
+    // A pending Jira connection's first valid delivery activates it in the claim (ticket 07).
+    audit: postgresAuditLog,
+    notices,
     clock: systemClock,
     logger,
     insertDeadlineMs: settings.webhookInsertDeadlineMs,
@@ -490,8 +494,20 @@ export const startCore = async (
   // OSTRA_LINEAR_API_URL (ticket 34: the panel's e2e stack points it at a fake Linear); the restart harness passes its own.
   const linearApiUrl = options.linearApiUrl ?? settings.linearApiUrl;
   // A connection's tracker, with its token and the organization's Postgres stores (tickets 14, 15).
-  const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger, linearApiUrl });
-  const ingestDeps = { db, trackers, notices, clock: systemClock, logger, jobs, closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog } };
+  // Milestone 11 (ticket 07): Jira's through Atlassian's gateway, or OSTRA_JIRA_API_URL's fake in tests.
+  const trackers = createConnectionTrackers({ db, secretStore: adapters.secretStore, clock: systemClock, logger, linearApiUrl, jiraApiUrl: settings.jiraApiUrl });
+  // A token's date and a refused token (F-008/c8): the connection fails, its boards pause.
+  const tokenDeps = { db, audit: postgresAuditLog, notices, clock: systemClock, logger, trackers };
+  const ingestDeps = {
+    db,
+    trackers,
+    notices,
+    clock: systemClock,
+    logger,
+    jobs,
+    closed: { jobs, outbox: postgresCommandOutbox, audit: postgresAuditLog },
+    tokenRefused: (input: Parameters<typeof failRefusedToken>[1]) => failRefusedToken(tokenDeps, input),
+  };
   // Milestone 3 (ticket 25): what an `@ostra` comment does, from its webhook's job or (F-044) the reconcile.
   const commentDeps = {
     db,
@@ -548,6 +564,8 @@ export const startCore = async (
   const reconcileSchedules = createReconcileSchedules({ db, jobs, reconcileMinutes: settings.reconcileMinutes });
   const webhookHandlers: WebhookHandlers = {
     linear: trackerWebhookHandler(ingestDeps),
+    // Milestone 11 (ticket 07): Jira's the same shape as Linear's, through the connection's own adapter.
+    jira: trackerWebhookHandler(ingestDeps),
     github: githubWebhookHandler(prDeps),
   };
   await jobs.work("webhook.process", webhookProcessHandler({ db, clock: systemClock, handlers: webhookHandlers }));
@@ -563,6 +581,7 @@ export const startCore = async (
   // The token is refreshed where the panel's consent got it: Linear's, or the fake Linear's (`linearAppEndpoints`).
   const refreshDeps = { db, jobs, secretStore: adapters.secretStore, trackers, notices, audit: postgresAuditLog, clock: systemClock, logger, tokenUrl: linearAppEndpoints(linearApiUrl).tokenUrl };
   await jobs.work("linear.refresh-token", refreshTokenHandler(refreshDeps), { localConcurrency: 1 });
+  await jobs.work("tracker.token-expiry", tokenExpiryHandler(tokenDeps), { localConcurrency: 1 });
   // Milestone 6 (F-012, ticket 13): Linear agent mode. The inbox claims a session's event before
   // its 200; `linear.agent-event` acts on it; the outbox posts with the app's token; the heartbeat
   // sweeps once a minute.
@@ -854,6 +873,9 @@ export const startCore = async (
     });
     await ensureUnsentSweepSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "files.sweep-unsent", error: error instanceof Error ? error.name : "unknown" });
+    });
+    await ensureTokenExpirySchedule(jobs).catch((error: unknown) => {
+      logger.warn("schedules.failed", { job: "tracker.token-expiry", error: error instanceof Error ? error.name : "unknown" });
     });
     await ensureRetentionSchedule(jobs).catch((error: unknown) => {
       logger.warn("schedules.failed", { job: "retention.sweep", error: error instanceof Error ? error.name : "unknown" });

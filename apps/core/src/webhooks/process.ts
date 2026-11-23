@@ -1,5 +1,5 @@
 import type { Logger } from "@ostra/adapter-sdk";
-import type { Db } from "@ostra/db";
+import type { Db, DbEnum } from "@ostra/db";
 import type { Clock } from "@ostra/domain";
 import { queueSettings } from "@ostra/jobs";
 import type { JobHandler } from "@ostra/jobs";
@@ -40,7 +40,21 @@ export type WebhookOutcome =
 export type WebhookHandler = (context: WebhookDeliveryContext) => Promise<WebhookOutcome>;
 
 /** A handler per connection kind. A thrown error is retried; the last retry marks it failed. */
-export type WebhookHandlers = { readonly linear: WebhookHandler; readonly github: WebhookHandler };
+export type WebhookHandlers = { readonly linear: WebhookHandler; readonly jira: WebhookHandler; readonly github: WebhookHandler };
+
+/** The handler for a connection's kind: Jira's the same shape as Linear's (milestone 11, ticket 07). */
+const handlerOf = (handlers: WebhookHandlers, kind: DbEnum.ConnectionKind): WebhookHandler => {
+  switch (kind) {
+    case "linear":
+      return handlers.linear;
+    case "jira":
+      return handlers.jira;
+    case "github":
+      return handlers.github;
+    default:
+      return kind satisfies never;
+  }
+};
 
 export type WebhookProcessDeps = {
   readonly db: Db;
@@ -76,7 +90,7 @@ export const webhookProcessHandler =
     });
     // A webhook arrived: the connection's webhooks aren't silent (ticket 14's flag clears).
     await deps.db.connection.updateMany({ where: { id: connectionId, organizationId, webhooksSilentSince: { not: null } }, data: { webhooksSilentSince: null } });
-    const handler = delivery.connection.kind === "linear" ? deps.handlers.linear : deps.handlers.github;
+    const handler = handlerOf(deps.handlers, delivery.connection.kind);
     let outcome: WebhookOutcome;
     try {
       outcome = await handler({

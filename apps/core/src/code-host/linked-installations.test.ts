@@ -140,8 +140,13 @@ beforeAll(async () => {
     db: test.db,
     jobs,
     secretStore,
-    trackerVerifiers: { linear: { verifyWebhook: () => ({ ok: false, reason: "bad-signature" }) } },
+    trackerVerifiers: {
+      linear: { verifyWebhook: () => ({ ok: false, reason: "bad-signature" }), capabilities: { agentSessions: false } },
+      jira: { verifyWebhook: () => ({ ok: false, reason: "bad-signature" }), capabilities: { agentSessions: false } },
+    },
     codeHost: recording,
+    audit: postgresAuditLog,
+    notices: postgresChangeNotices,
     clock: systemClock,
     logger,
     insertDeadlineMs: 5_000,
@@ -206,7 +211,7 @@ describe("deliveries from linked installations only", () => {
     const linked = codeHost.pullRequestDelivery("ostra-test/test1", 1, "opened", { installationId: INSTALLATION_ID });
     expect(await post(linked.body, linked.headers)).toEqual({ status: 200, body: { status: "accepted" } });
     const deliveryId = linked.headers["x-github-delivery"] ?? "";
-    await webhookProcessHandler({ db: test.db, clock: systemClock, handlers: { linear: githubWebhookHandler(prDeps()), github: githubWebhookHandler(prDeps()) } })(processContext(deliveryId));
+    await webhookProcessHandler({ db: test.db, clock: systemClock, handlers: { linear: githubWebhookHandler(prDeps()), jira: githubWebhookHandler(prDeps()), github: githubWebhookHandler(prDeps()) } })(processContext(deliveryId));
     const row = await test.db.webhookDelivery.findFirstOrThrow({ where: { connectionId, deliveryId } });
     expect(row.status).not.toBe("received");
     expect(row.processedAt).not.toBeNull();
@@ -217,7 +222,7 @@ describe("the App owner's own installation", () => {
   it("F-136/c4: the owner's own installation is linked when an installation event shows it, another account's waits, and an uninstall removes a linked one", async () => {
     codeHost.owner = { login: "ostra-test", accountId: "4100" };
     try {
-      const run = webhookProcessHandler({ db: test.db, clock: systemClock, handlers: { linear: githubWebhookHandler(prDeps()), github: githubWebhookHandler(prDeps()) } });
+      const run = webhookProcessHandler({ db: test.db, clock: systemClock, handlers: { linear: githubWebhookHandler(prDeps()), jira: githubWebhookHandler(prDeps()), github: githubWebhookHandler(prDeps()) } });
       const deliver = async (delivery: { readonly body: string; readonly headers: Readonly<Record<string, string>> }) => {
         expect((await post(delivery.body, delivery.headers)).status).toBe(200);
         await run(processContext(delivery.headers["x-github-delivery"] ?? ""));

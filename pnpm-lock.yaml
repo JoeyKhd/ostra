@@ -56,6 +56,9 @@ importers:
       '@ostra/adapter-github':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-github
+      '@ostra/adapter-jira':
+        specifier: workspace:*
+        version: link:../../packages/adapters/adapter-jira
       '@ostra/adapter-linear':
         specifier: workspace:*
         version: link:../../packages/adapters/adapter-linear

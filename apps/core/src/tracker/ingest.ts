@@ -1,15 +1,26 @@
 import type { Logger, Ticket } from "@ostra/adapter-sdk";
 import type { Db } from "@ostra/db";
-import { boardStateOf, boardsOnSameTeam, enqueueIntakeMatchesInTx, ingestTicketHint, markTicketRemovedInTx, recordTicketsClosed, upsertTicketCacheInTx } from "@ostra/domain";
+import {
+  attachedBoardWhere,
+  boardStateOf,
+  boardsOnSameTeam,
+  enqueueIntakeMatchesInTx,
+  ingestTicketHint,
+  isTrackerKind,
+  markTicketRemovedInTx,
+  recordTicketsClosed,
+  upsertTicketCacheInTx,
+} from "@ostra/domain";
 import type { ChangeNotices, Clock, JobQueue, TicketClosedDeps } from "@ostra/domain";
 import type { JobHandler, Jobs } from "@ostra/jobs";
 import { boardIdSchema, connectionIdSchema, organizationIdSchema, projectIdSchema } from "@ostra/protocol";
-import type { BoardId, OrganizationId } from "@ostra/protocol";
+import type { BoardId, ConnectionId, OrganizationId } from "@ostra/protocol";
 
 import type { WebhookHandler } from "../webhooks/process.ts";
 import type { ConnectionTrackers } from "./connections.ts";
 
-// Tickets in (F-005, F-010, F-042, F-044, ticket 14). Two ways a ticket change reaches the cache:
+// Tickets in (F-005, F-008, F-010, F-042, F-044, ticket 14; milestone 11's ticket 07 for every
+// kind). Two ways a ticket change reaches the cache, each through the board's own connection:
 // - a webhook (`webhook.process` → `trackerWebhookHandler`): the delivery is a hint; the ticket is
 //   read through the adapter and upserted on every board of the connection that holds it;
 // - polling (`tracker.poll-board`): a schedule per attached board, every OSTRA_TRACKER_POLL_SECONDS
@@ -17,7 +28,8 @@ import type { ConnectionTrackers } from "./connections.ts";
 //   check. It lists tickets updated since the board's cursor minus 2 min of overlap, oldest change
 //   first, a page per transaction, and moves the cursor after each page commits, so a restart, or a
 //   cut in the middle of a page, picks up from the cursor and stores nothing twice.
-// Every call goes through the connection's rate budget, in its adapter's plumbing (ticket 15).
+// Every call goes through the connection's rate budget, in its adapter's plumbing (ticket 15). A
+// tracker that refuses the connection's token (401) fails the connection at once (`tokenRefused`).
 //
 // Logs carry the connection, the board, counts and keys' absence, never ticket text.
 
@@ -47,6 +59,12 @@ export type TrackerIngestDeps = {
   readonly closed?: Omit<TicketClosedDeps, "db" | "notices" | "clock">;
   /** Milestone 6 (F-011, ticket 11): the queue `intake.match` is sent on with each upsert. Without it, no rule sees a change. */
   readonly jobs?: JobQueue;
+  /**
+   * Milestone 11 (F-008/c8, ticket 07): the tracker answered 401 to the connection's saved token.
+   * Core fails the connection (`failRefusedToken`), `true` when it did; a token that renews itself
+   * (Linear's app) isn't failed, and the job retries as without it.
+   */
+  readonly tokenRefused?: (input: { readonly organizationId: OrganizationId; readonly connectionId: ConnectionId }) => Promise<boolean>;
 };
 
 /** The tickets a read moved to done or cancelled: each running task on one hears it. */
@@ -78,11 +96,20 @@ export const trackerWebhookHandler =
     if (hint.value.subject === "other" || (hint.value.ticketExternalId === null && hint.value.ticketKey === null)) {
       return { outcome: "ignored", reason: `not about a ticket (${hint.value.event.slice(0, 64)})`, ticketKey: hint.value.ticketKey };
     }
+    // A hint for a team or project no attached board of the connection holds, about a ticket it has
+    // no copy of: recorded and dropped, with no read (a Jira site's admin webhook sends every project's).
+    if (hint.value.boardExternalId !== null && hint.value.ticketExternalId !== null && !(await mayHold(deps.db, tracker.connectionId, hint.value.boardExternalId, hint.value.ticketExternalId))) {
+      return { outcome: "ignored", reason: "the ticket is on no attached board", ticketKey: hint.value.ticketKey };
+    }
     const ingested = await ingestTicketHint(
       { db: deps.db, tracker, notices: deps.notices, clock: deps.clock, ...(deps.jobs === undefined ? {} : { jobs: deps.jobs }) },
       { source: "webhook", hint: hint.value },
     );
     if (!ingested.ok) {
+      if (ingested.error === "token-refused" && deps.tokenRefused !== undefined && (await deps.tokenRefused({ organizationId: context.organizationId, connectionId: context.connectionId }))) {
+        // The saved token is refused (F-008/c8): the connection failed, and retrying won't help.
+        return { outcome: "failed", reason: "the tracker refused the connection's token" };
+      }
       // A rate limit or a tracker that didn't answer: the job retries, with its backoff.
       throw new Error(ingested.message);
     }
@@ -104,6 +131,17 @@ export const trackerWebhookHandler =
         return ingested.outcome satisfies never;
     }
   };
+
+/** Whether a hint's board or ticket may be one the connection's attached boards hold. */
+const mayHold = async (db: Db, connectionId: ConnectionId, boardExternalId: string, ticketExternalId: string): Promise<boolean> => {
+  const board = await db.board.findFirst({ where: { connectionId, externalId: boardExternalId, ...attachedBoardWhere }, select: { id: true } });
+  if (board !== null) {
+    return true;
+  }
+  // A ticket that moved off a held board still has its copy there, which the read marks.
+  const copy = await db.ticket.findFirst({ where: { connectionId, externalId: ticketExternalId, removedAt: null }, select: { id: true } });
+  return copy !== null;
+};
 
 const keyOf = async (db: Db, ticketId: string | null): Promise<string | null> =>
   ticketId === null ? null : ((await db.ticket.findUnique({ where: { id: ticketId }, select: { key: true } }))?.key ?? null);
@@ -153,6 +191,14 @@ export const pollBoard = async (
       ...(pageCursor === undefined ? {} : { cursor: pageCursor }),
     });
     if (!page.ok) {
+      if (
+        page.error.code === "unauthorized" &&
+        deps.tokenRefused !== undefined &&
+        (await deps.tokenRefused({ organizationId: input.organizationId, connectionId: connectionIdSchema.parse(board.connectionId) }))
+      ) {
+        // The saved token is refused (F-008/c8): the connection failed at once, and its boards pause.
+        return { outcome: "skipped", reason: "the tracker refused the connection's token" };
+      }
       if (pages === 0) {
         throw new Error(`the tracker could not be listed (${page.error.code})`);
       }
@@ -266,11 +312,11 @@ export const createPollSchedules = (deps: PollScheduleDeps) => {
       let scheduled = 0;
       let dropped = 0;
       for (const board of boards) {
-        // Attached boards only: a paused board (its connection pending, failed or revoked) isn't
-        // polled, and is again once its connection is active (ADR 0071). Linear's only until
-        // ticket 07 builds Jira's adapter here.
+        // Attached boards only, of every tracker kind, each by its own connection: a paused board
+        // (its connection pending, failed or revoked) isn't polled, and is again, from its cursor,
+        // once its connection is active (ADR 0071).
         const wanted =
-          boardStateOf(board, board.connection).state === "attached" && board.connection.kind === "linear"
+          boardStateOf(board, board.connection).state === "attached" && isTrackerKind(board.connection.kind)
             ? cronEveryMinutes(board.connection.webhookMode === "polling" ? deps.pollSeconds / 60 : deps.reconcileMinutes)
             : null;
         const had = known.get(board.id);

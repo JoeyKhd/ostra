@@ -123,6 +123,8 @@ describe("the job catalogue (ADR 0037)", () => {
         // Milestone 9.
         "files.sweep-unsent",
         "ticket.read-changes",
+        // Milestone 11.
+        "tracker.token-expiry",
       ].sort(),
     );
   });

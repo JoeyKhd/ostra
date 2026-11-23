@@ -22,6 +22,7 @@
     "@ostra/adapter-email-resend": "workspace:*",
     "@ostra/adapter-email-smtp": "workspace:*",
     "@ostra/adapter-github": "workspace:*",
+    "@ostra/adapter-jira": "workspace:*",
     "@ostra/adapter-linear": "workspace:*",
     "@ostra/adapter-model-endpoint": "workspace:*",
     "@ostra/adapter-notify-panel": "workspace:*",

@@ -1,5 +1,6 @@
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { AdapterContext, Logger, SecretStoreAdapter, TrackerAdapter } from "@ostra/adapter-sdk";
+import { JiraAdapter } from "@ostra/adapter-jira";
 import { LinearAdapter } from "@ostra/adapter-linear";
 import type { Db, DbEnum } from "@ostra/db";
 import { defaultConnectionName, isTrackerKind, postgresIdempotencyStore, postgresRateBudgetStore } from "@ostra/domain";
@@ -28,57 +29,102 @@ export type ConnectionTrackers = {
   readonly forget: (connectionId: ConnectionId) => void;
 };
 
-/** What a tracker is built from: the connection's row and its token. */
-export type TrackerBuildInput = {
-  readonly kind: DbEnum.ConnectionKind;
+type TrackerBuildBase = {
   readonly credentialKind: DbEnum.ConnectionCredential | null;
   /** The access token or API key. Never logged. */
   readonly token: string;
   readonly context: AdapterContext;
 };
 
+/** A Jira connection's site and service account (milestone 11): what its adapter signs in as, beside the token. */
+export type JiraBuildSite = {
+  /** The site's cloud ID (`appId`, `externalWorkspaceId`): calls go through Atlassian's gateway with it. */
+  readonly cloudId: string;
+  /** The site's host, `globex.atlassian.net` (`externalWorkspaceKey`): its browse links name it. */
+  readonly host: string;
+  /** The service account's email, the user half of Basic auth (`accountEmail`). Not a secret. */
+  readonly email: string;
+};
+
+/** What a tracker is built from: the connection's row and its token. */
+export type TrackerBuildInput =
+  | (TrackerBuildBase & { readonly kind: Exclude<DbEnum.ConnectionKind, "jira"> })
+  /** Jira's (ticket 07): its site, `null` when the row hasn't one yet (a connection that never found its site). */
+  | (TrackerBuildBase & { readonly kind: "jira"; readonly site: JiraBuildSite | null });
+
+/** Where core reaches each tracker: its vendor's own API unless a setting points it at a fake. */
+export type TrackerEndpoints = {
+  /** Linear's GraphQL endpoint; the default is Linear's own. */
+  readonly linearApiUrl?: string;
+  /** OSTRA_JIRA_API_URL: Atlassian's gateway (`https://api.atlassian.com`) unless set to a fake Jira. */
+  readonly jiraApiUrl?: string | null;
+};
+
+/** Linear's own file host: where its uploads live, and the only host `downloadFile` sends the token to. */
+const LINEAR_FILE_HOST = "https://uploads.linear.app";
+
+/**
+ * Builds a connection's adapter from its row and token: Linear's, or Jira's through the gateway
+ * with the service account's scoped token (ADR 0047), the connection's own credential in each.
+ * Exported so a test can point each Jira site at its own fake.
+ */
+export const buildTracker =
+  (endpoints: TrackerEndpoints) =>
+  (input: TrackerBuildInput): TrackerAdapter | null => {
+    switch (input.kind) {
+      case "linear":
+        return new LinearAdapter(
+          {
+            auth: input.credentialKind === "api_key" ? { kind: "api-key", token: input.token } : { kind: "oauth", token: input.token },
+            // Another API (the dev stack's fake Linear) serves its own files too: its origin is a
+            // file host the token may go to, as it already goes to the API itself (milestone 9).
+            ...(endpoints.linearApiUrl === undefined ? {} : { apiUrl: endpoints.linearApiUrl, fileOrigins: [LINEAR_FILE_HOST, new URL(endpoints.linearApiUrl).origin] }),
+          },
+          input.context,
+        );
+      case "jira":
+        return input.site === null
+          ? null
+          : new JiraAdapter(
+              {
+                siteUrl: `https://${input.site.host}`,
+                auth: { email: input.site.email, token: input.token },
+                cloudId: input.site.cloudId,
+                ...(endpoints.jiraApiUrl === undefined || endpoints.jiraApiUrl === null ? {} : { gatewayUrl: endpoints.jiraApiUrl }),
+              },
+              input.context,
+            );
+      case "github":
+        return null;
+      default:
+        return input satisfies never;
+    }
+  };
+
+/**
+ * The webhook inbox's verifiers, one per tracker kind: verifying is pure, so each needs no token or
+ * site, only the connection's secret, which the inbox passes with each delivery.
+ */
+export const verifyOnlyTrackers = (context?: AdapterContext): { readonly linear: TrackerAdapter; readonly jira: TrackerAdapter } => ({
+  linear: new LinearAdapter({ auth: { kind: "oauth", token: "verify-only" } }, context),
+  jira: new JiraAdapter({ siteUrl: "https://verify-only.atlassian.net", auth: { email: "verify-only", token: "verify-only" } }, context),
+});
+
 export type ConnectionTrackersDeps = {
   readonly db: Db;
   readonly secretStore: SecretStoreAdapter;
   readonly clock: Clock;
   readonly logger: Logger;
-  /** Builds the adapter; the default builds Linear's. Tests pass the fakes. */
+  /** Builds the adapter; the default is `buildTracker` with the endpoints below. Tests pass the fakes. */
   readonly build?: (input: TrackerBuildInput) => TrackerAdapter | null;
-  /** Linear's GraphQL endpoint; the default is Linear's own. */
-  readonly linearApiUrl?: string;
-};
-
-/** Linear's own file host: where its uploads live, and the only host `downloadFile` sends the token to. */
-const LINEAR_FILE_HOST = "https://uploads.linear.app";
+} & TrackerEndpoints;
 
 /** How long a built adapter is reused before its token is read again. */
 const CACHE_MS = 60_000;
 
 export const createConnectionTrackers = (deps: ConnectionTrackersDeps): ConnectionTrackers => {
   const cache = new Map<ConnectionId, { readonly value: TrackerLookup & { readonly ok: true }; readonly secretRef: string; readonly until: number }>();
-  const build =
-    deps.build ??
-    ((input: TrackerBuildInput): TrackerAdapter | null => {
-      switch (input.kind) {
-        case "linear":
-          return new LinearAdapter(
-            {
-              auth: input.credentialKind === "api_key" ? { kind: "api-key", token: input.token } : { kind: "oauth", token: input.token },
-              // Another API (the dev stack's fake Linear) serves its own files too: its origin is a
-              // file host the token may go to, as it already goes to the API itself (milestone 9).
-              ...(deps.linearApiUrl === undefined ? {} : { apiUrl: deps.linearApiUrl, fileOrigins: [LINEAR_FILE_HOST, new URL(deps.linearApiUrl).origin] }),
-            },
-            input.context,
-          );
-        case "jira":
-          // Milestone 11's ticket 07 builds Jira's adapter here; until then a Jira row has none.
-          return null;
-        case "github":
-          return null;
-        default:
-          return input.kind satisfies never;
-      }
-    });
+  const build = deps.build ?? buildTracker({ ...(deps.linearApiUrl === undefined ? {} : { linearApiUrl: deps.linearApiUrl }), jiraApiUrl: deps.jiraApiUrl ?? null });
 
   return {
     forget: (connectionId) => {
@@ -87,7 +133,19 @@ export const createConnectionTrackers = (deps: ConnectionTrackersDeps): Connecti
     forConnection: async (organizationId, connectionId) => {
       const row = await deps.db.connection.findFirst({
         where: { id: connectionId, organizationId },
-        select: { id: true, kind: true, name: true, externalWorkspaceName: true, state: true, credentialKind: true, accessTokenSecretRef: true, appUserId: true },
+        select: {
+          id: true,
+          kind: true,
+          name: true,
+          externalWorkspaceId: true,
+          externalWorkspaceKey: true,
+          externalWorkspaceName: true,
+          accountEmail: true,
+          state: true,
+          credentialKind: true,
+          accessTokenSecretRef: true,
+          appUserId: true,
+        },
       });
       if (row === null) {
         return { ok: false, reason: "not-found", message: "no such connection" };
@@ -120,7 +178,19 @@ export const createConnectionTrackers = (deps: ConnectionTrackersDeps): Connecti
         rateBudgets: postgresRateBudgetStore(deps.db, organizationId),
         idempotency: postgresIdempotencyStore(deps.db, organizationId),
       };
-      const tracker = build({ kind: row.kind, credentialKind: row.credentialKind, token: token.value, context });
+      const base = { credentialKind: row.credentialKind, token: token.value, context };
+      const tracker = build(
+        kind === "jira"
+          ? {
+              ...base,
+              kind,
+              site:
+                row.externalWorkspaceId === null || row.externalWorkspaceKey === null || row.accountEmail === null
+                  ? null
+                  : { cloudId: row.externalWorkspaceId, host: row.externalWorkspaceKey, email: row.accountEmail },
+            }
+          : { ...base, kind },
+      );
       if (tracker === null) {
         return { ok: false, reason: "unsupported", message: `a ${row.kind} connection has no tracker` };
       }

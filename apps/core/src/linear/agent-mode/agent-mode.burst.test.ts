@@ -30,6 +30,7 @@ import { seedBoard } from "../../testing/tickets.ts";
 import { seedWorld } from "../../testing/world.ts";
 import { createConnectionTrackers } from "../../tracker/connections.ts";
 import type { ConnectionTrackers } from "../../tracker/connections.ts";
+import { verifyOnlyTrackers } from "../../tracker/connections.ts";
 import { createWebhookInbox } from "../../webhooks/inbox.ts";
 import { agentEventHandler, handleAgentSessionEvent } from "./events.ts";
 import type { AgentModeDeps } from "./events.ts";
@@ -202,10 +203,10 @@ beforeAll(async () => {
     db: small,
     jobs,
     secretStore,
-    trackerVerifiers: {
-      linear: new LinearAdapter({ auth: { kind: "oauth", token: "verify-only" } }),
-    },
+    trackerVerifiers: verifyOnlyTrackers(),
     codeHost,
+    audit: postgresAuditLog,
+    notices: postgresChangeNotices,
     clock: systemClock,
     logger: silentLogger,
     insertDeadlineMs: 2_000,

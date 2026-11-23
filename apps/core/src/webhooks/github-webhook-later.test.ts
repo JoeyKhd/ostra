@@ -3,12 +3,11 @@ import { createHmac, randomUUID } from "node:crypto";
 import { appEvents, GitHubAdapter } from "@ostra/adapter-github";
 import { createFakeGitHub } from "@ostra/adapter-github/testing";
 import type { FakeGitHub } from "@ostra/adapter-github/testing";
-import { LinearAdapter } from "@ostra/adapter-linear";
 import { silentLogger, systemClock as adapterClock } from "@ostra/adapter-sdk";
 import { createApiHarness, trpcFailure } from "@ostra/api/testing";
 import type { ApiHarness, AppCaller } from "@ostra/api/testing";
 import type { SeededMember } from "@ostra/db/testing";
-import { systemClock } from "@ostra/domain";
+import { postgresAuditLog, postgresChangeNotices, systemClock } from "@ostra/domain";
 import { createJobs } from "@ostra/jobs";
 import type { Jobs } from "@ostra/jobs";
 import type { ConnectionId } from "@ostra/protocol";
@@ -16,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createCoreServer } from "../server.ts";
 import type { CoreServer } from "../server.ts";
+import { verifyOnlyTrackers } from "../tracker/connections.ts";
 import { createWebhookInbox } from "./inbox.ts";
 
 // F-006/c4: an App the manifest flow made while the server had no public address has no webhook
@@ -87,8 +87,10 @@ beforeAll(async () => {
     db: harness.test.db,
     jobs,
     secretStore: harness.fakes.secretStore,
-    trackerVerifiers: { linear: new LinearAdapter({ auth: { kind: "oauth", token: "verify-only" } }, context) },
+    trackerVerifiers: verifyOnlyTrackers(context),
     codeHost: host,
+    audit: postgresAuditLog,
+    notices: postgresChangeNotices,
     clock: systemClock,
     logger: silentLogger,
     insertDeadlineMs: 5000,

@@ -153,6 +153,8 @@ export const auditActions = {
   "tracker.token-checked": "connection",
   /** Ticket 06: a connection failed on its own (`token-expired`, `token-refused`); its boards pause. */
   "tracker.failed": "connection",
+  /** Ticket 07: a Jira token's date is 14 days or less away; recorded once per connection and date. */
+  "tracker.token-expiring": "connection",
   "board.attached": "project",
   "board.mapping-saved": "project",
   "board.detached": "project",

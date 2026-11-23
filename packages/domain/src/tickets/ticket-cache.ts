@@ -197,6 +197,9 @@ export const ingestTicketHintBody: IngestTicketHint = async (deps, change) => {
       if (read.error.code === "rate-limited") {
         return { ok: false, error: "rate-limited", message: "the tracker's rate limit: try again later" };
       }
+      if (read.error.code === "unauthorized") {
+        return { ok: false, error: "token-refused", message: "the tracker refused the connection's token" };
+      }
       if (read.error.code !== "not-found") {
         return { ok: false, error: "tracker-failed", message: `the tracker could not be read (${read.error.code})` };
       }
