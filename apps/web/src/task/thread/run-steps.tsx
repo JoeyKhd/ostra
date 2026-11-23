@@ -187,7 +187,7 @@ const StepRow = ({ step, message }: { readonly step: RunStep; readonly message: 
   // ostra's own tools say what they did as the verb, and milestone 8's info lines are their own words: both run from the verb's column.
   const whole = step.kind === "ostra" || words.verb === null;
   return (
-    <li ref={row} data-step={step.kind} data-state={step.state} className="scroll-my-24">
+    <li ref={row} data-step={step.kind} data-state={step.state} data-subagent={step.kind === "subagent" ? step.node.id : undefined} className="scroll-my-24">
       {/* s6.md: on a phone the verb sits inline before its subject (22px icon | verb | subject, 8px
           gaps), a long subject wraps under itself, and a row is at least 36px tall. */}
       <div className="grid min-h-7 grid-cols-[22px_72px_minmax(0,1fr)] items-center text-ui max-sm:flex max-sm:min-h-9 max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 max-sm:gap-y-0.5">

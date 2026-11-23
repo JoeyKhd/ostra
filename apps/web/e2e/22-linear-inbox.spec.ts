@@ -86,7 +86,7 @@ test(
 
     // Home's first-run checklist ticks its Linear step.
     await page.goto("/");
-    await expect(page.locator('[data-step="linear"]')).toHaveAttribute("data-state", "done");
+    await expect(page.locator('[data-step="tracker"]')).toHaveAttribute("data-state", "done");
   },
 );
 
@@ -101,7 +101,7 @@ test(
 
     // The project's Boards page attaches the fake's team; its mapping drafts itself.
     await page.goto(`/projects/${world.projectId}/boards`);
-    const team = page.getByRole("combobox", { name: "Attach a team" });
+    const team = page.getByRole("combobox", { name: "Attach", exact: true });
     await hydrated(team);
     await team.click();
     await page.getByRole("option", { name: new RegExp(`· ${linear.teamKey}`) }).click();
@@ -139,7 +139,8 @@ test(
     await active.getByRole("link", { name: "Open task" }).click();
     await page.waitForURL(/\/tasks\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(title);
-    await expect(page.getByTestId("task-ticket")).toBeVisible();
+    // Milestone 10 (ticket 17) took the header's ticket strip: the key line names the ticket and its tracker.
+    await expect(page.getByTestId("task-key-line")).toContainText(`${made.key} · from Linear`);
     await expect(page.getByTestId("task-profile")).toHaveText("Ticket builder");
   },
 );

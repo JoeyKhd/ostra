@@ -40,3 +40,27 @@ The docs describe the thread as it is built, in the panel's words (ticket 04's),
 
 
 - 2026-11-23, core: docs build and link check pass; committed locally as `4367e1c1` (`📝 document reading a task's thread`). Rebased onto `origin/main` after this note.
+
+- 2026-11-23, browser pass (web): the thread's older browser specs now run on the compact layout, and the combined by-eye pass of tickets 09–17 against `context/brand/app-targets/m10-thread/` is done. The specs the pass names were run on the production build (`next build`, external stack on 3810), never the whole suite.
+
+  **Realigned to what tickets 09–17 built (real selectors, not guesses):**
+  - `e2e/21-task-answers.spec.ts`: the three `F-026` tests read an answered approval where it now lives — the answered call's row in the turn's run (`[data-part='run-steps'] li[data-step='command'|'edit']`, `approved once by …` / `denied by …`), opened through the live step's line. The deny's reason and `Approve for this task`'s pattern are asserted through `tasks.get` (`denyReason`, `forThisTask.pattern`) and the panel's `task-rule`. `F-084/c1,c3` reads each turn's figures in `[data-part='run-footer'] [data-part='footer-facts']`; `e2e/seed-answers.ts` now gives each counted turn one call, so each turn draws a run with its footer.
+  - `e2e/21-subagents.spec.ts`: a subagent is a step of the opened run (`li[data-step='subagent']`, with a `data-subagent` id added to `run-steps.tsx`), never a `data-part='subagent-row'` row; the run opens through the live step's line while the turn still runs.
+  - `e2e/19-review.spec.ts`: the stage strip is gone; the status line (`task-doing`, `[data-part='status-place']`) and the panel's `rounds-group` say where the review stands, and the review screen is its own route (`/tasks/<id>/review`, the top bar's Review button went in ticket 17).
+  - `e2e/22-linear-inbox.spec.ts`: Home's checklist step is `data-step="tracker"`; the ticket is read on the key line (`<key> · from Linear`, the header strip went in ticket 17); the Boards picker's combobox is named `Attach`.
+  - `e2e/27-thread-results.spec.ts`: the status line's `In review · CI running` and `PR #483` replace the stage line's job count; jobs are still counted on the PR card (`CI on GitHub: running, 2 of 4 jobs done`) and on Home's board, which the file's first test checks before the test that finishes CI.
+  - `e2e/27-thread-review-task.spec.ts`: the removed header line's `task-prs` gives way to `[data-part='status-place']` absent on a review task.
+  - Commands: `pnpm --filter @ostra/web typecheck` clean; `eslint` on the touched files clean; the six spec files, `--project desktop --no-deps` on the build, all 28 tests green; `21-subagents` also green on `--project phone --no-deps` (5 tests). Shots from `e2e/27-thread-phone.spec.ts` (6 passed) under `C:/Users/santi/ow/m10-shots/`.
+
+  **What still differs from the targets, and why:**
+  - The properties panel's `Effort` is milestone 2's `<select>` with its arrow where the targets draw plain `High`; m10 changed no control.
+  - `Model` and `Profile` print the seeded world's long names, truncated (`Claude Sonnet 5.5 Key · t…`), where the targets' demo data is short — screenshot data, not layout.
+  - An opened run's footer on a phone adds `· not saved yet` while the turn is open, where `s6-phone-open` ends at the spend; `parts.md` lists the saved facts in the footer and `s6.md`'s picture leaves the open-turn one out.
+  - At 390 px the page scrolls as a document: milestone 8's 54 px phone top bar and the `Chat | Preview` switch scroll away, so the phone shots catch the thread below them where `s6` draws both pinned. That is the shell's layout, not the thread's parts.
+  - The question block takes the focus on a load with no pointer use, so its teal `:focus-visible` ring shows where the targets draw none (ticket 13's decision, already noted by ticket 17).
+  - The `…` menu sits inside the composer, left of Send (m2's `phone-task` rule), where `s6` draws it only in the top bar (ticket 17's note).
+
+  **Gaps found by the pass (not one-line mismatches; for the ledger and the maintainer):**
+  - An answered approval's receipt lost the deny's reason and the rule's pattern (the row says `denied by {name}` / `approved for this task by {name}`), and a losing member's `Someone answered this first.` no longer has a place: `ApprovalNote`, which words both, is drawn only while a block is pending. `tasks.get` still carries `denyReason` and `forThisTask` to every member (the specs assert it), so `F-026/c4`'s "the receipt shows it to every member" is now the answer's figure, not its words, and `F-026/c5`'s lost-race line is unproved on the page.
+  - The task page has no link into a review screen while a review waits for its human reviewer: ticket 17 took the top bar's Review button, and the panel's `task-open-review` link exists only on a review-kind task. The spec navigates to `/tasks/<id>/review` directly.
+  - Seeded worlds are never cleaned between runs, so Home's Live list and the screenshots accumulate tasks (`Live 10`) where the targets draw five.

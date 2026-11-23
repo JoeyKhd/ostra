@@ -146,9 +146,11 @@ test("F-151/c6: S2's push line says 3 checks passed in the box, the card shows o
   await expect(card.locator("[data-part='pr-size'] > span")).toHaveText(["+214", "−18"]);
   await expect(card.locator("[data-part='pr-ci']")).toHaveText("CI on GitHub: running, 2 of 4 jobs done · then the AI review");
   await expect(card.getByRole("link", { name: "PR #483 on GitHub" })).toHaveAttribute("href", "https://github.com/acme/calculator-web/pull/483");
-  // The Checks tab's marker follows both: CI runs on GitHub, so it spins; the stage line counts the jobs.
+  // The Checks tab's marker follows both: CI runs on GitHub, so it spins. Milestone 10 (ticket 15)
+  // moved the status line's CI words there; the jobs are counted on the card and Home's board.
   await expect(page.getByRole("tab", { name: /Checks/ }).getByLabel("Running")).toBeVisible();
-  await expect(page.getByTestId("stage-line")).toContainText("CI running · 2 of 4 jobs");
+  await expect(page.getByTestId("task-doing")).toContainText("In review · CI running");
+  await expect(page.getByTestId("task-doing").locator("[data-part='status-place']")).toHaveText("PR #483");
   await shoot(page, "s2");
 
   // Pressed, the push opens its commit and the three checks its turn ran in the box.

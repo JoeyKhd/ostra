@@ -55,13 +55,13 @@ test("F-102/c1,c4, F-111/c1, F-035/c1: a reviewer reads the PR with its findings
   await signIn(page);
   const world = await seedWorld(page);
 
-  // The task page: the stage line, the rounds in the thread and the panel, and the Review button.
+  // The task page: the status line (milestone 10, ticket 15: no stage strip since ticket 17), the
+  // rounds in the thread and the panel.
   await page.goto(`/tasks/${world.taskId}`);
-  const stages = page.getByTestId("stage-line");
-  await expect(stages.locator('[data-stage="waiting_for_reviewer"]')).toHaveAttribute("data-state", "current");
-  await expect(stages.locator('[data-stage="fixing_ci"]')).toHaveAttribute("data-state", "done");
-  await expect(stages.locator('[data-stage="fixing_findings"]')).toHaveAttribute("data-state", "done");
-  await expect(page.getByTestId("automatic-turns")).toContainText("2 of 4");
+  const doing = page.getByTestId("task-doing");
+  await expect(doing).toContainText("In review · waiting for a reviewer");
+  await expect(doing.locator("[data-part='status-place']")).toHaveText("PR #12");
+  await expect(page.getByTestId("rounds-group")).toContainText("2 of 4");
   // Milestone 10 (ticket 12): each round is its message's outlined bubble in the thread, ostra's own.
   const rounds = page.locator('[data-part="thread-column"]');
   await expect(rounds.locator('[data-part="bubble"][data-round="ci"]')).toContainText("CI round 1 of 2");
@@ -74,10 +74,11 @@ test("F-102/c1,c4, F-111/c1, F-035/c1: a reviewer reads the PR with its findings
   await page.goto(`/tasks/${world.taskId}?tab=checks`);
   await expect(page.getByTestId("code-host-ci").locator('[data-check="build"]')).toHaveAttribute("data-conclusion", "success");
 
-  // The review screen: the reviewer's own wait in amber words, the findings on their lines, the criteria panel.
-  await page.goto(`/tasks/${world.taskId}`);
-  await page.locator('[data-action="open-review"]').click();
-  await page.waitForURL(new RegExp(`/tasks/${world.taskId}/review`));
+  // The review screen: the reviewer's own wait in amber words, the findings on their lines, the
+  // criteria panel. Milestone 10 (ticket 17) took the top bar's Review button: the screen is the
+  // task's own route, linked from a review's result line.
+  await page.goto(`/tasks/${world.taskId}/review`);
+  await expect(page.getByTestId("review-screen")).toBeVisible();
   await expect(page.getByTestId("review-round-line")).toContainText("Waiting for your review");
   await expect(page.getByTestId("review-round-line")).toContainText("CI passed");
   await expect(page.getByTestId("review-round-line")).toContainText("AI review round 2: nothing blocking");

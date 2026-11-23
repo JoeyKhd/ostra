@@ -127,8 +127,9 @@ test("F-151/c7: S3: a review task has only Activity and Event log, Open the code
   await expect(bar.getByRole("button", { name: "Take it local" })).toHaveCount(0);
   await expect(bar.locator("[data-action='stop']")).toHaveCount(0);
   await expect(bar.locator("[data-action='open-review']")).toHaveCount(0);
-  // No line of a code task's work: no PR line, no "Reviews …" line, no read-only note.
-  await expect(page.getByTestId("task-prs")).toHaveCount(0);
+  // No line of a code task's work: no PR line (milestone 10 took the header's, ticket 17), no
+  // "Reviews …" line, no read-only note.
+  await expect(page.locator("[data-part='status-place']")).toHaveCount(0);
   await expect(page.getByTestId("review-of")).toHaveCount(0);
   await expect(page.getByTestId("task-read-only")).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText("Ended without changes");

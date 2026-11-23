@@ -216,8 +216,12 @@ const countedTurns = [
 ] as const;
 const turns = countedTurns.map((turn) => ({ ...turn, spentMicroUsd: turn.calls.reduce((sum, c) => sum + cost(c), 0) }));
 for (const turn of turns) {
+  // Milestone 10 (ticket 16): a turn's figures are its run's footer, so each counted turn runs one call.
+  const toolCallId = `count-${turn.turnId}`;
   await appendEvents(counted, [
     { kind: "turn.started", turnId: turn.turnId },
+    { kind: "tool.called", turnId: turn.turnId, toolCallId, toolKind: "execute", title: "pnpm test", input: { command: "pnpm test" } },
+    { kind: "tool.completed", toolCallId, output: { exitCode: 0 } },
     ...turn.calls,
     { kind: "agent.message", turnId: turn.turnId, segmentId: `seg-${turn.turnId}`, text: "Counted." },
     { kind: "turn.ended", turnId: turn.turnId, stopReason: "end_turn" },

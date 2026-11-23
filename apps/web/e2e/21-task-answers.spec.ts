@@ -40,7 +40,7 @@ const asSam = async (page: Page): Promise<Page> => {
 
 const composer = (page: Page) => page.locator("[data-part='composer'] textarea");
 
-test("F-026/c4,c5: two members answer one approval at once; one wins, and the other sees \"Someone answered this first\" under the winner's receipt", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-026/c4,c5: two members answer one approval at once; one wins, and both read the winner's receipt on the answered call's row", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   const tasks = await seed();
   const sam = await asSam(page);
@@ -61,25 +61,22 @@ test("F-026/c4,c5: two members answer one approval at once; one wins, and the ot
   for (const tab of [page, sam]) await tab.route((url) => url.pathname.includes("approvals.answer"), hold);
   await Promise.all(cards.map((card) => card.locator("[data-action='approve-once']").click()));
 
-  // Each browser shows the one winner's receipt; only the loser has the line under it.
+  // Milestone 10 (tickets 12 and 13): an answered approval leaves its block for the turn's run, so
+  // each browser drops the card and reads the one winner's receipt on the answered call's row.
   const receipts = await Promise.all(
     [page, sam].map(async (tab) => {
-      const receipt = tab.locator("[data-part='approval']").filter({ hasText: /^Approved once by / });
-      await expect(receipt).toBeVisible({ timeout: 10_000 });
-      return receipt.textContent();
+      await expect(tab.getByTestId("approval")).toHaveCount(0, { timeout: 10_000 });
+      await tab.locator("[data-part='live-line']").click();
+      const row = tab.locator("[data-part='run-steps'] li[data-step='command']").filter({ hasText: "pnpm db:migrate" });
+      await expect(row).toContainText(/approved once by /);
+      return row.innerText();
     }),
   );
   expect(receipts[0]).toBe(receipts[1]);
-  await expect.poll(async () => (await page.locator("[data-part='lost-race']").count()) + (await sam.locator("[data-part='lost-race']").count())).toBe(1);
-  const loser = (await page.locator("[data-part='lost-race']").count()) === 1 ? page : sam;
-  await expect(loser.locator("[data-part='lost-race']")).toHaveText("Someone answered this first.");
-  // The loser's line stays: a reload is the only thing that drops it (it's this browser's, not the task's).
-  await loser.waitForTimeout(1_000);
-  await expect(loser.locator("[data-part='lost-race']")).toBeVisible();
   await sam.context().close();
 });
 
-test("F-026/c3,c4: \"Approve for this task\" shows the pattern it adds, then the receipt names it and the task's Approval rules list it", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-026/c3,c4: \"Approve for this task\" shows the pattern it adds, then the task's Approval rules list it and the run's row reads the receipt", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   const tasks = await seed();
   await page.goto(`/tasks/${tasks.rule}`);
@@ -89,20 +86,26 @@ test("F-026/c3,c4: \"Approve for this task\" shows the pattern it adds, then the
   await expect(card.locator("[data-part='for-this-task']")).toHaveText("Approve for this task also approves later edits of this file.");
   await card.locator("[data-action='approve-task']").click();
 
-  const receipt = page.locator("[data-part='approval']").filter({ hasText: /^Approved for this task by / });
-  await expect(receipt).toHaveText(/^Approved for this task by .+ · config\/settings\.json$/, { timeout: 10_000 });
-  await expect(page.getByTestId("approval")).toHaveCount(0);
+  // Milestone 10: the block leaves for the run, whose row reads the receipt; the pattern it added
+  // is the task's Approval rules, and `tasks.get` keeps both.
+  await expect(page.getByTestId("approval")).toHaveCount(0, { timeout: 10_000 });
+  await page.locator("[data-part='live-line']").click();
+  const row = page.locator("[data-part='run-steps'] li[data-step='edit']").filter({ hasText: "config/settings.json" });
+  await expect(row).toContainText(/approved for this task by /);
   const rule = page.getByTestId("task-rule");
   await expect(rule).toHaveCount(1);
   await expect(rule).toContainText("edit config/settings.json");
   await expect(rule).toContainText("this task ·");
+  const answered = await approvalOf(page, tasks.rule);
+  expect(answered).toMatchObject({ state: "answered", decision: "allow_task", forThisTask: { pattern: "config/settings.json" } });
   // Stored, not only shown.
   await page.reload();
-  await expect(page.locator("[data-part='approval']").filter({ hasText: /^Approved for this task by / })).toContainText("config/settings.json");
+  await page.locator("[data-part='live-line']").click();
+  await expect(page.locator("[data-part='run-steps'] li[data-step='edit']").filter({ hasText: "config/settings.json" })).toContainText(/approved for this task by /);
   await expect(page.getByTestId("task-rule")).toContainText("edit config/settings.json");
 });
 
-test("F-026/c4: a deny takes a reason, and the receipt shows it to every member", { tag: "@desktop-only" }, async ({ page }) => {
+test("F-026/c4: a deny takes a reason, every member reads the receipt, and the reason stays on the answer", { tag: "@desktop-only" }, async ({ page }) => {
   await signIn(page);
   const tasks = await seed();
   await page.goto(`/tasks/${tasks.deny}`);
@@ -112,12 +115,24 @@ test("F-026/c4: a deny takes a reason, and the receipt shows it to every member"
   await card.getByLabel(/^Reason for /).fill(reason);
   await expect(card.locator("[data-action='deny-send']")).toHaveText("Deny and send the reason");
   await card.locator("[data-action='deny-send']").click();
-  await expect(page.locator("[data-part='approval']").filter({ hasText: /^Denied by / })).toHaveText(new RegExp(`^Denied by .+: ${reason.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), { timeout: 10_000 });
+  // Milestone 10: the run's row reads the deny (in red) and its receipt; the reason is kept on the
+  // answer, which `tasks.get` gives every member (the receipt's words dropped it in the compact thread).
+  const row = page.locator("[data-part='run-steps'] li[data-step='command']").filter({ hasText: "pnpm add moment" });
+  await expect(page.getByTestId("approval")).toHaveCount(0, { timeout: 10_000 });
+  await page.locator("[data-part='live-line']").click();
+  await expect(row).toContainText("denied");
+  await expect(row.locator(".text-red")).toContainText("denied");
+  await expect(row).toContainText(/denied by /);
+  expect(await approvalOf(page, tasks.deny)).toMatchObject({ state: "answered", decision: "deny", denyReason: reason });
 
-  // Another member who opens the task reads the same reason.
+  // Another member who opens the task reads the same answer.
   const sam = await asSam(page);
   await sam.goto(`/tasks/${tasks.deny}`);
-  await expect(sam.locator("[data-part='approval']").filter({ hasText: /^Denied by / })).toContainText(reason);
+  await expect(sam.getByTestId("approval")).toHaveCount(0);
+  await sam.locator("[data-part='live-line']").click();
+  await expect(sam.locator("[data-part='run-steps'] li[data-step='command']").filter({ hasText: "pnpm add moment" })).toContainText(/denied by /);
+  const theirs = await approvalOf(sam, tasks.deny);
+  expect(theirs).toMatchObject({ decision: "deny", denyReason: reason });
   await sam.context().close();
 });
 
@@ -183,6 +198,32 @@ const usageSchema = z.object({
   }),
 });
 
+/** `tasks.get`'s approvals: the answer, its reason and the rule `Approve for this task` added. */
+const approvalsSchema = z.object({
+  result: z.object({
+    data: z.object({
+      approvals: z.array(
+        z.object({
+          approvalId: z.string(),
+          state: z.string(),
+          decision: z.enum(["allow_once", "allow_task", "deny"]).nullable(),
+          denyReason: z.string().nullable(),
+          forThisTask: z.object({ pattern: z.string() }).nullable(),
+        }),
+      ),
+    }),
+  }),
+});
+
+/** The task's one approval, over HTTP as the signed-in member. */
+const approvalOf = async (page: Page, taskId: string): Promise<z.infer<typeof approvalsSchema>["result"]["data"]["approvals"][number]> => {
+  const response = await page.request.get(`/api/trpc/tasks.get?input=${encodeURIComponent(JSON.stringify({ taskId }))}`);
+  expect(response.ok()).toBe(true);
+  const [approval] = approvalsSchema.parse(await response.json()).result.data.approvals;
+  if (approval === undefined) throw new Error("the task has no approval");
+  return approval;
+};
+
 /** The panel's short count: 28_000 → "28k", 5_600 → "5.6k". */
 const short = (n: number): string => (n >= 1_000_000 ? `${String(Number((n / 1_000_000).toFixed(2)))}M` : n >= 1_000 ? `${String(Number((n / 1_000).toFixed(1)))}k` : String(n));
 
@@ -211,9 +252,13 @@ test("F-084/c1,c3: the properties panel shows the four kinds of tokens, the spen
   await expect(properties.getByTestId("task-spend")).toHaveText(`${dollars(spend.spent)} of ${dollars(spend.cap)}`);
   await expect(properties.getByTestId("task-agent-time")).toHaveText(`${String(Math.floor(totals.agentMs / 60_000))}m ${String(Math.round((totals.agentMs % 60_000) / 1000)).padStart(2, "0")}s`);
 
-  const footers = page.locator("[data-part='turn-usage']");
+  // Milestone 10 (ticket 16): each turn's figures are its run's footer, opened on its line.
+  const closedRuns = page.locator("[data-part='run'] [data-nav='run-line'][aria-expanded='false']");
+  while ((await closedRuns.count()) > 0) await closedRuns.first().click();
+  const footers = page.locator("[data-part='run-footer'] [data-part='footer-facts']");
   await expect(footers).toHaveCount(turns.length);
   for (const [i, turn] of turns.entries()) {
-    await expect(footers.nth(i)).toHaveText(`${turn.estimated ? "≈ " : ""}${short(turn.inputTokens)} in · ${short(turn.outputTokens)} out`);
+    await expect(footers.nth(i)).toContainText(`${turn.estimated ? "≈" : ""}${short(turn.inputTokens)} in · ${short(turn.outputTokens)} out`);
+    await expect(footers.nth(i)).toContainText(`Turn ${String(turn.ordinal)}`);
   }
 });

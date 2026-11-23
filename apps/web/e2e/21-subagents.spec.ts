@@ -48,7 +48,14 @@ const openTask = async (page: Page, taskId: string): Promise<void> => {
 const thread = (page: Page) => page.locator('[data-part="thread"]');
 const window = (page: Page) => page.getByTestId("subagents-window");
 
-test("F-138/c1,c2: the agent's turn carries the badge, 4 subagents · 1 running, and the thread shows its own Subagent rows and none of the subagents' calls or answers", async ({ page }) => {
+/** Opens the turn's run: the live step's line while the turn still runs, else the run's own line. */
+const openRun = async (page: Page): Promise<void> => {
+  const live = thread(page).locator("[data-part='live-line']");
+  if ((await live.count()) > 0) await live.first().click();
+  else await thread(page).locator("[data-nav='run-line']").first().click();
+};
+
+test("F-138/c1,c2: the agent's turn carries the badge, 4 subagents · 1 running, and the opened run holds its own Subagent steps and none of the subagents' calls or answers", async ({ page }) => {
   const { running } = await seed();
   await openTask(page, running);
   const badge = page.getByTestId("subagents-badge");
@@ -56,11 +63,13 @@ test("F-138/c1,c2: the agent's turn carries the badge, 4 subagents · 1 running,
   await expect(badge).toContainText("4 subagents");
   await expect(badge).toContainText("1 running");
   await expect(badge).toHaveAttribute("aria-haspopup", "dialog");
-  const rows = thread(page).locator('[data-part="subagent-row"]');
+  // Milestone 10 (tickets 10 and 17): the badge sits on the run's line; opened, one step per subagent.
+  await openRun(page);
+  const rows = thread(page).locator("[data-part='run-steps'] li[data-step='subagent']");
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText("explore");
   await expect(rows.nth(0)).toContainText("Find the version source");
-  await expect(rows.nth(0)).toContainText("14 calls · 1m 12s");
+  await expect(rows.nth(0)).toContainText("14 calls · 1 min 12 s");
   await expect(rows.nth(2)).toContainText("general");
   await expect(rows.nth(2)).toHaveAttribute("data-state", "running");
   // Nothing of the subagents' own: no answer, no call, in the thread.
@@ -148,11 +157,12 @@ test("F-138/c2,c3: the badge opens the window: the tree under OpenCode, the runn
   await page.evaluate(() => { document.documentElement.setAttribute("data-theme", "dark"); });
 });
 
-test("F-138: a Subagent row opens the window on its own subagent, from the keyboard too", async ({ page }) => {
+test("F-138: a Subagent step opens the window on its own subagent, from the keyboard too", async ({ page }) => {
   const { running } = await seed();
   await openTask(page, running);
-  const row = thread(page).locator('[data-part="subagent-row"][data-subagent="ses_settings_tests"]');
-  await row.focus();
+  await openRun(page);
+  const row = thread(page).locator("[data-step='subagent'][data-subagent='ses_settings_tests']");
+  await row.getByRole("button").focus();
   await page.keyboard.press("Enter");
   await expect(window(page)).toBeVisible();
   if (phone(page)) {
@@ -163,7 +173,7 @@ test("F-138: a Subagent row opens the window on its own subagent, from the keybo
   }
   await page.keyboard.press("Escape");
   await expect(window(page)).toBeHidden();
-  await expect(row).toBeFocused();
+  await expect(row.getByRole("button")).toBeFocused();
 });
 
 test("F-138: a failed subagent: the badge reads 1 failed, its node is red, and its detail gives the error", async ({ page }) => {
@@ -171,7 +181,8 @@ test("F-138: a failed subagent: the badge reads 1 failed, its node is red, and i
   await openTask(page, failed);
   const badge = page.getByTestId("subagents-badge");
   await expect(badge).toHaveAccessibleName("4 subagents, 1 failed");
-  await expect(thread(page).locator('[data-part="subagent-row"][data-subagent="ses_version_row"]')).toHaveAttribute("data-state", "failed");
+  await openRun(page);
+  await expect(thread(page).locator("[data-step='subagent'][data-subagent='ses_version_row']")).toHaveAttribute("data-state", "failed");
   await badge.click();
   if (!phone(page)) {
     await expect(window(page).locator('[data-tree-card="ses_version_row"]')).toHaveAttribute("data-state", "failed");
