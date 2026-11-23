@@ -265,6 +265,39 @@ describe("tasks.list and tasks.get", () => {
     expect(doingOf("asking")).toEqual({ kind: "question.asked", detail: "Keep the old retry header?", toolKind: null });
   });
 
+  it("F-147/c1: a running task between turns says nothing of its last turn, so the live list never says Writing once the agent stopped; a question still waits on its person", async () => {
+    const project = (await seedProject(harness, world, "between")).projectId;
+    const place = { organizationId: orgA(), projectId: project };
+    const turnId = turnIdSchema.parse("turn-1");
+    // A refine task waits between turns as running, its box warm: its turn's last word was a message.
+    const waiting = await seedTask(harness, { ...place, title: "between turns", state: "running", sessionState: "idle" });
+    await appendEvent(harness, waiting, place, { kind: "turn.started", turnId });
+    await appendEvent(harness, waiting, place, { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("seg-between"), text: "The criteria hold." });
+    await appendEvent(harness, waiting, place, { kind: "turn.ended", turnId, stopReason: "end_turn" });
+    await appendEvent(harness, waiting, place, { kind: "session.saved", turnOrdinal: 1, repos: [], archive: null });
+    // Another one's next turn just started: its last turn's message isn't what it does now.
+    const next = await seedTask(harness, { ...place, title: "next turn", state: "running" });
+    await appendEvent(harness, next, place, { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("seg-next"), text: "Done." });
+    await appendEvent(harness, next, place, { kind: "turn.ended", turnId, stopReason: "end_turn" });
+    await appendEvent(harness, next, place, { kind: "turn.started", turnId: turnIdSchema.parse("turn-2") });
+    // A turn mid-way still says what it does.
+    const writing = await seedTask(harness, { ...place, title: "mid-turn", state: "running" });
+    await appendEvent(harness, writing, place, { kind: "turn.started", turnId });
+    await appendEvent(harness, writing, place, { kind: "agent.message", turnId, segmentId: segmentIdSchema.parse("seg-mid"), text: "Reading." });
+    // A question whose turn the idle timer cancelled still waits on its person.
+    const asking = await seedTask(harness, { ...place, title: "asked", state: "needs_you", sessionState: "ended" });
+    await appendEvent(harness, asking, place, { kind: "turn.started", turnId });
+    await appendEvent(harness, asking, place, { kind: "question.asked", turnId, questionId: questionIdSchema.parse("q-between"), message: "Which header?", fields: [] });
+    await appendEvent(harness, asking, place, { kind: "turn.ended", turnId, stopReason: "cancelled" });
+
+    const rows = (await (await harness.as(harness.fixture.a.member)).tasks.list({ projectId: project })).flatMap((group) => group.tasks);
+    const doingOf = (title: string) => rows.find((row) => row.title === title)?.doing;
+    expect(doingOf("between turns")).toBeNull();
+    expect(doingOf("next turn")).toBeNull();
+    expect(doingOf("mid-turn")).toEqual({ kind: "agent.message", detail: null, toolKind: null });
+    expect(doingOf("asked")).toEqual({ kind: "question.asked", detail: "Which header?", toolKind: null });
+  });
+
   it("is visible to another member of the project and invisible to another organization", async () => {
     const { a, b } = harness.fixture;
     const created = await (await harness.as(a.member)).tasks.create({ projectId, prompt: "visible to the team" });

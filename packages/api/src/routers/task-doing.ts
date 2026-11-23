@@ -4,7 +4,9 @@ import type { TaskId, ToolKind } from "@ostra/protocol";
 import { z } from "zod";
 
 // What the agent is doing now, for a list of tasks (F-086, home.md): the newest event of a few kinds,
-// worded by the panel. The project's task list and Home's board both read it.
+// worded by the panel. The project's task list and Home's board both read it. Only while its turn
+// goes on (2026-11-23): a refine or review task waits between turns as running, its box warm, and
+// its last turn's last message said "Writing" in the Live list until the box stopped.
 
 /** The kinds of event the list words as "what the agent is doing now", newest wins. */
 const doingKinds = [
@@ -19,6 +21,16 @@ const doingKinds = [
 ] as const;
 
 export type DoingKind = (typeof doingKinds)[number];
+
+/**
+ * What ends what the agent was doing: a turn's start or end, and the after-turn save (whose pushes
+ * read as "Pushing the branch" until it's in). A question or an approval still waits on its person
+ * after them (a turn the idle timer cancelled), so a needs-you row keeps its words.
+ */
+const boundaryKinds = ["turn.started", "turn.ended", "turn.failed", "session.saved"] as const;
+
+/** The kinds that wait on a person, worded until they're answered. */
+const waitsOnAPerson: ReadonlySet<DoingKind> = new Set(["approval.requested", "question.asked"]);
 
 /**
  * What the agent is doing now, for the list: a kind the panel words, and its detail. For a tool
@@ -73,18 +85,30 @@ const doingOf = (kind: DoingKind, payload: unknown, toolCall: unknown): Doing =>
   }
 };
 
-const latestDoingRow = z.object({ taskId: taskIdSchema, kind: z.enum(doingKinds), payload: z.unknown() });
+const latestDoingRow = z.object({ taskId: taskIdSchema, seq: z.number().int(), kind: z.enum(doingKinds), payload: z.unknown() });
+const latestBoundaryRow = z.object({ taskId: taskIdSchema, seq: z.number().int() });
 
 /** The latest "doing" event of each task given, with an approval's tool call looked up. One round trip per kind of lookup. */
 export const loadDoingByTask = async (db: Db, taskIds: readonly string[]): Promise<ReadonlyMap<TaskId, Doing>> => {
   if (taskIds.length === 0) {
     return new Map();
   }
-  const latest: unknown = await db.$queryRaw`
-    SELECT DISTINCT ON ("taskId") "taskId", "kind", "payload" FROM "event"
-    WHERE "taskId" = ANY(${[...taskIds]}::text[]) AND "kind" = ANY(${[...doingKinds]}::text[])
-    ORDER BY "taskId", "seq" DESC`;
-  const latestRows = z.array(latestDoingRow).parse(latest);
+  const [latest, boundaries]: readonly [unknown, unknown] = await Promise.all([
+    db.$queryRaw`
+      SELECT DISTINCT ON ("taskId") "taskId", "seq", "kind", "payload" FROM "event"
+      WHERE "taskId" = ANY(${[...taskIds]}::text[]) AND "kind" = ANY(${[...doingKinds]}::text[])
+      ORDER BY "taskId", "seq" DESC`,
+    db.$queryRaw`
+      SELECT DISTINCT ON ("taskId") "taskId", "seq" FROM "event"
+      WHERE "taskId" = ANY(${[...taskIds]}::text[]) AND "kind" = ANY(${[...boundaryKinds]}::text[])
+      ORDER BY "taskId", "seq" DESC`,
+  ]);
+  const boundaryOf = new Map(z.array(latestBoundaryRow).parse(boundaries).map((row) => [row.taskId, row.seq] as const));
+  // What a turn did is over once a turn boundary comes after it: the task does nothing now.
+  const latestRows = z
+    .array(latestDoingRow)
+    .parse(latest)
+    .filter((row) => waitsOnAPerson.has(row.kind) || row.seq > (boundaryOf.get(row.taskId) ?? 0));
   // An approval asks about a tool call: its command or path is what the row shows.
   const asked = latestRows.flatMap((row) => {
     const call = row.kind === "approval.requested" ? toolCallIdPayload.safeParse(row.payload) : null;
