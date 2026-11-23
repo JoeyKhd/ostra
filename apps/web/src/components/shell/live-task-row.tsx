@@ -4,6 +4,7 @@ import { CircleDashedIcon, GitPullRequestIcon, LoaderCircleIcon } from "lucide-r
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { TrackerMark, trackerMarkAt } from "@/components/trackers/tracker-mark";
 import { Dot } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
@@ -96,6 +97,13 @@ export const LiveTaskRow = ({ task, onNavigate }: { readonly task: LiveTask; rea
       <span className={cn("col-start-2 truncate font-mono text-faint", sheet ? "text-[12.5px] leading-[18px]" : "text-xs leading-[17px]")}>
         {/* A follow-up whose code task isn't in the list keeps its tag on a row of its own. */}
         {task.followUp === null ? null : <><FollowUpTag kind={task.followUp} />{" "}</>}
+        {/* Milestone 11 (ticket-chips.md, "Sidebar, live"): the ticket's tracker, one colour, before its key. */}
+        {task.connection === null ? null : (
+          <>
+            <TrackerMark kind={task.connection.kind} size={trackerMarkAt.sidebar.size} mono label={false} className="mr-1 align-[-1px]" />
+            {" "}
+          </>
+        )}
         {task.key}
         {" · "}
         {task.line.tone === "needs-you" ? <span className="font-sans font-medium text-amber-text">{task.line.text}</span> : task.line.text}

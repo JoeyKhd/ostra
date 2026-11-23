@@ -21,7 +21,6 @@ const ticket: NonNullable<TaskDetail["ticket"]> = {
   url: "https://linear.app/acme/issue/CALC-161",
   status: { name: "In Review", category: "started" },
   board: "Calculator",
-  tracker: "linear",
   connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), kind: "linear", name: "Ostra Linear" },
   subIssues: { count: 0, done: 0 },
   labels: ["frontend", "history"],

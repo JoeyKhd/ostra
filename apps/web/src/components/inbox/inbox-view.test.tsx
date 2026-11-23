@@ -7,7 +7,7 @@ import { t } from "@/lib/messages";
 
 import { InboxEmpty, InboxLede, TicketPanel, TicketRow } from "./inbox-view";
 import type { StartFormProps } from "./inbox-view";
-import { contextLine, filtered, filtersFrom, filtersToSearch, listInputOf } from "./inbox-words";
+import { contextLine, filtered, filtersFrom, filtersToSearch, ledeSource, listInputOf } from "./inbox-words";
 import type { InboxDetail, InboxSource, InboxTicket } from "./inbox-words";
 import { SafeMarkdown, countImages } from "./safe-markdown";
 
@@ -103,9 +103,9 @@ describe("the lede", () => {
     expect(html).toContain("updated 8s ago");
   });
 
-  it("says when Linear isn't answering, in red", () => {
+  it("says when the tracker isn't answering, in red", () => {
     const html = renderToStaticMarkup(<InboxLede source={{ ...source, stale: true }} now={now} />);
-    expect(html).toContain(esc("Linear isn't answering"));
+    expect(html).toContain(esc("The tracker isn't answering"));
     expect(html).toContain("text-red");
   });
 });
@@ -169,6 +169,52 @@ describe("the empty states", () => {
     const html = renderToStaticMarkup(<InboxEmpty kind="nothing-open" board="Calculator" projectId={projectId} admin />);
     expect(html).toContain("Nothing open on Calculator");
     expect(html).not.toContain("<a ");
+  });
+});
+
+describe("each ticket's tracker (ticket-chips.md, F-152/c4)", () => {
+  const linearBoard = { ...board, connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), kind: "linear" as const, name: "Acme Linear" } };
+  const jiraBoard = { ...board, key: "PROJ", name: "Globex Calculator", connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c2"), kind: "jira" as const, name: "Globex Jira" } };
+  const withBoard = (kind: "linear" | "jira", over: Partial<InboxTicket> = {}): InboxTicket => ({
+    ...ticket,
+    ...over,
+    key: kind === "jira" ? "PROJ-12" : "CALC-170",
+    board: kind === "jira" ? jiraBoard : linearBoard,
+  });
+  const rowOf = (data: InboxTicket): string => renderToStaticMarkup(<TicketRow ticket={data} several selected={false} onSelect={() => undefined} now={now} />);
+
+  it("F-152/c4: a Linear and a Jira row each carry their mark in the key's colour, with the connection's tooltip", () => {
+    const linearRow = rowOf(withBoard("linear"));
+    expect(linearRow).toContain('data-tracker-mark="linear"');
+    expect(linearRow).toContain('data-treatment="mono"');
+    expect(linearRow).toContain('title="Linear · Acme Linear"');
+    expect(linearRow).toContain('aria-label="Linear"');
+    const jiraRow = rowOf(withBoard("jira"));
+    expect(jiraRow).toContain('data-tracker-mark="jira"');
+    expect(jiraRow).toContain('data-treatment="mono"');
+    expect(jiraRow).toContain('title="Jira · Globex Jira"');
+    expect(jiraRow).toContain('aria-label="Jira"');
+  });
+
+  it("F-152/c4: the chip counts a Jira parent's sub-tasks and a Linear one's sub-issues", () => {
+    const jiraRow = rowOf(withBoard("jira", { subIssues: 2 }));
+    expect(jiraRow).toContain("2 sub-tasks");
+    expect(rowOf(withBoard("linear", { subIssues: 2 }))).toContain("2 sub-issues");
+  });
+
+  it("F-152/c4: the selected ticket's panel marks it and opens it in its tracker, with Jira's status square", () => {
+    const jiraDetail: InboxDetail = { ...detail, ...withBoard("jira"), status: { id: "s-prog", name: "In Progress", category: "started" } };
+    const html = renderToStaticMarkup(<TicketPanel detail={jiraDetail} several={false} now={now} start={{ ...start, detail: jiraDetail }} />);
+    expect(html).toContain(t("inbox.panel.openIn", { tracker: "Jira" }));
+    expect(html).toContain('data-tracker-mark="jira"');
+    expect(html).toContain("jira-cat-started");
+  });
+
+  it("F-152/c4: the lede names the boards' tracker, or your trackers for both kinds", () => {
+    // `{board}` stays for the lede's caller, which draws the name in `--text`.
+    expect(ledeSource({ ...source, boards: [{ ...linearBoard, lastPolledAt: now }] })).toEqual({ board: "Calculator", text: "Open tickets from {board} on Linear" });
+    expect(ledeSource({ ...source, boards: [{ ...jiraBoard, lastPolledAt: now }] })).toEqual({ board: "Globex Calculator", text: "Open tickets from {board} on Jira" });
+    expect(ledeSource({ ...source, boards: [{ ...linearBoard, lastPolledAt: now }, { ...jiraBoard, lastPolledAt: now }] }).text).toBe("Open tickets from 2 boards on your trackers");
   });
 });
 

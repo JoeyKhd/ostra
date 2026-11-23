@@ -114,15 +114,79 @@ describe("the sync steps", () => {
 });
 
 describe("the ticket (task-ticket.md)", () => {
+  const ticketOf = (over: Partial<NonNullable<TaskDetail["ticket"]>>): NonNullable<TaskDetail["ticket"]> => ({
+    id: ticketIdSchema.parse("01900000-0000-7000-8000-0000000000b1"),
+    key: "CALC-174",
+    title: "Keep a history",
+    url: "https://linear.app/x",
+    status: { name: "In Review", category: "started" },
+    board: "Calculator",
+    connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), kind: "linear", name: "Ostra Linear" },
+    subIssues: { count: 0, done: 0 },
+    labels: ["frontend"],
+    priority: 2,
+    cachedAt: now,
+    removed: false,
+    ...over,
+  });
+
   it("names the tracker a ticket came from, and the board", () => {
     expect(trackerName("linear")).toBe("Linear");
-    const ticket: TaskDetail["ticket"] = { id: ticketIdSchema.parse("01900000-0000-7000-8000-0000000000b1"), key: "CALC-174", title: "Keep a history", url: "https://linear.app/x", status: { name: "In Review", category: "started" }, board: "Calculator", tracker: "linear", connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c1"), kind: "linear", name: "Ostra Linear" }, subIssues: { count: 0, done: 0 }, labels: ["frontend"], priority: 2, cachedAt: now, removed: false };
-    const html = renderToStaticMarkup(<TicketProperties task={{ ticket, sync: [], canRetry: false }} now={now} retry={idle} createTicket={null} />);
+    expect(trackerName("jira")).toBe("Jira");
+    const html = renderToStaticMarkup(<TicketProperties task={{ ticket: ticketOf({}), sync: [], canRetry: false }} now={now} retry={idle} createTicket={null} />);
     expect(html).toContain(t("taskPage.ticketBoard"));
     expect(html).toContain("Calculator");
     // Milestone 10 (ticket 17, "Drop them"): the header's ticket strip is gone; the ticket's status
     // and board are the panel's Ticket group, and its words the thread's first bubble.
     expect(html).toContain("In Review");
+  });
+
+  it("F-152/c4: the Ticket group names the tracker with its mark, and the sync group says On Jira", () => {
+    const ticket = ticketOf({ key: "PROJ-12", board: "Globex Calculator", connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c2"), kind: "jira", name: "Globex Jira" } });
+    const html = renderToStaticMarkup(<TicketProperties task={{ ticket, sync: [], canRetry: false }} now={now} retry={idle} createTicket={null} />);
+    expect(html).toContain(t("taskPage.ticketTracker"));
+    expect(html).toContain('data-tracker-mark="jira"');
+    expect(html).toContain('data-treatment="brand"');
+    expect(html).toContain("Globex Jira");
+    expect(html).toContain("Jira");
+    const withSync = renderToStaticMarkup(
+      <TicketProperties
+        task={{ ticket, sync: [{ id: ticketWriteIdSchema.parse("01900000-0000-7000-8000-0000000000a3"), kind: "comment", state: "done", attempts: 1, error: null, move: null, createdAt: now, doneAt: now }], canRetry: false }}
+        now={now}
+        retry={idle}
+        createTicket={null}
+      />,
+    );
+    expect(withSync).toContain(t("taskPage.onTracker", { tracker: "Jira" }));
+  });
+
+  it("F-008/c6: a Jira ticket's sub-task count, its done share, and its status's category square", () => {
+    const ticket = ticketOf({
+      key: "PROJ-12",
+      status: { name: "In Progress", category: "started" },
+      connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c2"), kind: "jira", name: "Globex Jira" },
+      subIssues: { count: 2, done: 1 },
+    });
+    const html = renderToStaticMarkup(<TicketProperties task={{ ticket, sync: [], canRetry: false }} now={now} retry={idle} createTicket={null} />);
+    expect(html).toContain(t("taskPage.subTasks"));
+    expect(html).toContain(">2<");
+    expect(html).toContain(t("taskPage.subTasksDone", { n: 1 }));
+    expect(html).toContain("jira-cat-started");
+    // A Linear ticket keeps Linear's words and its status icon.
+    const linearHtml = renderToStaticMarkup(<TicketProperties task={{ ticket: ticketOf({ subIssues: { count: 2, done: 1 } }), sync: [], canRetry: false }} now={now} retry={idle} createTicket={null} />);
+    expect(linearHtml).toContain(t("taskPage.subIssues"));
+    expect(linearHtml).not.toContain("jira-cat-started");
+  });
+
+  it("F-152/c4: a move's row says the transition that took it, and Jira's task link says remote link", () => {
+    const ticket = ticketOf({ connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c2"), kind: "jira", name: "Globex Jira" } });
+    const sync: TaskDetail["sync"] = [
+      { id: ticketWriteIdSchema.parse("01900000-0000-7000-8000-0000000000a4"), kind: "move", state: "done", attempts: 1, error: null, move: { kind: "moved", via: [{ id: "31", name: "Start progress" }] }, createdAt: now, doneAt: now },
+      { id: ticketWriteIdSchema.parse("01900000-0000-7000-8000-0000000000a5"), kind: "link_task", state: "done", attempts: 1, error: null, move: null, createdAt: now, doneAt: now },
+    ];
+    const html = renderToStaticMarkup(<TicketProperties task={{ ticket, sync, canRetry: false }} now={now} retry={idle} createTicket={null} />);
+    expect(html).toContain(t("taskPage.sync.by", { names: "Start progress" }));
+    expect(html).toContain(t("taskPage.sync.remoteLink"));
   });
 });
 

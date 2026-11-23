@@ -24,8 +24,8 @@ import { updatesAnswerOf, updatesAnswerText } from "./ticket-context-words";
 // press answers at once with the round it follows; its answer is the next round, which the page
 // reads again until it lands ("nothing new" among them).
 
-/** The tracker's name, from its kind (`linear`); the ticket's own name when it's gone. */
-export const trackerLabel = (view: Pick<TicketContextView, "tracker">): string => (view.tracker === null ? t("taskPage.fromTicket") : trackerName(view.tracker));
+/** The tracker's name, from the ticket's connection (`Jira`); the ticket's own name when it's gone. */
+export const trackerLabel = (view: Pick<TicketContextView, "connection">): string => (view.connection === null ? t("taskPage.fromTicket") : trackerName(view.connection.kind));
 
 /** How often the page reads the ticket's context again while a press waits for its round, and for how long. */
 const PRESS_POLL_MS = 1500;

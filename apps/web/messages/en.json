@@ -884,17 +884,25 @@
       "body": "Type a prompt and watch the agent work, then review its pull request.",
       "action": "New task"
     },
-    "linear": {
-      "title": "Connect Linear",
-      "body": "Tickets become tasks, and ostra keeps their status in step. Skip it to run on prompts alone.",
-      "action": "Connect Linear",
+    "tracker": {
+      "title": "Connect a tracker",
+      "body": "{linear} or {jira}: tickets become tasks, and ostra keeps their status in step. Skip it to run on prompts alone.",
+      "action": "Connect a tracker",
       "skip": "Skip for now",
       "skipping": "Skipping…",
-      "skipped": "Skipped. Tasks start from prompts until you connect it.",
-      "pending": "Started: paste the app's values and authorize to finish.",
+      "skipped": "Skipped. Tasks start from prompts until you connect one.",
       "continue": "Continue",
-      "failed": "Linear refused the token. Authorize the app again.",
-      "authorizeAgain": "Authorize again"
+      "replace": "Replace the token",
+      "authorizeAgain": "Authorize again",
+      "done": "Connected {name}.",
+      "pending": {
+        "linear": "Started {name}: paste the app's values and authorize to finish.",
+        "jira": "Started {name}: add the webhook in Jira to finish."
+      },
+      "failed": {
+        "linear": "Linear refused the token. Authorize the app again.",
+        "jira": "Jira refused {name}'s token. Replace it to finish."
+      }
     },
     "skippedStep": "Skipped"
   },
@@ -3438,8 +3446,12 @@
     "codeTaskTitle": "{key} {title}",
     "tracker": {
       "linear": "Linear",
-      "github": "GitHub"
+      "jira": "Jira"
     },
+    "ticketTracker": "Tracker",
+    "subTasks": "Sub-tasks",
+    "subIssues": "Sub-issues",
+    "subTasksDone": "· {n} done",
     "reconnecting": "Reconnecting…",
     "needsYou": "Needs you",
     "needsYouDefault": "The agent stopped and waits on a person.",
@@ -3470,7 +3482,7 @@
     "on": "on",
     "copyLink": "Copy the link",
     "linkCopied": "Link copied",
-    "ticketRemoved": "removed from Linear",
+    "ticketRemoved": "removed from {tracker}",
     "agentGot": "What the agent got",
     "agentGotSummary": "title, description and labels",
     "agentGotFiles": {
@@ -3538,9 +3550,11 @@
     "synced": "Synced",
     "createTicket": "Create ticket",
     "creatingTicket": "Creating…",
-    "onLinear": "On Linear",
+    "onTracker": "On {tracker}",
     "sync": {
       "move": "Moved the ticket",
+      "by": "by {names}",
+      "remoteLink": "remote link",
       "comment": "Progress comment",
       "comment_update": "Updated the comment",
       "link_pr": "Linked a PR",
@@ -4611,12 +4625,17 @@
   },
   "inbox": {
     "title": "Inbox",
-    "ledeOne": "Open tickets from {board} on Linear",
-    "ledeMany": "Open tickets from {n} boards on Linear",
+    "ledeOne": "Open tickets from {board} on {tracker}",
+    "ledeMany": "Open tickets from {n} boards on {tracker}",
+    "ledeTrackers": "your trackers",
     "ledeNoBoards": "Open tickets from this project's boards, ready to become tasks.",
     "updated": "updated {age}",
     "polling": "polling every {seconds} s",
-    "stale": "Linear isn't answering. These are the tickets as of {age}.",
+    "stale": "The tracker isn't answering. These are the tickets as of {age}.",
+    "subTasks": {
+      "one": "{n} sub-task",
+      "other": "{n} sub-tasks"
+    },
     "filter": {
       "text": "Filter by title or key",
       "status": "Status",
@@ -4654,7 +4673,8 @@
       "nothingOpenBody": "New tickets show here as they arrive."
     },
     "panel": {
-      "openInLinear": "Open in Linear",
+      "openIn": "Open in {tracker}",
+      "theTracker": "the tracker",
       "status": "Status",
       "priority": "Priority",
       "labels": "Labels",
@@ -7992,7 +8012,7 @@
     },
     "noneStarted": "none started yet",
     "allMerged": "all merged",
-    "openInLinear": "Open in Linear",
+    "openIn": "Open in {tracker}",
     "overLimit": "{key} has {n} sub-issues on {project}'s boards. ostra starts at most {max} at once: split the ticket, or start the sub-issues one by one.",
     "progress": "Progress",
     "merged": "{n} of {total} merged",
@@ -8052,8 +8072,8 @@
     "refineStopped": "Stopped",
     "openTask": "Open task",
     "tryAgain": "Try again",
-    "fromCache": "Read from ostra's copy of the tickets: Linear didn't answer.",
-    "fromTracker": "Read from Linear just now.",
+    "fromCache": "Read from ostra's copy of the tickets: the tracker didn't answer.",
+    "fromTracker": "Read from {tracker} just now.",
     "panel": {
       "ticket": "Ticket",
       "key": "Key",

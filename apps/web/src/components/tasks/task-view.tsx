@@ -14,6 +14,7 @@ import { servicesWaitText } from "@/components/projects/environment-services-wor
 import { useProvideTaskScope } from "@/components/shell/actions/use-scope";
 import type { ItemScope, TaskScope } from "@/components/shell/actions/use-scope";
 import { PageFrame } from "@/components/shell/page-frame";
+import { TrackerMark, trackerMarkAt } from "@/components/trackers/tracker-mark";
 import { useOptionalShellState } from "@/components/shell/shell-state";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Status } from "@/components/ui/status";
@@ -424,6 +425,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
   // its top bar links to its code task and PR; its `Properties` toggle hides the panel (`?pane=none`),
   // at 1024px and wider, where the toggle shows.
   const heading = headingOf(data);
+  // The ticket's tracker, for the key line's mark (milestone 11, ticket-chips.md, "A task's header").
+  const ticketConnection = data.ticket?.connection ?? null;
   const reviewed = reviewedOf(data);
   const propertiesShown = data.kind !== "review" || paneParam !== "none" || narrowScreen;
   // The sub-state's place (parts.md part 15): the PR the review loop is at (`PR #483`).
@@ -633,7 +636,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
       <div data-chat-column className={cn("relative flex min-h-full flex-col", previewing ? "px-4 pb-4 pt-6 sm:px-7 sm:pt-[22px] lg:h-full" : "px-4 pb-5 pt-6 sm:px-9 sm:pb-4 sm:pt-[26px] xl:h-full")}>
         <div className="shrink-0">
           <div className="flex items-center gap-2.5 font-mono text-sm leading-[17px] text-faint" data-testid="task-key-line">
-            <span>{heading.key} · {heading.source}</span>
+            {/* Milestone 11 (ticket-chips.md, "A task's header"): its tracker's mark, brand colour, then `PROJ-12 · from Jira`. */}
+            <span className="inline-flex items-center gap-[7px]">
+              {ticketConnection === null ? null : <TrackerMark kind={ticketConnection.kind} size={trackerMarkAt.taskHeader.size} label={false} />}
+              <span>{heading.key} · {heading.source}</span>
+            </span>
             {waitingTask?.startedBy.kind === "outside" ? <span className="font-sans text-ui">· <StartedInLinear task={waitingTask} /></span> : null}
             {data.kind === "refine" ? <Chip className="font-mono text-muted">{t("draft.chipRefine")}</Chip> : null}
           </div>

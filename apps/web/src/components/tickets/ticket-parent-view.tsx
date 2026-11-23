@@ -7,8 +7,10 @@ import { useState } from "react";
 
 import type { ProjectId, TicketId } from "@ostra/protocol";
 
+import { CategorySquare } from "@/components/boards/jira-mapping";
 import { rowAge } from "@/components/inbox/inbox-words";
 import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
+import { trackerName } from "@/components/trackers/tracker-mark";
 import { PageFrame, pageKeyLine, pageTitleGap, PropGroup, PropRow } from "@/components/shell/page-frame";
 import { stateTone, taskStateText } from "@/components/tasks/task-words";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -62,7 +64,7 @@ export const refinedLine = (refine: Refined): string | null => {
 };
 
 /** A child on no board of this project, as its row says where it is: `Board {name}` and `in {project}`. */
-export const ElsewhereRow = ({ child }: { readonly child: Child }) => (
+export const ElsewhereRow = ({ child, openIn = t("ticketParent.openIn", { tracker: t("inbox.panel.theTracker") }) }: { readonly child: Child; readonly openIn?: string }) => (
   <li className={cn(grid, "min-h-10 border-b border-line py-1")} data-testid="elsewhere-row" data-key={child.key}>
     <span className="font-mono text-[12.5px] text-faint">{child.key}</span>
     <span className="truncate text-ui text-muted" title={child.title}>{child.title}</span>
@@ -80,7 +82,7 @@ export const ElsewhereRow = ({ child }: { readonly child: Child }) => (
     <span className="hidden md:block" />
     <span className="col-start-3 flex justify-end md:col-start-auto">
       <a href={child.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ui text-teal hover:underline">
-        {t("ticketParent.openInLinear")}
+        {openIn}
         <ArrowUpRightIcon aria-hidden className="size-3 stroke-[1.75]" />
       </a>
     </span>
@@ -130,6 +132,9 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
   const startOne = useMutation(trpc.tasks.startFromTicket.mutationOptions({ onSuccess: refresh }));
 
   const data = parent.data;
+  // The ticket's tracker, from the Inbox's own read of it: `Jira` for a Jira sub-task page (ticket-chips.md).
+  const tracker = cached.data === undefined || cached.data.board.connection === null ? null : trackerName[cached.data.board.connection.kind];
+  const openIn = t("ticketParent.openIn", { tracker: tracker ?? t("inbox.panel.theTracker") });
   const projectName = project.data?.name ?? "";
   const children = data?.children ?? [];
   const onBoards = children.filter((child) => child.place === "board");
@@ -184,7 +189,7 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
               <PropRow label={t("ticketParent.panel.elsewhere")}><span className="font-mono">{elsewhere.length}</span></PropRow>
               <PropRow label={t("ticketParent.panel.depth")}>{plural(Math.max(1, ...children.map((child) => child.depth)), "ticketParent.panel.levels.one", "ticketParent.panel.levels.other")}</PropRow>
             </PropGroup>
-            <p className="text-xs text-faint">{data.source === "cache" ? t("ticketParent.fromCache") : t("ticketParent.fromTracker")}</p>
+            <p className="text-xs text-faint">{data.source === "cache" ? t("ticketParent.fromCache") : t("ticketParent.fromTracker", { tracker: tracker ?? t("inbox.panel.theTracker") })}</p>
           </div>
         )
       }
@@ -214,13 +219,13 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-ui">
             {cached.data === undefined ? null : (
               <Chip className="text-text">
-                <TicketStatusIcon category={cached.data.status.category} />
+                {cached.data.board.connection?.kind === "jira" ? <CategorySquare category={cached.data.status.category ?? "open"} /> : <TicketStatusIcon category={cached.data.status.category} />}
                 {cached.data.status.name ?? "–"}
               </Chip>
             )}
             {(cached.data?.labels ?? []).slice(0, 3).map((label) => <Chip key={label}>{label}</Chip>)}
             <a href={data.ticket.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-teal hover:underline">
-              {t("ticketParent.openInLinear")}
+              {openIn}
               <ArrowUpRightIcon aria-hidden className="size-3 stroke-[1.75]" />
             </a>
           </div>
@@ -308,7 +313,7 @@ export const TicketParentView = ({ projectId, ticketId }: { readonly projectId: 
               <p className="mb-1 text-xs text-faint">{t("ticketParent.elsewhereNote")}</p>
               <ul>
                 {elsewhere.map((child) => (
-                  <ElsewhereRow key={child.key} child={child} />
+                  <ElsewhereRow key={child.key} child={child} openIn={openIn} />
                 ))}
               </ul>
             </section>

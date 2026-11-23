@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { runnerIdSchema } from "@ostra/protocol";
 import type { AgentProfileId, ProjectId } from "@ostra/protocol";
 
+import { CategorySquare } from "@/components/boards/jira-mapping";
 import { unprotectedRepos, unsupportedRepos } from "@/components/projects/repo-checks-words";
 import type { RepoDetail } from "@/components/projects/repo-checks-words";
 import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
@@ -18,6 +19,7 @@ import { POOLS, RunOnPicker, useRunOn } from "@/components/tasks/run-on";
 import { budgetWaitText } from "@/components/tasks/budget-reason";
 import { usePhone } from "@/components/tasks/take-it-local";
 import { stateTone, taskStateText } from "@/components/tasks/task-words";
+import { TrackerMark, trackerMarkAt, trackerName } from "@/components/trackers/tracker-mark";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,6 +33,7 @@ import { useTRPC, useTRPCClient } from "@/lib/trpc";
 
 import { cacheAge, contextLine, filtered, filtersFrom, filtersToSearch, ledeSource, listInputOf, priorityText, rowAge } from "./inbox-words";
 import type { InboxDetail, InboxFilters, InboxSource, InboxTicket } from "./inbox-words";
+
 import { BulkStartPanel, SelectionBar, planOf, useBulkStart } from "./bulk-start";
 import { noTicks, tickAll, tickedRows, toggleTick, untick } from "./inbox-selection";
 import type { Ticks } from "./inbox-selection";
@@ -39,6 +42,9 @@ import { SafeMarkdown } from "./safe-markdown";
 import { PriorityIcon, TicketStatusIcon } from "./ticket-icons";
 
 const LIVE_MS = 10_000;
+
+/** A ticket's tracker's kind, from the board's connection (`Jira`, `Linear`): its mark and its words. */
+export type InboxTicketKind = NonNullable<InboxTicket["board"]["connection"]>["kind"];
 
 /** The first page has no cursor. */
 const firstPage = (): string | null => null;
@@ -58,16 +64,17 @@ const rowGrid = (several: boolean, tasks: boolean) =>
   cn(
     "grid min-h-10 w-full items-center gap-x-2.5 text-left",
     // A phone: two lines (phone-inbox.md), the priority, key and age over the title, 56px.
-    "grid-cols-[16px_minmax(0,1fr)_auto] max-md:min-h-14 max-md:gap-y-0.5 max-md:py-2 md:grid-cols-[16px_76px_minmax(0,1fr)_112px_110px_36px]",
+    // The key's column holds its 14px mark and 6px gap as well as the key (ticket-chips.md, "Inbox row").
+    "grid-cols-[16px_minmax(0,1fr)_auto] max-md:min-h-14 max-md:gap-y-0.5 max-md:py-2 md:grid-cols-[16px_96px_minmax(0,1fr)_112px_110px_36px]",
     // With the Task column, the labels, status and task columns are narrower, so the title keeps room beside
     // the panel: the double sidebar leaves the page 70px less than the target's single one (inbox-bulk-start).
     several && tasks
-      ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_72px_92px_92px_136px_32px]"
+      ? "xl:grid-cols-[16px_92px_minmax(0,1fr)_72px_92px_92px_136px_32px]"
       : several
-        ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_100px_92px_104px_32px]"
+        ? "xl:grid-cols-[16px_92px_minmax(0,1fr)_100px_92px_104px_32px]"
         : tasks
-          ? "xl:grid-cols-[16px_72px_minmax(0,1fr)_72px_92px_136px_32px]"
-          : "xl:grid-cols-[16px_72px_minmax(0,1fr)_100px_104px_32px]",
+          ? "xl:grid-cols-[16px_92px_minmax(0,1fr)_72px_92px_136px_32px]"
+          : "xl:grid-cols-[16px_92px_minmax(0,1fr)_100px_104px_32px]",
   );
 
 /** F-107: a row's tick for a bulk start, and what a ticked parent's code start starts (F-077). */
@@ -86,8 +93,9 @@ export type RowTick = {
  * narrow title cell (a phone, or the bulk panel beside the list) it keeps only its count, and the words
  * move to its tooltip and its accessible name.
  */
-export const SubIssueChip = ({ count, className }: { readonly count: number; readonly className?: string }) => {
-  const words = plural(count, "bulkStart.subIssueChip.one", "bulkStart.subIssueChip.other");
+export const SubIssueChip = ({ count, kind, className }: { readonly count: number; readonly kind: InboxTicketKind | null; readonly className?: string }) => {
+  // A Jira parent counts its sub-tasks, a Linear one its sub-issues (ticket-chips.md, "Inbox row").
+  const words = kind === "jira" ? plural(count, "inbox.subTasks.one", "inbox.subTasks.other") : plural(count, "bulkStart.subIssueChip.one", "bulkStart.subIssueChip.other");
   return (
     <Chip className={cn("shrink-0 text-faint", className)} title={words}>
       <span className="hidden @min-[22rem]:inline">{words}</span>
@@ -135,8 +143,15 @@ export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, n
       <span title={priorityText(ticket.priority)} className="text-muted">
         <PriorityIcon priority={ticket.priority} />
       </span>
-      <span className="flex min-w-0 items-center gap-2 font-mono text-ui text-faint">
-        {ticket.key}
+      <span className="flex min-w-0 items-center gap-1.5 font-mono text-ui text-faint">
+        {ticket.board.connection === null ? null : (
+          // One colour, in the key's own `--faint`; its tooltip names the tracker and the connection
+          // (ticket-chips.md, "Inbox row").
+          <span className="inline-flex shrink-0 items-center" title={`${trackerName[ticket.board.connection.kind]} · ${ticket.board.connection.name}`}>
+            <TrackerMark kind={ticket.board.connection.kind} size={trackerMarkAt.inboxRow.size} mono />
+          </span>
+        )}
+        <span className="truncate">{ticket.key}</span>
         {/* A phone has no Task column: the task's mark and word sit after the key (phone-inbox.md). */}
         {ticket.task?.active === true ? (
           <Status tone={stateTone(ticket.task.state)} className="min-w-0 font-sans md:hidden">
@@ -146,13 +161,13 @@ export const TicketRow = ({ ticket, several, tasks = true, selected, onSelect, n
       </span>
       {/* A container: a parent's chip reads the title cell's width, and gives way before the title does. */}
       <span className="@container flex min-w-0 items-center gap-2 max-md:col-span-2 max-md:col-start-2 max-md:row-start-2">
-        <span className="truncate text-body text-text">{ticket.title}</span>
+        <span className="min-w-0 flex-1 truncate text-body text-text">{ticket.title}</span>
         {ticket.subIssues > 0 ? (
           tick?.parentHref === null || tick?.parentHref === undefined ? (
-            <SubIssueChip count={ticket.subIssues} />
+            <SubIssueChip count={ticket.subIssues} kind={ticket.board.connection?.kind ?? null} />
           ) : (
             <Link href={tick.parentHref} onClick={(event) => { event.stopPropagation(); }} className="shrink-0" data-testid="parent-link">
-              <SubIssueChip count={ticket.subIssues} className="hover:text-text" />
+              <SubIssueChip count={ticket.subIssues} kind={ticket.board.connection?.kind ?? null} className="hover:text-text" />
             </Link>
           )
         ) : null}
@@ -316,9 +331,12 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
   return (
     <div data-testid="ticket-panel">
       <div className="flex items-center justify-between gap-3">
-        <span className="font-mono text-sm text-faint">{detail.key}</span>
-        <a href={detail.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ui text-teal hover:underline">
-          {t("inbox.panel.openInLinear")}
+        <span className="flex min-w-0 items-center gap-1.5 font-mono text-sm text-faint">
+          {detail.board.connection === null ? null : <TrackerMark kind={detail.board.connection.kind} size={trackerMarkAt.inboxRow.size} mono label={false} />}
+          <span className="truncate">{detail.key}</span>
+        </span>
+        <a href={detail.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-ui text-teal hover:underline">
+          {t("inbox.panel.openIn", { tracker: detail.board.connection === null ? t("inbox.panel.theTracker") : trackerName[detail.board.connection.kind] })}
           <ArrowUpRightIcon aria-hidden className="size-3 stroke-[1.75]" />
         </a>
       </div>
@@ -327,7 +345,7 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
         // The meta line replaces the key/value rows on a phone (phone-inbox.md, "Bottom sheet").
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-muted [&_svg]:size-[14px]" data-testid="ticket-meta">
           <span className="inline-flex items-center gap-1.5">
-            <TicketStatusIcon category={detail.status.category} />
+            {detail.board.connection?.kind === "jira" ? <CategorySquare category={detail.status.category ?? "open"} /> : <TicketStatusIcon category={detail.status.category} />}
             {detail.status.name ?? "–"}
           </span>
           <span aria-hidden className="text-faint">·</span>
@@ -344,7 +362,7 @@ export const TicketPanel = ({ detail, several, now, start }: { readonly detail: 
       ) : null}
       <div className={phone ? "hidden" : undefined}>
       <PropRow label={t("inbox.panel.status")}>
-        <TicketStatusIcon category={detail.status.category} />
+        {detail.board.connection?.kind === "jira" ? <CategorySquare category={detail.status.category ?? "open"} /> : <TicketStatusIcon category={detail.status.category} />}
         {detail.status.name ?? "–"}
       </PropRow>
       <PropRow label={t("inbox.panel.priority")}>

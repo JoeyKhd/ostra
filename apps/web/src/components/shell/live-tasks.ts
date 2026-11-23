@@ -20,7 +20,12 @@ export type LiveTask = {
   readonly line: { readonly tone: "needs-you" | "plain"; readonly text: string };
   /** `review` for a follow-up, drawn under its code task with that tag (F-147/c8); `null` for any other task. */
   readonly followUp: "review" | null;
+  /** Milestone 11 (F-152/c4, ticket-chips.md "Sidebar, live"): the ticket's tracker, marked before its key; `null` for a task without one. */
+  readonly connection: TicketConnection | null;
 };
+
+/** A task's ticket's tracker, as `tasks.list` answers it: its board's connection. */
+type TicketConnection = NonNullable<TaskRow["connection"]>;
 
 /**
  * A row of a live list and the follow-ups drawn under it. `context`: the task itself isn't live
@@ -60,7 +65,7 @@ const followUpOf = (kind: TaskRow["kind"], reviewOf: unknown): LiveTask["followU
 
 /** A project's task, from `tasks.list`, when it's live: every driver's, needs you to queued. */
 export const liveFromRow = (task: TaskRow): LiveTask | null => {
-  const base = { taskId: task.id, key: task.key, title: task.title, followUp: followUpOf(task.kind, task.reviewOf) };
+  const base = { taskId: task.id, key: task.key, title: task.title, followUp: followUpOf(task.kind, task.reviewOf), connection: task.connection };
   switch (task.state) {
     case "needs_you":
       return { ...base, mark: "amber", line: { tone: "needs-you", text: needsYouLine(task.needsYouReason) } };
@@ -84,7 +89,7 @@ export const liveFromRow = (task: TaskRow): LiveTask | null => {
 
 /** A card of Home's board (the needs-you and running columns) as a live row, or `null` for another kind. */
 export const liveFromCard = (card: BoardCard): LiveTask | null => {
-  const base = { taskId: card.taskId, key: card.key ?? card.taskId.slice(-7), title: card.title, followUp: followUpOf(card.kind, card.reviewOf) };
+  const base = { taskId: card.taskId, key: card.key ?? card.taskId.slice(-7), title: card.title, followUp: followUpOf(card.kind, card.reviewOf), connection: card.connection };
   switch (card.status.kind) {
     case "needs-you":
       return { ...base, mark: "amber", line: { tone: "needs-you", text: needsYouLine(card.status.reason) } };
@@ -107,6 +112,7 @@ const contextRow = (task: { readonly taskId: string; readonly key: string; reado
   mark: "in-review",
   line: { tone: "plain", text },
   followUp: null,
+  connection: null,
 });
 
 /** A task's state in a word, for a code task drawn only to hold its follow-ups. */

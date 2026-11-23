@@ -32,7 +32,7 @@ describe("a parent ticket's page (ticket-parent.md)", () => {
     const there = renderToStaticMarkup(<ElsewhereRow child={child()} />);
     expect(there).toContain("Board Operations");
     expect(there).toContain(`in <span class="font-mono">platform</span>`);
-    expect(there).toContain("Open in Linear");
+    expect(there).toContain("Open in the tracker");
     const nowhere = renderToStaticMarkup(<ElsewhereRow child={child({ elsewhere: null })} />);
     expect(nowhere).toContain("on no project&#x27;s board");
   });

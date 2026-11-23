@@ -89,7 +89,9 @@ export const headingOf = (task: Pick<Task, "key" | "title" | "kind" | "source" |
     const title = reviewed.prNumber === null ? task.title : t("taskPage.reviewTitle", { n: reviewed.prNumber });
     return { key: reviewed.codeTask.key, source: t("taskPage.aiReview"), title, crumb: title };
   }
-  const source = task.source === "prompt" ? t("taskPage.fromPrompt") : task.ticket === null ? t("taskPage.fromTicket") : t("taskPage.fromTracker", { tracker: trackerName(task.ticket.tracker) });
+  const connection = task.ticket?.connection ?? null;
+  const source =
+    task.source === "prompt" ? t("taskPage.fromPrompt") : connection === null ? t("taskPage.fromTicket") : t("taskPage.fromTracker", { tracker: trackerName(connection.kind) });
   return { key: task.key, source, title: task.title, crumb: task.key };
 };
 

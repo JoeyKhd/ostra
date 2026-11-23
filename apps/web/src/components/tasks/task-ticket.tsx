@@ -4,7 +4,10 @@ import { ChevronRightIcon, CircleAlertIcon, GitMergeIcon, PaperclipIcon, RotateC
 import { useState } from "react";
 import type { ReactNode } from "react";
 
+import { CategorySquare } from "@/components/boards/jira-mapping";
+import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
+import { TrackerMark, trackerMarkAt } from "@/components/trackers/tracker-mark";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { NeedsYou } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
@@ -37,13 +40,16 @@ const releaseReasonKey: Readonly<Record<string, MessageKey>> = {
   session_ended: "taskPage.box.reason.session_ended",
 };
 
-/** The tracker a ticket came from, by name (task-ticket.md: `CALC-174 · from Linear`). */
-export const trackerName = (kind: NonNullable<TaskDetail["ticket"]>["tracker"]): string => {
+/** A ticket's tracker as `tasks.get` answers it (milestone 11, ticket-chips.md): its board's connection. */
+export type TicketConnection = NonNullable<NonNullable<TaskDetail["ticket"]>["connection"]>;
+
+/** The tracker a ticket came from, by name (task-ticket.md: `CALC-174 · from Linear`, Jira's `from Jira`). */
+export const trackerName = (kind: TicketConnection["kind"]): string => {
   switch (kind) {
     case "linear":
       return t("taskPage.tracker.linear");
-    case "github":
-      return t("taskPage.tracker.github");
+    case "jira":
+      return t("taskPage.tracker.jira");
     default:
       return kind satisfies never;
   }
@@ -149,7 +155,17 @@ const syncState: Readonly<Record<SyncWrite["state"], { readonly key: MessageKey;
   failed: { key: "taskPage.sync.failed", tone: "text-red" },
 };
 
-/** The panel's Ticket and On Linear groups: the ticket, then one line per write with its state. */
+/**
+ * What a write's row says after its label (ticket-chips.md, "On Jira"): a move's `by Start progress`
+ * (the transitions it took), a move that stayed put's line, or Jira's `remote link` for the task link.
+ */
+export const syncDetail = (write: SyncWrite, kind: TicketConnection["kind"] | null): string | null => {
+  if (write.move?.kind === "moved") return write.move.via.length === 0 ? null : t("taskPage.sync.by", { names: write.move.via.map((one) => one.name).join(", ") });
+  if (write.move?.kind === "stays") return write.move.line;
+  return kind === "jira" && write.kind === "link_task" ? t("taskPage.sync.remoteLink") : null;
+};
+
+/** The panel's Ticket and On <tracker> groups: the ticket, then one line per write with its state. */
 export type TicketSync = Pick<TaskDetail, "ticket" | "sync"> & { readonly canRetry: boolean };
 
 export const TicketProperties = ({ task, now, retry, createTicket, context = null }: {
@@ -159,7 +175,10 @@ export const TicketProperties = ({ task, now, retry, createTicket, context = nul
   readonly createTicket: { readonly run: () => void; readonly pending: boolean; readonly error: string | null } | null;
   /** Milestone 9 (ticket 16): the `Context` row and "Send ticket updates", after `Synced`. */
   readonly context?: ReactNode;
-}) => (
+}) => {
+  // The ticket's tracker, for the group's title and the on-tracker rows (ticket-chips.md).
+  const connection = task.ticket?.connection ?? null;
+  return (
   <>
     {task.ticket === null ? (
       createTicket === null ? null : (
@@ -177,8 +196,28 @@ export const TicketProperties = ({ task, now, retry, createTicket, context = nul
             {task.ticket.key}
           </a>
         </PropRow>
-        <PropRow label={t("taskPage.ticketStatus")}>{task.ticket.status.name ?? "–"}</PropRow>
+        {connection === null ? null : (
+          // 16px, in its brand colour, as the rows' 14px wildcard would shrink it: ticket-chips.md.
+          <div className="grid min-h-8 grid-cols-[92px_minmax(0,1fr)] items-center gap-2 text-ui">
+            <span className="min-w-0 truncate text-muted">{t("taskPage.ticketTracker")}</span>
+            <span className="flex min-w-0 items-center gap-[7px] text-text">
+              <TrackerMark kind={connection.kind} size={trackerMarkAt.property.size} label={false} />
+              <span className="shrink-0">{trackerName(connection.kind)}</span>
+              <span className="truncate text-faint">· {connection.name}</span>
+            </span>
+          </div>
+        )}
+        <PropRow label={t("taskPage.ticketStatus")}>
+          {connection?.kind === "jira" ? <CategorySquare category={task.ticket.status.category ?? "open"} /> : <TicketStatusIcon category={task.ticket.status.category} />}
+          <span className="truncate">{task.ticket.status.name ?? "–"}</span>
+        </PropRow>
         <PropRow label={t("taskPage.ticketBoard")}><span className="truncate">{task.ticket.board}</span></PropRow>
+        {task.ticket.subIssues.count === 0 ? null : (
+          <PropRow label={connection?.kind === "jira" ? t("taskPage.subTasks") : t("taskPage.subIssues")}>
+            <span className="font-mono">{task.ticket.subIssues.count}</span>
+            {task.ticket.subIssues.done === 0 ? null : <span className="text-faint">{t("taskPage.subTasksDone", { n: task.ticket.subIssues.done })}</span>}
+          </PropRow>
+        )}
         <PropRow label={t("taskPage.synced")}>
           <span className="font-mono">{Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) < 60 ? t("taskPage.syncedSeconds", { n: Math.max(0, Math.round((now - task.ticket.cachedAt) / 1000)) }) : t("taskPage.syncedMinutes", { n: Math.round((now - task.ticket.cachedAt) / 60_000) })}</span>
         </PropRow>
@@ -186,14 +225,20 @@ export const TicketProperties = ({ task, now, retry, createTicket, context = nul
       </PropGroup>
     )}
     {task.sync.length === 0 ? null : (
-      <PropGroup title={t("taskPage.onLinear")}>
+      <PropGroup title={connection === null ? t("taskPage.ticketGroup") : t("taskPage.onTracker", { tracker: trackerName(connection.kind) })}>
         <ul data-testid="sync-steps">
-          {task.sync.map((write) => (
-            <li key={write.id} className="flex min-h-[26px] items-center justify-between gap-3 text-ui" data-state={write.state}>
-              <span className="truncate text-text" title={write.error ?? undefined}>{t(syncKey[write.kind])}</span>
-              <span className={cn("shrink-0 text-sm", syncState[write.state].tone)}>{t(syncState[write.state].key)}</span>
-            </li>
-          ))}
+          {task.sync.map((write) => {
+            const detail = syncDetail(write, connection?.kind ?? null);
+            return (
+              <li key={write.id} className="flex min-h-[26px] items-center justify-between gap-3 text-ui" data-state={write.state}>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-text" title={write.error ?? undefined}>{t(syncKey[write.kind])}</span>
+                  {detail === null ? null : <span className="truncate text-[12.5px] text-faint" title={detail}>{detail}</span>}
+                </span>
+                <span className={cn("shrink-0 text-sm", syncState[write.state].tone)}>{t(syncState[write.state].key)}</span>
+              </li>
+            );
+          })}
         </ul>
         {task.canRetry ? (
           <Button variant="link" className="mt-1.5 h-auto px-0 text-ui" disabled={retry.pending} onClick={retry.run}>
@@ -203,7 +248,8 @@ export const TicketProperties = ({ task, now, retry, createTicket, context = nul
       </PropGroup>
     )}
   </>
-);
+  );
+};
 
 /** The limit or crash that stopped the session, as the needs-you block it raised, with its action. */
 /** What the limit block reads: why the session stopped, the spend, and whether one click reopens it. */

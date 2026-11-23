@@ -15,6 +15,7 @@ import { PageFrame, PageHeading, PropRow } from "@/components/shell/page-frame";
 import { projectColour } from "@/components/shell/project-colour";
 import { initials } from "@/components/shell/user-menu";
 import { taskStateText } from "@/components/tasks/task-words";
+import { TrackerMark, trackerMarkAt } from "@/components/trackers/tracker-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
@@ -393,9 +394,17 @@ export const SearchView = ({ organization }: { readonly organization: string }) 
                         {result.repos.length > 1 ? ` ${t("search.page.moreRepos", { n: result.repos.length - 1 })}` : ""}
                       </span>
                     )}
-                    {result.ticketKey === null ? null : <span className="shrink-0 font-mono">· {result.ticketKey}</span>}
+                    {result.ticketKey === null ? null : (
+                      // Milestone 11 (ticket-chips.md, "Search"): the mark then the key, one colour; the connection's name on the right.
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <span aria-hidden>·</span>
+                        {result.connection === null ? null : <TrackerMark kind={result.connection.kind} size={trackerMarkAt.search.size} mono label={false} />}
+                        <span className="font-mono">{result.ticketKey}</span>
+                      </span>
+                    )}
                     <span className="hidden shrink-0 font-mono sm:inline">· {result.taskId.slice(0, 8)}</span>
                     {result.driverName === null ? null : <span className="hidden min-w-0 truncate sm:inline">· {result.driverName}</span>}
+                    {result.connection === null ? null : <span className="ml-auto hidden min-w-0 shrink truncate sm:inline">{result.connection.name}</span>}
                   </div>
                   {lines.slice(0, 2).map((snippet, index) => (
                     <Link

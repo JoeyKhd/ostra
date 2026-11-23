@@ -1,4 +1,4 @@
-import { memberIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
+import { connectionIdSchema, memberIdSchema, projectIdSchema, taskIdSchema } from "@ostra/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -28,6 +28,7 @@ const liveTask = (mark: LiveMark): LiveTask => ({
   mark,
   line: mark === "amber" ? { tone: "needs-you", text: t("shell.live.approval") } : { tone: "plain", text: mark === "green" ? runningLine(null) : t(mark === "preparing" ? "tasks.row.preparing" : mark === "in-review" ? "taskState.inReview" : "tasks.row.queued") },
   followUp: null,
+  connection: null,
 });
 
 const draw = (task: LiveTask, density: Density): string =>
@@ -111,6 +112,20 @@ describe("a live task's row (F-147, app-shell.md \"A live task row\")", () => {
       expect(spoken(markup), mark).toBe(`Add a history panel3964702f · ${words[mark]}`);
       expect(markup, mark).toContain(`title="Add a history panel · 3964702f · ${words[mark]}"`);
     }
+  });
+});
+
+describe("a live row's ticket's tracker (ticket-chips.md, F-152/c4)", () => {
+  it("F-152/c4: the second line carries the tracker's mark in the key's colour, before the key", () => {
+    const task: LiveTask = { ...liveTask("green"), connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c2"), kind: "jira", name: "Globex Jira" } };
+    const markup = draw(task, "desktop");
+    expect(markup).toContain('data-tracker-mark="jira"');
+    expect(markup).toContain('data-treatment="mono"');
+    // Hidden from readers: the row's title already names the task and its key.
+    expect(markup).toContain('aria-hidden="true"');
+    expect(spoken(markup)).toBe(`Add a history panel 3964702f · ${task.line.text}`);
+    // Without a connection (a prompt task) the line is the key and nothing else.
+    expect(draw(liveTask("green"), "desktop")).not.toContain("data-tracker-mark");
   });
 });
 
@@ -218,7 +233,7 @@ describe("a follow-up in the live lists (F-147/c8)", () => {
     };
     const families = yoursLive([card], memberId);
     expect(families).toHaveLength(1);
-    expect(families[0]?.task).toEqual({ taskId: codeId, key: codeId.slice(-7), title: "add a simple index.html file that i can preview", mark: "in-review", line: { tone: "plain", text: t("taskState.inReview") }, followUp: null });
+    expect(families[0]?.task).toEqual({ taskId: codeId, key: codeId.slice(-7), title: "add a simple index.html file that i can preview", mark: "in-review", line: { tone: "plain", text: t("taskState.inReview") }, followUp: null, connection: null });
     expect(families[0]).toMatchObject({ context: true, followUps: [{ taskId: reviewId, followUp: "review", mark: "green" }] });
     expect(liveCount(families)).toBe(1);
     // Someone else's review isn't the member's own.

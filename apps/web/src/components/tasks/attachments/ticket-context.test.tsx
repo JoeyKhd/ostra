@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { TicketAttachmentView, TicketContextView, TicketRoundView } from "@ostra/api";
-import { messageFileIdSchema } from "@ostra/protocol";
+import { connectionIdSchema, messageFileIdSchema } from "@ostra/protocol";
 import type { MessageFileView } from "@ostra/task-view";
 
 import { TicketContextMessage, TicketContextRow } from "./ticket-context-message";
@@ -68,7 +68,6 @@ const round = (over: Partial<TicketRoundView> = {}): TicketRoundView => ({
 const context = (first: TicketRoundView | null, over: Partial<TicketContextView> = {}): TicketContextView => ({
   state: first === null ? "fetching" : "read",
   ticketKey: "CALC-170",
-  tracker: "linear",
   connection: null,
   limits,
   prompt: "You're working on CALC-170.",
@@ -144,6 +143,15 @@ describe("What the agent got", () => {
     // Its files, comments and where it all is wait behind Show it all.
     expect(html).not.toContain("Finance confirmed: half up.");
     expect(html).not.toContain("Show the prompt");
+  });
+
+  it("F-152/c4: a Jira ticket's meta line carries Jira's mark, one colour, before the key", () => {
+    const view = context(round(), { connection: { id: connectionIdSchema.parse("01900000-0000-7000-8000-0000000000c2"), kind: "jira", name: "Globex Jira" } });
+    const html = renderToStaticMarkup(<TicketContextMessage view={view} tracker="Jira" agent="OpenCode" now={at + 60_000} retry={null} fileOf={none} onOpenImage={null} by="Priya Shah" at={at} title="Checkout total ignores the coupon" />);
+    expect(html).toContain('data-tracker-mark="jira"');
+    expect(html).toContain('data-treatment="mono"');
+    expect(html).toContain(">CALC-170<");
+    expect(html).toContain("from Jira");
   });
 
   it("shows the description, the files with their text, the link not fetched, the comments and where it all is", () => {

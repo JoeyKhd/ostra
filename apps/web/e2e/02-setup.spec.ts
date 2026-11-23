@@ -8,7 +8,7 @@ import { e2eModelToken, e2eStubBaseUrl } from "./settings.ts";
 
 test.describe.configure({ mode: "serial" });
 
-test("F-076/c1: a new organization's Home shows the checklist in its order, and its next step opens the model provider page", async ({ page }) => {
+test("F-076/c1, F-152/c7: a new organization's Home shows the checklist in its order, with step 4 offering either tracker, and its next step opens the model provider page", async ({ page }) => {
   await signIn(page);
   await page.goto("/");
   const checklist = page.getByTestId("setup-checklist");
@@ -23,12 +23,16 @@ test("F-076/c1: a new organization's Home shows the checklist in its order, and 
   for (const step of ["model-provider", "github", "project", "runner", "first-task"]) {
     await expect(page.locator(`[data-step="${step}"]`)).toHaveAttribute("data-done", "false");
   }
-  // Linear is optional (milestone 2's step, live): offered with "Skip for now", and never what
-  // holds setup back (03-first-run finishes setup without it).
-  const linear = page.locator('[data-step="tracker"]');
-  await expect(linear).toContainText("Connect Linear");
-  await expect(linear.getByRole("button", { name: "Skip for now" })).toBeVisible();
-  await expect(linear.getByRole("link", { name: "Connect Linear", exact: true })).toHaveAttribute("href", "/organization/linear");
+  // Milestone 11 (F-152/c7): the tracker is optional, either kind; offered with both marks and
+  // "Skip for now", to Trackers, and never what holds setup back (03-first-run finishes without it).
+  // "Connecting Jira ticks it" waits for ticket 13's connect flow.
+  const tracker = page.locator('[data-step="tracker"]');
+  await expect(tracker).toContainText("Connect a tracker");
+  await expect(tracker).toContainText("tickets become tasks");
+  await expect(tracker.locator('[data-tracker-mark="linear"]')).toBeVisible();
+  await expect(tracker.locator('[data-tracker-mark="jira"]')).toBeVisible();
+  await expect(tracker.getByRole("button", { name: "Skip for now" })).toBeVisible();
+  await expect(tracker.getByRole("link", { name: "Connect a tracker", exact: true })).toHaveAttribute("href", "/organization/trackers");
   // Milestone 7 (ticket 24): every step links to its page in the docs (OSTRA_DOCS_URL), in a new tab.
   for (const step of order) {
     const docs = page.locator(`[data-step="${step}"] a[data-docs]`);

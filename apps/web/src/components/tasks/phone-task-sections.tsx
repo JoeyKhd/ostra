@@ -4,6 +4,7 @@ import { ArrowUpRightIcon, ChevronRightIcon, CircleCheckIcon, CircleIcon, Circle
 import { useState } from "react";
 import type { ReactNode } from "react";
 
+import { CategorySquare } from "@/components/boards/jira-mapping";
 import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
 import { Sheet, SheetClose, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/cn";
@@ -87,14 +88,14 @@ const DetailsRow = ({ details }: { readonly details: ReactNode }) => (
 /** The Ticket section: its status on the tracker with a link to it, what the agent got, which opens, and Details. */
 const TicketSection = ({ ticket, files, details, agentGot }: { readonly ticket: NonNullable<TaskDetail["ticket"]>; readonly files: TaskDetail["contextFiles"]; readonly details: ReactNode; readonly agentGot: boolean }) => {
   const [open, setOpen] = useState(false);
-  const tracker = trackerName(ticket.tracker);
+  const tracker = ticket.connection === null ? t("taskPage.fromTicket") : trackerName(ticket.connection.kind);
   const href = safeHref(ticket.url);
   return (
     <Section title={t("taskPage.ticketGroup")} testId="phone-ticket">
       <li className={rowClass}>
-        <TicketStatusIcon category={ticket.status.category} className="size-[15px] shrink-0 text-muted" />
+        {ticket.connection?.kind === "jira" ? <CategorySquare category={ticket.status.category ?? "open"} className="size-[15px] shrink-0" /> : <TicketStatusIcon category={ticket.status.category} className="size-[15px] shrink-0 text-muted" />}
         <span className="min-w-0 flex-1 truncate text-text">
-          {ticket.removed ? t("taskPage.ticketRemoved") : t("taskPage.phone.statusOn", { status: ticket.status.name ?? "–", tracker })}
+          {ticket.removed ? t("taskPage.ticketRemoved", { tracker }) : t("taskPage.phone.statusOn", { status: ticket.status.name ?? "–", tracker })}
         </span>
         {href === null ? null : (
           <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-teal hover:underline">
@@ -244,7 +245,7 @@ export const PhoneTaskSections = ({ task, retry, details, agentGotInThread = fal
     <div className="sm:hidden" data-testid="phone-task-sections">
       {task.ticket === null ? null : <TicketSection ticket={task.ticket} files={task.contextFiles} details={details} agentGot={!agentGotInThread} />}
       {task.ticket === null || refine || task.sync.length === 0 ? null : (
-        <SyncSection tracker={trackerName(task.ticket.tracker)} sync={task.sync} retry={task.canRetry ? retry : null} />
+        <SyncSection tracker={task.ticket.connection === null ? t("taskPage.fromTicket") : trackerName(task.ticket.connection.kind)} sync={task.sync} retry={task.canRetry ? retry : null} />
       )}
       {task.kind !== "code" || task.repos.length === 0 ? null : <PrSection repos={task.repos} />}
       {task.ticket === null ? (

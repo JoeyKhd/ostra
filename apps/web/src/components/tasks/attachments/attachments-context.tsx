@@ -10,6 +10,7 @@ import { FILES_ROOT_DIR, MESSAGE_FILES_FOLDER, TICKET_FILES_FOLDER } from "@ostr
 import type { ImagesNotSent, MessageFileId, TaskId } from "@ostra/protocol";
 import { MESSAGE_FILE_LINK_PARAM, messageFileLinkPath } from "@ostra/task-view";
 
+import { trackerName } from "@/components/tasks/task-ticket";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
@@ -218,12 +219,13 @@ export const AttachmentsProvider = ({ taskId, added, filesAdded = 0, agentName, 
       }
       return fromText({ where: set.find((file) => file.fileId === key)?.ticketWhere ?? null, author: null });
     };
+    const ticketConnection = ticket.data?.connection ?? null;
     const source: FileViewerSource =
       opened.origin === "ticket"
         ? {
             kind: "ticket",
             taskKey: value.taskKey,
-            tracker: ticket.data?.tracker ?? "",
+            tracker: ticketConnection === null ? "" : trackerName(ticketConnection.kind),
             folder: `${FILES_ROOT_DIR}/${TICKET_FILES_FOLDER}/`,
             imagesNotSent: ticket.data?.rounds[0]?.imagesNotSent ?? null,
             from: ticketFrom,

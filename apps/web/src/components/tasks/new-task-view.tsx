@@ -35,6 +35,7 @@ import { PageFrame, PageHeading, PropGroup, PropRow, Section, SectionLink } from
 import { projectColour } from "@/components/shell/project-colour";
 import { ComposerRepoNotes, repoBlockId } from "@/components/projects/repo-check-line";
 import { unsupportedRepos } from "@/components/projects/repo-checks-words";
+import { TrackerMark, trackerMarkAt } from "@/components/trackers/tracker-mark";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -214,7 +215,17 @@ const WhatHappensNext = ({ project, agentName, runner, slug, files, ticketBoard 
         <FilesNextRow entries={files} variant="row" className="max-md:hidden" />
         {ticketBoard === null ? null : (
           <NextRow icon={<TicketPlusIcon aria-hidden />}>
-            <span data-testid="next-ticket">{fill(t("newTask.next.ticket"), { board: <b className="font-medium">{ticketBoard.name}</b> })}</span>
+            <span data-testid="next-ticket">
+              {fill(t("newTask.next.ticket"), {
+                // Milestone 11 (ticket-chips.md, "New task"): the board's tracker in its brand colour, then its name.
+                board: (
+                  <span className="inline-flex items-baseline gap-1.5">
+                    {ticketBoard.connection === null ? null : <TrackerMark kind={ticketBoard.connection.kind} size={trackerMarkAt.newTask.size} label={false} className="translate-y-[2px]" />}
+                    <b className="font-medium">{ticketBoard.name}</b>
+                  </span>
+                ),
+              })}
+            </span>
           </NextRow>
         )}
         <NextRow icon={<GitBranchIcon aria-hidden />}>

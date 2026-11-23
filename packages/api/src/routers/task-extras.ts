@@ -1,4 +1,3 @@
-import type { DbEnum } from "@ostra/db";
 import { modelTokenPrices, moveOutcomeOf } from "@ostra/domain";
 import { blobIdSchema, boxSizeNameSchema, sessionIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protocol";
 import type { SessionLimit } from "@ostra/protocol";
@@ -12,27 +11,6 @@ import type { ApiDeps } from "../trpc/context.ts";
 // sessions with where each came from, its box, its spend against the cap, and the limit that
 // stopped it. Everything is read from the task's own rows in its organization; a ticket's text is
 // untrusted and returned as data.
-
-/**
- * The trackers the task page names (`task-ticket.tsx`'s `trackerName`, `from Linear`): Linear's and
- * GitHub's. Milestone 11's migration added the `jira` kind (its ticket 01); the task page draws
- * Jira's name and mark from its ticket 16 on (`ticket-chips.md`), and until then answers no
- * tracker for a Jira ticket, so it shows no ticket card rather than another tracker's words.
- * Milestone 11's ticket 10 built the card for every kind (its `connection`, sub-issue counts, and
- * the "On Jira" rows' `move`); the card's gate is this function alone, which ticket 16 removes in
- * the same commit as `trackerName`'s Jira case (the task page's folder is the thread build's).
- */
-export const taskPageTrackerOf = (kind: DbEnum.ConnectionKind): "linear" | "github" | null => {
-  switch (kind) {
-    case "linear":
-    case "github":
-      return kind;
-    case "jira":
-      return null;
-    default:
-      return kind satisfies never;
-  }
-};
 
 type TaskRow = {
   readonly id: string;
@@ -184,10 +162,9 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
   /** At the cap (`spendCapReached`): a reopen is refused until the cap is raised. */
   const spend = { ...spendBase, reached: spendBase.spent >= spendBase.cap };
 
-  const tracker = ticket === null ? null : taskPageTrackerOf(ticket.connection.kind);
   // F-077, F-008/c6: the ticket's sub-issues (Jira's sub-tasks) in the cache, and how many are done.
   const children =
-    ticket === null || tracker === null
+    ticket === null
       ? []
       : await db.ticket.groupBy({
           by: ["open"],
@@ -196,7 +173,7 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
         });
   return {
     ticket:
-      ticket === null || tracker === null
+      ticket === null
         ? null
         : {
             id: ticketIdSchema.parse(ticket.id),
@@ -204,10 +181,9 @@ export const loadTaskExtras = async (deps: ApiDeps, task: TaskRow, profileModelI
             title: ticket.title,
             url: ticket.url,
             status: { name: ticket.statusName, category: ticket.statusCategory },
-            /** The board the ticket came in on, and its tracker's kind (task-ticket.md: `Board`, `from Linear`). */
+            /** The board the ticket came in on (task-ticket.md: `Board`). */
             board: ticket.board.name,
-            tracker,
-            /** Milestone 11 (F-152/c4, ticket-chips.md): its tracker, the board's connection: `Jira · Globex Jira`. */
+            /** Milestone 11 (F-152/c4, ticket-chips.md): its tracker, the board's connection: `Jira · Globex Jira`, `from Jira`. */
             connection: ticketConnectionOf(ticket.connection),
             /** Its sub-issues (Jira's sub-tasks) in the cache: `Sub-tasks 2 · 1 done`. */
             subIssues: {

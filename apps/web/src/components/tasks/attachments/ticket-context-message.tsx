@@ -10,6 +10,7 @@ import type { MessageFileId } from "@ostra/protocol";
 import type { MessageFileView } from "@ostra/task-view";
 
 import { PropRow } from "@/components/shell/page-frame";
+import { TrackerMark, trackerMarkAt } from "@/components/trackers/tracker-mark";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -265,7 +266,11 @@ export const TicketContextMessage = ({ view, tracker, agent, now, retry, fileOf,
       )}
       <div className="w-[82%] min-w-0 rounded-2xl bg-sel px-3.5 py-[11px] text-body leading-[1.55] text-text" data-part="bubble-got">
         <p className="mb-1 flex min-w-0 flex-wrap items-center gap-x-[7px] text-[12.5px] text-muted" data-part="ticket-source">
-          <TicketIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75] text-faint" />
+          {view.connection === null ? (
+            <TicketIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75] text-faint" />
+          ) : (
+            <TrackerMark kind={view.connection.kind} size={trackerMarkAt.threadMeta.size} mono label={false} className="text-faint" />
+          )}
           <span className="font-mono text-xs text-text-2">{view.ticketKey}</span>
           <span>{t("task.ticketContext.from", { tracker })}</span>
         </p>

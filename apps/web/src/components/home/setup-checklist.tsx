@@ -10,9 +10,9 @@ import { SetupSteps, SetupStepsLoading, settledCount } from "./setup-steps";
 
 /**
  * The first-run checklist (F-076), on Home for a new organization: in its order, each step where
- * `setup.status` says it stands. Done and skipped steps count toward the progress; the Linear step
- * can be set aside with "Skip for now" (an admin's action), and is never counted against setup
- * being `complete`.
+ * `setup.status` says it stands. Done and skipped steps count toward the progress; the tracker step
+ * (`Connect a tracker`, either kind; F-152/c7) can be set aside with "Skip for now" (an admin's
+ * action), and is never counted against setup being `complete`.
  */
 export const SetupChecklist = ({ admin }: { readonly admin: boolean }) => {
   const trpc = useTRPC();

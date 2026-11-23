@@ -1,3 +1,4 @@
+import { trackerName } from "@/components/trackers/tracker-mark";
 import { plural, t } from "@/lib/messages";
 import type { RouterInputs, RouterOutputs } from "@/lib/trpc";
 
@@ -88,9 +89,14 @@ export const cacheAge = (at: number, now: number): string => {
 
 /** The lede's first half: one board by name, or several by count. */
 export const ledeSource = (source: InboxSource): { readonly board: string | null; readonly text: string } => {
+  // `on Linear`, `on Jira`: the boards' trackers by name, or "your trackers" for both (ticket-chips.md).
+  const kinds = [...new Set(source.boards.flatMap((board) => (board.connection === null ? [] : [board.connection.kind])))];
+  const [kind] = kinds;
+  const tracker = kinds.length === 1 && kind !== undefined ? trackerName[kind] : t("inbox.ledeTrackers");
+  // `{board}` stays for the caller, which draws the name in `--text` (the lede's one filled word).
   const [only] = source.boards;
-  if (source.boards.length === 1 && only !== undefined) return { board: only.name, text: t("inbox.ledeOne") };
-  return { board: null, text: t("inbox.ledeMany", { n: source.boards.length }) };
+  if (source.boards.length === 1 && only !== undefined) return { board: only.name, text: t("inbox.ledeOne", { tracker }) };
+  return { board: null, text: t("inbox.ledeMany", { n: source.boards.length, tracker }) };
 };
 
 const priorityKeys = ["inbox.priority.0", "inbox.priority.1", "inbox.priority.2", "inbox.priority.3", "inbox.priority.4"] as const;
