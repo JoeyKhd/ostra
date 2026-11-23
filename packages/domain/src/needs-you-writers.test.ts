@@ -72,6 +72,8 @@ describe("every write of a needs-you item enqueues its fan-out", () => {
       "apps/web/e2e/seed-review-world.ts",
       "apps/web/e2e/seed-routes-world.ts",
       "apps/web/e2e/seed-task.ts",
+      // Milestone 10's ticket 09 (F-151): the compact thread's scenes seed the question each one shows.
+      "apps/web/e2e/seed-thread-world.ts",
       "packages/db/src/testing/isolation-models.ts",
       "packages/domain/src/use-cases/needs-you-items.ts",
     ]);

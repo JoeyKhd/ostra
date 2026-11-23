@@ -101,8 +101,8 @@ describe("the published packages", () => {
   it("F-039/c2: every published package has its license, only its build and LICENSE as its files, npm's provenance and the repository", async () => {
     expect(await releaseProblems(root)).toEqual([]);
     const published = (await readWorkspace(root)).filter((item) => isPublishedDir(item.dir));
-    expect(published.map((item) => item.manifest.name)).toEqual(expect.arrayContaining(["@ostra/protocol", "@ostra/adapter-sdk", "@ostra/adapter-opencode", "@ostra/adapter-github", "@ostra/adapter-linear"]));
-    expect(published).toHaveLength(16);
+    expect(published.map((item) => item.manifest.name)).toEqual(expect.arrayContaining(["@ostra/protocol", "@ostra/adapter-sdk", "@ostra/adapter-opencode", "@ostra/adapter-github", "@ostra/adapter-linear", "@ostra/adapter-jira"]));
+    expect(published).toHaveLength(17);
     for (const { manifest, dir } of published) {
       expect(manifest.private, dir).toBeUndefined();
       expect(manifest.files, dir).toEqual(["dist", "LICENSE"]);
