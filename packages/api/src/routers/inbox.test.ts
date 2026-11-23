@@ -54,7 +54,7 @@ describe("F-010: the Inbox lists the cache", () => {
     await seedTicket(harness, { projectId, boardId, connectionId, key: "ENG-6", title: "Gone from the board", ...todo, removedAt: at(5), trackerUpdatedAt: at(60) });
   });
 
-  it("shows the mapped open statuses by default, newest change first, and counts them", async () => {
+  it("F-010/c1: shows the mapped open statuses by default, newest change first, and counts them", async () => {
     const result = await (await member()).inbox.list({ projectId });
     expect(result.tickets.map((ticket) => ticket.key)).toEqual(["ENG-2", "ENG-3", "ENG-1"]);
     expect(result.total).toBe(3);
@@ -83,7 +83,7 @@ describe("F-010: the Inbox lists the cache", () => {
     expect(await keysOf({ status: ["started", "s-backlog"] })).toEqual(["ENG-4", "ENG-3"]);
   });
 
-  it("filters by label, priority, assignee and text, alone and together", async () => {
+  it("F-010/c1: filters by label, priority, assignee and text, alone and together", async () => {
     expect(await keysOf({ status: ["open", "started"], labels: ["bug"] })).toEqual(["ENG-4", "ENG-1"]);
     expect(await keysOf({ status: ["open", "started"], labels: ["bug", "design"] })).toEqual(["ENG-4", "ENG-2", "ENG-1"]);
     expect(await keysOf({ priorities: [2] })).toEqual(["ENG-1"]);

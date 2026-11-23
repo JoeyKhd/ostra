@@ -305,6 +305,25 @@ describe("proposals", () => {
     expect(await harness.test.db.memoryProposal.findUniqueOrThrow({ where: { id: hidden }, select: { state: true } })).toEqual({ state: "proposed" });
   });
 
+  it("F-111/c5: approving a proposal applies it as the note's first version, and the Memory page's proposal count falls", async () => {
+    const { a } = harness.fixture;
+    const admin = await harness.as(a.admin);
+    const member = await harness.as(a.member);
+    const task = await seedTask(harness, { organizationId: a.organization.id, projectId: a.openProject.id, title: "Rename the releaseName key" });
+    const proposalId = await proposal({ projectId: a.openProject.id, title: "Keys are single lowercase words", body: "Rename releaseName to release_name.", taskId: task.taskId });
+    const before = await member.memory.notes({ scope: "project", projectId: a.openProject.id });
+    expect(before.openProposals).toBeGreaterThanOrEqual(1);
+
+    const approved = await admin.memory.decide({ proposalId, decision: "approve" });
+    if (approved.noteId === null) throw new Error("approve must apply the proposal as a note");
+    const note = await member.memory.note({ noteId: noteIdSchema.parse(approved.noteId) });
+    expect(note).toMatchObject({ title: "Keys are single lowercase words", body: "Rename releaseName to release_name.", version: 1, status: "active", source: { kind: "proposal", taskId: task.taskId } });
+    // It is on the Memory page now, and the count that stood in for a needs-you item fell.
+    const after = await member.memory.notes({ scope: "project", projectId: a.openProject.id });
+    expect(after.notes.map((row) => row.title)).toContain("Keys are single lowercase words");
+    expect(after.openProposals).toBe(before.openProposals - 1);
+  });
+
   it("F-111/c3: a proposal's related notes rank as memory_search does, and stay in the proposal's scope", async () => {
     const { a, b } = harness.fixture;
     const admin = await harness.as(a.admin);

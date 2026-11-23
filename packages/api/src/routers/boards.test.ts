@@ -109,7 +109,7 @@ describe("F-007: attaching a board", () => {
     await expect((await admin()).boards.attach({ projectId, connectionId: linearId, externalId: "no-such-team" })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("marks attached teams, and says which other projects have the team too", async () => {
+  it("F-007/c2: marks attached teams, and says which other projects have the team too", async () => {
     const teams = await itemsOf();
     expect(teams.find((team) => team.key === "CALC")).toMatchObject({ attachedHere: true, alsoOn: [] });
 

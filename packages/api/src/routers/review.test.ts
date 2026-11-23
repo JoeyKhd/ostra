@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { appendEvent, createApiHarness, seedBoard, seedConnectionAndModel, seedLinearConnection, seedProject, seedTask, seedTicket } from "../testing/index.ts";
+import { reviewRouter } from "./review.ts";
 import type { ApiHarness, SeededTask } from "../testing/index.ts";
 
 // Milestone 6's ticket 28 (F-102, F-100, F-101, F-035, F-105, F-111): the review screen, "Fix this"
@@ -190,6 +191,19 @@ describe("the review screen (F-102, ticket 28)", () => {
 
     // Another organization's admin finds no such task, and a refine or review task has no review screen.
     expect(await codeOf((await harness.as(harness.fixture.b.admin)).review.screen({ taskId: task.taskId }))).toBe("NOT_FOUND");
+  });
+
+  it("F-102/c4: approving and merging stay on GitHub: the screen carries each PR's own GitHub URL, and the router has no approve or merge", async () => {
+    const task = await reviewedTask("approve-on-github");
+    const member = await harness.as(harness.fixture.a.member);
+    const screen = await member.review.screen({ taskId: task.taskId });
+    // The screen's action appends `/files`: it takes the reviewer to GitHub to approve and merge there.
+    expect(screen.prs.map((pr) => [pr.prUrl, pr.prNumber])).toEqual([
+      ["https://github.com/ostra-test/test/pull/7", 7],
+      ["https://github.com/ostra-test/test/pull/8", 8],
+    ]);
+    // Nothing in the panel approves or merges: the router's only actions are the screen, Fix this and Remember this.
+    expect(Object.keys(reviewRouter._def.procedures).sort()).toEqual(["fixThis", "rememberFinding", "screen"]);
   });
 
   it("F-102/c1: a resolved finding names the round that resolved it, and a review running on a newer head says which head", async () => {

@@ -316,7 +316,7 @@ describe("New task's runner picker (F-069, F-014)", () => {
     await expect((await harness.as(harness.fixture.b.admin)).tasks.runnerChoices({ projectId })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-014/c3, F-069/c2: offers only the member's own personal runners, each with whether it can and why not: offline, busy, no services, the provider not allowed", async () => {
+  it("F-014/c3, F-014/c4, F-069/c2: offers only the member's own personal runners, each with whether it can and why not: offline, busy, no services, the provider not allowed", async () => {
     const { projectId } = await pickerWorld();
     const { a } = harness.fixture;
     const admin = await harness.as(a.admin);

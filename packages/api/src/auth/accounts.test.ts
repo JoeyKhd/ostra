@@ -93,7 +93,7 @@ describe("an account", () => {
     ]);
   });
 
-  it("F-002/c2,c12: a member signs in with the username or the email, and the password, and not with a wrong one", async () => {
+  it("F-002/c2, F-002/c12: a member signs in with the username or the email, and the password, and not with a wrong one", async () => {
     for (const attempt of ["username", "email"] as const) {
       const { headers } =
         attempt === "username"

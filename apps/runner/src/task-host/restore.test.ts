@@ -200,7 +200,7 @@ describe("a reopen on the same box: resumed", () => {
 });
 
 describe("a reopen on a fresh box: restored", () => {
-  it("F-033/c1: restores the hidden ref and the archive on another runner, from another data folder, and the agent answers about earlier turns", async () => {
+  it("F-033/c1, F-033/c6: restores the hidden ref and the archive into the fresh box's own workspace folder on another runner, from another data folder, and the agent answers about earlier turns", async () => {
     const first = await runner();
     const { spec, saved } = await firstSession(first, "plum");
     const second = await runner();
