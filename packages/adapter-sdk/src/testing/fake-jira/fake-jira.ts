@@ -20,13 +20,18 @@ import type { JqlSubject } from "./fake-jql.ts";
 // and JSON shapes, built from Atlassian's docs (context/research/trackers.md §2). It serves a site
 // and Atlassian's gateway at once: `/rest/api/3/...` is the site (a classic token),
 // `/ex/jira/{cloudId}/rest/api/3/...` the gateway (a scoped token), and `/_edge/tenant_info` names
-// the cloud ID without a credential. The in-memory `JiraFakeAdapter` (`../jira-fake.ts`) stays for
-// the tests where a `TrackerAdapter` is enough.
+// the cloud ID without a credential. Asked with `X-Forwarded-Host` (as the connect kit asks it when
+// `OSTRA_JIRA_API_URL` points here), it stands for that host: its own site (`siteHost`), a Jira
+// Data Center server (`dataCenterHost`, no tenant info, `deploymentType: DataCenter` in its server
+// info), or no site at all. The in-memory `JiraFakeAdapter` (`../jira-fake.ts`) stays for the tests
+// where a `TrackerAdapter` is enough.
 //
 // What it has: accounts (a service account and people) with Basic `email:token` sign-in, scoped
 // tokens whose scopes each route checks; projects with issue types, statuses in Jira's three
 // categories and a workflow per issue type whose transitions are the only way to change a status,
-// one of them behind a screen that refuses; issues with ADF descriptions and comments, labels,
+// one of them behind a screen that refuses, read through Jira's workflows API (`/workflows/search`
+// and the bulk read by project and issue type), whose statuses go by references the answer maps
+// to IDs; issues with ADF descriptions and comments, labels,
 // priorities, sub-tasks and epic children, issue links, attachments (multipart uploads,
 // `attachment/content/{id}?redirect=false`), remote links upserted by `globalId`, and issue
 // properties; JQL search with `nextPageToken`; user search by name or address, with addresses
@@ -43,6 +48,10 @@ import type { JqlSubject } from "./fake-jql.ts";
 // - A comment event's body has no `user`, only the comment's author: the adapter reads either.
 // - A media node in ADF names its upload by a media ID that isn't the attachment's, and its `alt`
 //   is the file's name, as Jira's editor writes an upload.
+// - A workflow read needs `read:workflow:jira` (401 without it) and, per project, the account's
+//   `VIEW_READONLY_WORKFLOW` there: without it, Jira shows none of the project's workflows (an empty
+//   page, not a refusal). Each status's reference in the workflows API differs from its ID.
+// - A site that doesn't exist, and a Data Center server, answer 404 at `/_edge/tenant_info`.
 
 export type FakeJiraCategory = "new" | "indeterminate" | "done";
 export type FakeJiraStatus = { readonly id: string; readonly name: string; readonly category: FakeJiraCategory };
@@ -111,6 +120,8 @@ export type FakeJiraFault =
 
 export type FakeJiraOptions = {
   readonly clock?: ManualClock;
+  /** The site's name: the site is `<name>.atlassian.net` (`siteHost`). Default `globex`. */
+  readonly siteName?: string;
   /** The first project's key. Default `PROJ`. */
   readonly projectKey?: string;
   /** The service account's time zone, which JQL's times are read in. Default `America/Los_Angeles`, west of UTC, so a time read in the wrong zone loses changes instead of hiding. */
@@ -124,6 +135,10 @@ export type FakeJiraDelivery = { readonly rawBody: Uint8Array; readonly headers:
 export type FakeJira = {
   /** The site, `http://127.0.0.1:<port>`, standing in for `https://<name>.atlassian.net`. */
   readonly siteUrl: string;
+  /** The host the site stands for, `globex.atlassian.net`: what `X-Forwarded-Host` names it by. */
+  readonly siteHost: string;
+  /** A Jira Data Center server's host, which the fake answers for too: no tenant info, and a server info that says so. */
+  readonly dataCenterHost: string;
   /** The gateway's origin, standing in for `https://api.atlassian.com` (the same server). */
   readonly gatewayUrl: string;
   readonly cloudId: string;
@@ -135,7 +150,10 @@ export type FakeJira = {
   readonly person: FakeJiraAccount;
   readonly project: FakeJiraProject;
   readonly statuses: readonly FakeJiraStatus[];
+  /** The workflow every issue type uses until `useWorkflow` gives it another. */
   readonly workflow: FakeJiraWorkflow;
+  /** Gives an issue type, in every project, a workflow of its own over the same statuses. */
+  readonly useWorkflow: (issueTypeId: string, workflow: FakeJiraWorkflow) => void;
   /** Task, Bug, Epic (a level above) and Sub-task (a level below). */
   readonly issueTypes: readonly FakeJiraIssueType[];
   /** The admin webhook's shared secret. */
@@ -146,7 +164,12 @@ export type FakeJira = {
   readonly addAccount: (input: { readonly displayName: string; readonly email: string; readonly accountType?: "app" | "atlassian"; readonly emailVisible?: boolean; readonly timeZone?: string }) => FakeJiraAccount;
   /** A token for the account: `scopes: null` is a classic, unscoped token (the site only). */
   readonly mintToken: (accountId: string, scopes: readonly string[] | null) => string;
-  /** Takes project permissions from an account (`BROWSE_PROJECTS` hides the project from it). */
+  /** Jira refuses the token from now on: 401 (revoked or expired) or 403 (an account without Jira access). */
+  readonly refuseToken: (token: string, status: 401 | 403) => void;
+  /**
+   * Takes project permissions from an account (`BROWSE_PROJECTS` hides the project from it;
+   * `VIEW_READONLY_WORKFLOW` hides the project's workflows).
+   */
   readonly revokePermissions: (accountId: string, projectId: string, permissions: readonly string[]) => void;
   /** A person creates an issue. The description is markdown, written as Jira's editor would. */
   readonly createIssue: (input: {
@@ -203,6 +226,9 @@ export type FakeJira = {
 };
 
 let sitesMade = 0;
+
+/** The workflows API's name for each category. */
+const WORKFLOW_CATEGORY: Readonly<Record<FakeJiraCategory, "TODO" | "IN_PROGRESS" | "DONE">> = { new: "TODO", indeterminate: "IN_PROGRESS", done: "DONE" };
 
 const CATEGORY: Readonly<Record<FakeJiraCategory, { readonly id: number; readonly name: string; readonly colorName: string }>> = {
   new: { id: 2, name: "To Do", colorName: "blue-gray" },
@@ -332,6 +358,8 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
     return String(counter);
   };
   const cloudId = randomUUID();
+  const siteHost = `${options.siteName ?? "globex"}.atlassian.net`;
+  const dataCenterHost = "jira.initech.example";
   const webhookSecret = `jira-webhook-${randomUUID()}`;
   const customFields = new Set(options.customFields ?? []);
 
@@ -382,11 +410,20 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
   ];
   const taskType = issueTypes[0];
   if (taskType === undefined) throw new Error("the fake Jira has no task type");
+  // An issue type's own workflow (`useWorkflow`); the rest use `workflow`.
+  const workflows = new Map<string, FakeJiraWorkflow>();
+  const workflowOf = (issueTypeId: string): FakeJiraWorkflow => workflows.get(issueTypeId) ?? workflow;
+  const workflowsInUse = (): readonly FakeJiraWorkflow[] => [...new Set(issueTypes.map((type) => workflowOf(type.id)))];
+  // The workflows API names a status by a reference of its own, and each workflow by an ID.
+  const statusReferences = new Map(statuses.map((status) => [status.id, randomUUID()]));
+  const referenceOf = (statusId: string): string => statusReferences.get(statusId) ?? statusId;
+  const workflowIds = new Map<string, string>();
 
   const projects: FakeJiraProject[] = [];
   const counters = new Map<string, number>();
   const accounts: FakeJiraAccount[] = [];
   const tokens = new Map<string, Token>();
+  const refusals = new Map<string, 401 | 403>();
   const revoked = new Map<string, Set<string>>();
   const issues = new Map<string, Issue>();
   const links: IssueLink[] = [];
@@ -594,6 +631,44 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
     };
   };
 
+  /** A workflow as the workflows API shapes it: statuses and transitions by status reference. */
+  const workflowJson = (one: FakeJiraWorkflow, withTransitions: boolean): unknown => {
+    const id = workflowIds.get(one.name) ?? randomUUID();
+    workflowIds.set(one.name, id);
+    const rule = { actions: [], validators: [], triggers: [], properties: {} };
+    return {
+      id,
+      name: one.name,
+      description: "",
+      isEditable: true,
+      scope: { type: "GLOBAL" },
+      version: { id, versionNumber: 1 },
+      statuses: one.statuses.map((statusId) => ({ statusReference: referenceOf(statusId), deprecated: false, properties: {} })),
+      ...(withTransitions
+        ? {
+            transitions: [
+              { id: "1", name: "Create", description: "", type: "INITIAL", toStatusReference: referenceOf(todo), links: [], ...rule },
+              ...one.transitions.map((transition) => ({
+                id: transition.id,
+                name: transition.name,
+                description: "",
+                type: transition.from === "any" ? "GLOBAL" : "DIRECTED",
+                toStatusReference: referenceOf(transition.to),
+                links: transition.from === "any" ? [] : transition.from.map((from) => ({ fromStatusReference: referenceOf(from), fromPort: 0, toPort: 1 })),
+                ...rule,
+              })),
+            ],
+          }
+        : {}),
+    };
+  };
+  /** The statuses some workflows reference, each once, as the workflows API lists them. */
+  const workflowStatusesJson = (listed: readonly FakeJiraWorkflow[]): unknown[] =>
+    [...new Set(listed.flatMap((one) => one.statuses))].map((statusId) => {
+      const status = statusOf(statusId);
+      return { id: status.id, name: status.name, description: "", statusCategory: WORKFLOW_CATEGORY[status.category], statusReference: referenceOf(status.id), scope: { type: "GLOBAL" } };
+    });
+
   // ---------- the routes ----------
 
   type Call = {
@@ -642,7 +717,7 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
     issue.writes.splice(0, issue.writes.length, ...recent, now);
   };
   const availableTransitions = (issue: Issue): readonly FakeJiraTransition[] =>
-    workflow.transitions.filter((transition) => transition.to !== issue.statusId && (transition.from === "any" || transition.from.includes(issue.statusId)));
+    workflowOf(issue.issueTypeId).transitions.filter((transition) => transition.to !== issue.statusId && (transition.from === "any" || transition.from.includes(issue.statusId)));
   const docOrRefuse = (value: unknown, what: string): AdfNode => {
     if (!validDoc(value)) throw answer(400, `${what}: Operation value must be an Atlassian Document`);
     return value;
@@ -825,14 +900,14 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
       case "GET project/:id/statuses": {
         needScope(call, "read:jira-work");
         visibleProject(call, idOrKey ?? "");
-        sendJson(response, 200, issueTypes.map((type) => ({ id: type.id, name: type.name, subtask: type.subtask, statuses: workflow.statuses.map(statusJson) })));
+        sendJson(response, 200, issueTypes.map((type) => ({ id: type.id, name: type.name, subtask: type.subtask, statuses: workflowOf(type.id).statuses.map(statusJson) })));
         return;
       }
       case "GET mypermissions": {
         needScope(call, "read:jira-work");
         const wanted = (query.get("permissions") ?? "").split(",").filter((one) => one !== "");
         if (wanted.length === 0) throw answer(400, "The permissions parameter is required");
-        const projectId = query.get("projectId");
+        const projectId = query.get("projectId") ?? query.get("projectKey");
         const owner = projectId === null ? undefined : projectOf(projectId);
         if (projectId !== null && owner === undefined) throw answer(404, "No project could be found");
         sendJson(response, 200, {
@@ -1064,38 +1139,44 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
         response.end();
         return;
       }
-      case "GET workflowscheme/:id": {
-        if (idOrKey !== "project") throw answer(404, "no such resource");
-        needScope(call, "read:workflow:jira");
-        const ids = query.getAll("projectId");
-        sendJson(response, 200, { values: ids.filter((id) => projectOf(id) !== undefined).map((id) => ({ projectIds: [id], workflowScheme: { id: 10_100, name: "Software scheme", defaultWorkflow: workflow.name, issueTypeMappings: {} } })) });
-        return;
-      }
-      case "GET workflow/:id": {
+      case "GET workflows/:id": {
+        // `/workflows/search`: the workflows the account may see, of one project's issue types or of every project's.
         if (idOrKey !== "search") throw answer(404, "no such resource");
         needScope(call, "read:workflow:jira");
-        const names = query.getAll("workflowName");
-        const listed = names.length === 0 || names.includes(workflow.name) ? [workflow] : [];
-        const expand = (query.get("expand") ?? "").split(",");
+        const asked = query.get("projectId");
+        const owner = asked === null ? undefined : projectOf(asked);
+        const seen = asked === null ? projects.filter((one) => can(viewer.accountId, one.id, "VIEW_READONLY_WORKFLOW")) : owner !== undefined && can(viewer.accountId, owner.id, "VIEW_READONLY_WORKFLOW") ? [owner] : [];
+        const named = query.get("queryString")?.toLowerCase() ?? "";
+        const listed = seen.length === 0 ? [] : workflowsInUse().filter((one) => one.name.toLowerCase().includes(named));
+        const startAt = Number(query.get("startAt") ?? "0");
+        const maxResults = Math.min(Number(query.get("maxResults") ?? "50"), 50);
+        const page = listed.slice(startAt, startAt + maxResults);
+        const withTransitions = (query.get("expand") ?? "").split(",").includes("values.transitions");
         sendJson(response, 200, {
-          startAt: 0,
-          maxResults: 50,
+          self: `${base}/rest/api/3/workflows/search`,
+          startAt,
+          maxResults,
           total: listed.length,
-          isLast: true,
-          values: listed.map((one) => ({
-            id: { name: one.name, entityId: randomUUID() },
-            description: "",
-            ...(expand.includes("transitions")
-              ? {
-                  transitions: [
-                    { id: "1", name: "Create", description: "", from: [], to: todo, type: "initial" },
-                    ...one.transitions.map((transition) => ({ id: transition.id, name: transition.name, description: "", from: transition.from === "any" ? [] : [...transition.from], to: transition.to, type: transition.from === "any" ? "global" : "directed" })),
-                  ],
-                }
-              : {}),
-            ...(expand.includes("statuses") ? { statuses: one.statuses.map((id) => ({ id, name: statusOf(id).name, properties: {} })) } : {}),
-          })),
+          isLast: startAt + maxResults >= listed.length,
+          values: page.map((one) => workflowJson(one, withTransitions)),
+          statuses: workflowStatusesJson(page),
         });
+        return;
+      }
+      case "POST workflows": {
+        // The bulk read: the workflow of each project and issue type asked for.
+        needScope(call, "read:workflow:jira");
+        const body = await json(call);
+        const pairs: unknown[] = Array.isArray(body["projectAndIssueTypes"]) ? body["projectAndIssueTypes"] : [];
+        const found = new Set<FakeJiraWorkflow>();
+        for (const pair of pairs) {
+          const projectId = prop(pair, "projectId");
+          const issueTypeId = prop(pair, "issueTypeId");
+          const owner = typeof projectId === "string" ? projectOf(projectId) : undefined;
+          const type = issueTypes.find((one) => one.id === issueTypeId);
+          if (owner !== undefined && type !== undefined && can(viewer.accountId, owner.id, "VIEW_READONLY_WORKFLOW")) found.add(workflowOf(type.id));
+        }
+        sendJson(response, 200, { workflows: [...found].map((one) => workflowJson(one, true)), statuses: workflowStatusesJson([...found]) });
         return;
       }
       default:
@@ -1113,9 +1194,24 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
       gateway = true;
       path = `/${rest.join("/")}`;
     }
+    // Without a credential: what a host is. `X-Forwarded-Host` names the host asked for; none is the site.
+    const forwarded = request.headers["x-forwarded-host"];
+    const askedHost = typeof forwarded === "string" ? forwarded.toLowerCase() : siteHost;
     if (!gateway && request.method === "GET" && path === "/_edge/tenant_info") {
+      if (askedHost !== siteHost) throw answer(404, "Not Found");
       sendJson(response, 200, { cloudId });
       return;
+    }
+    if (!gateway && request.method === "GET" && (path === "/rest/api/2/serverInfo" || path === "/rest/api/3/serverInfo")) {
+      if (askedHost === siteHost) {
+        sendJson(response, 200, { baseUrl: `https://${siteHost}`, version: "1001.0.0-SNAPSHOT", versionNumbers: [1001, 0, 0], deploymentType: "Cloud", buildNumber: 100_000, serverTitle: "Jira" });
+        return;
+      }
+      if (askedHost === dataCenterHost) {
+        sendJson(response, 200, { baseUrl: `https://${dataCenterHost}`, version: "10.3.12", versionNumbers: [10, 3, 12], deploymentType: "DataCenter", buildNumber: 10_030_012, serverTitle: "Initech Jira" });
+        return;
+      }
+      throw answer(404, "Not Found");
     }
     const authorization = request.headers.authorization ?? "";
     const basic = /^Basic ([A-Za-z0-9+/=]+)$/.exec(authorization)?.[1];
@@ -1131,6 +1227,10 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
     // A scoped token answers only at the gateway; a classic one only at the site.
     if (held === undefined || viewer === undefined || viewer.email !== email || !viewer.active || (held.scopes === null) === gateway) {
       throw answer(401, "Client must be authenticated to access this resource.");
+    }
+    const refusal = secret === undefined ? undefined : refusals.get(secret);
+    if (refusal !== undefined) {
+      throw answer(refusal, refusal === 401 ? "Client must be authenticated to access this resource." : "You do not have permission to access Jira.");
     }
     const fault = faults.shift();
     if (fault !== undefined) {
@@ -1194,6 +1294,8 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
 
   return {
     siteUrl: base,
+    siteHost,
+    dataCenterHost,
     gatewayUrl: base,
     cloudId,
     clock,
@@ -1203,12 +1305,19 @@ export const createFakeJira = async (options: FakeJiraOptions = {}): Promise<Fak
     project,
     statuses,
     workflow,
+    useWorkflow: (issueTypeId, own) => {
+      if (!issueTypes.some((type) => type.id === issueTypeId)) throw new Error("the fake Jira has no such issue type");
+      workflows.set(issueTypeId, own);
+    },
     issueTypes,
     webhookSecret,
     apiUrl: (mode) => (mode === "gateway" ? `${base}/ex/jira/${cloudId}` : base),
     addProject,
     addAccount,
     mintToken,
+    refuseToken: (refused, status) => {
+      refusals.set(refused, status);
+    },
     revokePermissions: (accountId, projectId, permissions) => {
       const key = `${accountId}:${projectId}`;
       const held = revoked.get(key) ?? new Set<string>();

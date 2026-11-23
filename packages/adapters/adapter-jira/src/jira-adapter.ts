@@ -5,8 +5,10 @@ import {
   isOwnAttachment,
   isOwnComment,
   mappedStatusId,
+  MAX_ROUTE_STEPS,
   ok,
   parseVendor,
+  routeTo,
   sha256Hex,
   ticketFileList,
   TrackerAdapter,
@@ -72,7 +74,6 @@ import {
   createdSchema,
   issueSchema,
   markersPropertySchema,
-  myPermissionsSchema,
   projectPageSchema,
   projectSchema,
   projectStatusesSchema,
@@ -80,15 +81,14 @@ import {
   remoteLinkSchema,
   remoteLinksSchema,
   searchPageSchema,
-  tenantInfoSchema,
   transitionsSchema,
   usersSchema,
-  workflowPageSchema,
-  workflowSchemeSchema,
+  workflowReadSchema,
+  workflowSearchSchema,
 } from "./schemas.ts";
-import type { JiraAccount, JiraAttachment, JiraComment, JiraIssue, JiraIssueLink, JiraIssueRef, JiraStatusJson } from "./schemas.ts";
-import { findTransitionPath, jiraStatusCategory, MAX_ROUTE_STEPS, nextTransition } from "./transitions.ts";
-import type { AvailableTransition, WorkflowGraph, WorkflowStatus, WorkflowTransition } from "./transitions.ts";
+import type { JiraAccount, JiraAttachment, JiraComment, JiraIssue, JiraIssueLink, JiraIssueRef, JiraStatusJson, JiraWorkflowJson, JiraWorkflowStatusJson } from "./schemas.ts";
+import { jiraStatusCategory, nextTransition, readJiraWorkflows } from "./transitions.ts";
+import type { AvailableTransition, JiraWorkflowsAnswer } from "./transitions.ts";
 import { JIRA_WEBHOOK_MAX_AGE_MS, jiraWebhookHint, verifyJiraWebhook } from "./webhooks.ts";
 
 // The Jira Cloud tracker adapter (ADR 0013, ADR 0025, ADR 0047): Jira's REST v3 with `fetch`, no
@@ -114,7 +114,7 @@ export type JiraAdapterOptions = {
   readonly siteUrl: string;
   readonly auth: JiraAuth;
   /**
-   * The site's cloud ID (`findJiraCloudId`): calls go through Atlassian's gateway, which a scoped
+   * The site's cloud ID (`jiraConnect.findSite`): calls go through Atlassian's gateway, which a scoped
    * token needs (ADR 0047). `null` or absent: calls go to the site, for a classic token.
    */
   readonly cloudId?: string | null;
@@ -131,47 +131,9 @@ export type JiraAdapterOptions = {
   readonly acceptanceCriteriaField?: string | null;
 };
 
-/** The scopes the service account's token needs (jira-connect.md, choice 5). */
-export const JIRA_TOKEN_SCOPES = ["read:jira-work", "write:jira-work", "read:jira-user", "read:workflow:jira"] as const;
-
-/** The permissions the read-back checks in each project, with what each one is for. */
-export const JIRA_PROJECT_PERMISSIONS = [
-  "BROWSE_PROJECTS",
-  "CREATE_ISSUES",
-  "EDIT_ISSUES",
-  "TRANSITION_ISSUES",
-  "ADD_COMMENTS",
-  "EDIT_OWN_COMMENTS",
-  "CREATE_ATTACHMENTS",
-  "LINK_ISSUES",
-] as const;
-
-export type JiraProjectPermission = (typeof JIRA_PROJECT_PERMISSIONS)[number];
-
-/** What `checkToken` reads back about the token (jira-connect.md, step 2). */
-export type JiraTokenCheck = {
-  readonly account: {
-    readonly accountId: string;
-    readonly name: string;
-    /** Jira's `accountType`: `app` for a service account, `atlassian` for a person. */
-    readonly accountType: string | null;
-    readonly serviceAccount: boolean;
-  };
-  /** Every project it sees, with the permissions it lacks there. */
-  readonly projects: readonly { readonly externalId: string; readonly key: string; readonly name: string; readonly missing: readonly JiraProjectPermission[] }[];
-  /** Whether it reads workflows (`read:workflow:jira`), so the mapping can check each transition. */
-  readonly workflowsReadable: boolean;
-};
-
-/**
- * A board's workflow (`readWorkflow`), for the Boards page's mapping: the tracker contract's
- * `TrackerWorkflow` (spec section 5.2, ticket 02). Its issue types' workflows in one: each
- * transition once per `(from, to, name)`. `readable: false` when the token can't read workflows:
- * the statuses alone, and each move finds its transitions per ticket.
- */
-export type JiraBoardWorkflow = TrackerWorkflow;
-
-const DEFAULT_GATEWAY = "https://api.atlassian.com";
+/** Atlassian's gateway, which a scoped token needs (ADR 0047). */
+export const JIRA_GATEWAY_URL = "https://api.atlassian.com";
+const DEFAULT_GATEWAY = JIRA_GATEWAY_URL;
 const DEFAULT_PAGE = 50;
 const MAX_PAGE = 100;
 const MAX_COMMENT_PAGES = 10;
@@ -179,6 +141,8 @@ const MAX_PROJECT_PAGES = 20;
 /** Transitions a screen refused, tried and routed around: past this many, the move gives up. */
 const MAX_REFUSED = 3;
 const GRAPH_TTL_MS = 5 * 60 * 1000;
+/** Pages of `/workflows/search` read for one project: a project uses a workflow per issue type at most. */
+const MAX_WORKFLOW_PAGES = 5;
 /** Jira Cloud's per-issue write limits (research/trackers.md §2.1), kept before Jira answers 429. */
 const ISSUE_WRITE_LIMITS: readonly { readonly count: number; readonly windowMs: number }[] = [
   { count: 20, windowMs: 2000 },
@@ -242,40 +206,6 @@ export const jiraApiUrl = (input: { readonly siteUrl: string; readonly cloudId?:
   input.cloudId === undefined || input.cloudId === null || input.cloudId === ""
     ? trimSlash(new URL(input.siteUrl).origin)
     : `${trimSlash(input.gatewayUrl ?? DEFAULT_GATEWAY)}/ex/jira/${encodeURIComponent(input.cloudId)}`;
-
-/**
- * The site's cloud ID, from its public tenant info (`/_edge/tenant_info`), which needs no
- * credential: what step 1 of connecting reads (jira-connect.md).
- */
-export const findJiraCloudId = async (siteUrl: string, options: { readonly timeoutMs?: number } = {}): Promise<AdapterResult<string>> => {
-  if (!URL.canParse(siteUrl)) {
-    return adapterError("invalid-input", "finding the Jira site failed: not a URL");
-  }
-  let response: Response;
-  try {
-    response = await fetch(new URL("/_edge/tenant_info", siteUrl), {
-      headers: { accept: "application/json", "user-agent": "ostra-jira-adapter" },
-      redirect: "manual",
-      signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
-    });
-  } catch {
-    return adapterError("unavailable", "finding the Jira site failed: it could not be reached");
-  }
-  if (!response.ok) {
-    await response.body?.cancel();
-    return response.status === 404
-      ? adapterError("not-found", "finding the Jira site failed: no Jira Cloud site answers there")
-      : adapterError("unavailable", `finding the Jira site failed (HTTP ${String(response.status)})`);
-  }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    body = undefined;
-  }
-  const parsed = parseVendor(tenantInfoSchema, body, "Jira's tenant info");
-  return parsed.ok ? ok(parsed.value.cloudId) : parsed;
-};
 
 /** Jira's priority names on ostra's scale: 1 urgent to 4 low. */
 const priorityOf = (name: string | undefined): number | null => {
@@ -384,6 +314,9 @@ type Request = {
 
 type Markers = Readonly<Record<string, string>>;
 
+/** Jira's refusal: the credential, or a scope or permission it lacks. */
+const isRefusal = (error: AdapterError): boolean => error.code === "unauthorized" || error.code === "forbidden";
+
 export class JiraAdapter extends TrackerAdapter {
   readonly name = "jira";
   readonly capabilities: TrackerCapabilities;
@@ -396,7 +329,7 @@ export class JiraAdapter extends TrackerAdapter {
   readonly #criteriaField: string | null;
   readonly #budgetKey: string;
   #me: JiraAccount | undefined;
-  readonly #graphs = new Map<string, { readonly at: number; readonly graph: WorkflowGraph | null; readonly readable: boolean }>();
+  readonly #graphs = new Map<string, { readonly at: number; readonly graph: TrackerWorkflow | null; readonly readable: boolean }>();
   /** When this adapter last wrote to each issue, for Jira's per-issue write limits. */
   readonly #issueWrites = new Map<string, number[]>();
 
@@ -420,51 +353,6 @@ export class JiraAdapter extends TrackerAdapter {
   async health(): Promise<HealthReport> {
     const me = await this.#myself();
     return me.ok ? { status: "ok" } : { status: "down", reason: me.error.message };
-  }
-
-  // ---------- the token's read-back (jira-connect.md, step 2) ----------
-
-  /**
-   * Who the token signs in as, the projects it sees with the permissions it lacks in each, and
-   * whether it reads workflows. Nothing is written.
-   */
-  async checkToken(): Promise<AdapterResult<JiraTokenCheck>> {
-    const me = await this.#myself();
-    if (!me.ok) {
-      return me;
-    }
-    const boards = await this.listBoards();
-    if (!boards.ok) {
-      return boards;
-    }
-    const projects: { externalId: string; key: string; name: string; missing: JiraProjectPermission[] }[] = [];
-    for (const board of boards.value) {
-      const held = await this.#call(
-        "Jira's permissions",
-        { method: "GET", path: "/rest/api/3/mypermissions", query: { projectId: board.externalId, permissions: JIRA_PROJECT_PERMISSIONS.join(",") } },
-        myPermissionsSchema,
-      );
-      if (!held.ok) {
-        return held;
-      }
-      const missing = JIRA_PROJECT_PERMISSIONS.filter((permission) => held.value.permissions[permission]?.havePermission !== true);
-      projects.push({ ...board, missing });
-    }
-    const workflows = await this.#call("Jira's workflows", { method: "GET", path: "/rest/api/3/workflow/search", query: { maxResults: "1" } }, workflowPageSchema);
-    if (!workflows.ok && workflows.error.code !== "unauthorized" && workflows.error.code !== "forbidden") {
-      return workflows;
-    }
-    this.plumbing.logger.debug("jira.token.checked", { projects: projects.length, workflows: workflows.ok });
-    return ok({
-      account: {
-        accountId: me.value.accountId,
-        name: me.value.displayName ?? me.value.accountId,
-        accountType: me.value.accountType ?? null,
-        serviceAccount: me.value.accountType === "app",
-      },
-      projects,
-      workflowsReadable: workflows.ok,
-    });
   }
 
   // ---------- reads ----------
@@ -549,30 +437,28 @@ export class JiraAdapter extends TrackerAdapter {
   }
 
   /**
-   * The board's workflow: its statuses, and its issue types' transitions in one (from which
-   * statuses, or any), for the mapping's `by …` lines and warnings (`planMapping`). Without
-   * `read:workflow:jira`, `readable: false` and the statuses alone.
+   * The board's workflow (spec section 5.3): its statuses, and the transitions of the workflows its
+   * issue types use, in one (each once per `(from, to, name)`, a global one from `any`), for the
+   * Boards page's `by …` lines and warnings. Read through `/workflows/search` for the project.
+   * Without `read:workflow:jira`, or when Jira shows the token none of the project's workflows (it
+   * may answer an empty page rather than refuse: S-12), `readable: false` and the statuses alone.
    */
-  override async readWorkflow(board: BoardRef): Promise<AdapterResult<JiraBoardWorkflow>> {
-    const project = await this.#project(board);
-    if (!project.ok) {
-      return project;
-    }
+  override async readWorkflow(board: BoardRef): Promise<AdapterResult<TrackerWorkflow>> {
     const statuses = await this.listStatuses(board);
     if (!statuses.ok) {
       return statuses;
     }
-    const transitions = new Map<string, WorkflowTransition>();
-    let readable = true;
-    for (const type of project.value.issueTypes ?? []) {
-      const graph = await this.#graph(project.value.id, type.id);
-      readable &&= graph.readable;
-      for (const transition of graph.graph?.transitions ?? []) {
-        const from = transition.from === "any" ? "any" : [...transition.from].sort().join(",");
-        transitions.set(`${from}|${transition.to}|${transition.name}`, transition);
-      }
+    const unreadable = ok({ readable: false, statuses: statuses.value, transitions: [] });
+    const read = await this.#searchWorkflows(board.externalId);
+    if (!read.ok) {
+      this.plumbing.logger.debug("jira.workflow.unread", { project: board.externalId, code: read.error.code });
+      return isRefusal(read.error) ? unreadable : read;
     }
-    return ok({ readable, statuses: statuses.value, transitions: readable ? [...transitions.values()] : [] });
+    if (read.value.workflows.length === 0) {
+      this.plumbing.logger.debug("jira.workflow.unread", { project: board.externalId, code: "none-shown" });
+      return unreadable;
+    }
+    return ok(readJiraWorkflows(read.value, statuses.value));
   }
 
   async getTicketContext(board: BoardRef, ref: TicketRef, options?: TicketContextOptions): Promise<AdapterResult<TicketContext>> {
@@ -1274,55 +1160,63 @@ export class JiraAdapter extends TrackerAdapter {
     };
   }
 
-  /** The workflow of a project's issue type, read once every few minutes; `null` when it can't be read. */
-  async #graph(projectId: string, issueTypeId: string): Promise<{ readonly graph: WorkflowGraph | null; readonly readable: boolean }> {
+  /**
+   * Every workflow `/workflows/search` shows for a project (the workflows its issue types use, or a
+   * team-managed project's own), page by page, with the statuses they reference.
+   */
+  async #searchWorkflows(projectId: string): Promise<AdapterResult<JiraWorkflowsAnswer>> {
+    if (!NUMERIC_ID.test(projectId)) {
+      return this.#notOnBoard("reading a workflow");
+    }
+    const workflows: JiraWorkflowJson[] = [];
+    const statuses = new Map<string, JiraWorkflowStatusJson>();
+    let startAt = 0;
+    for (let page = 0; page < MAX_WORKFLOW_PAGES; page += 1) {
+      const listed = await this.#call(
+        "Jira's workflows",
+        { method: "GET", path: "/rest/api/3/workflows/search", query: { projectId, expand: "values.transitions", startAt: String(startAt), maxResults: String(DEFAULT_PAGE) } },
+        workflowSearchSchema,
+      );
+      if (!listed.ok) {
+        return listed;
+      }
+      workflows.push(...listed.value.values);
+      for (const status of listed.value.statuses ?? []) statuses.set(status.statusReference, status);
+      startAt += listed.value.values.length;
+      if (listed.value.isLast !== false || listed.value.values.length === 0) {
+        break;
+      }
+    }
+    return ok({ workflows, statuses: [...statuses.values()] });
+  }
+
+  /**
+   * The workflow of a project's issue type, for a move (`POST /workflows` by the project and issue
+   * type), read once every few minutes. `graph: null` when it can't be read: `readable: false`
+   * when the token isn't allowed, or Jira shows it none, and the move then finds its transitions
+   * per ticket.
+   */
+  async #graph(projectId: string, issueTypeId: string): Promise<{ readonly graph: TrackerWorkflow | null; readonly readable: boolean }> {
     const cacheKey = `${projectId}:${issueTypeId}`;
     const cached = this.#graphs.get(cacheKey);
     const now = this.plumbing.clock.now();
     if (cached !== undefined && now - cached.at < GRAPH_TTL_MS) {
       return cached;
     }
-    const remember = (graph: WorkflowGraph | null, readable: boolean): { readonly graph: WorkflowGraph | null; readonly readable: boolean } => {
+    const remember = (graph: TrackerWorkflow | null, readable: boolean): { readonly graph: TrackerWorkflow | null; readonly readable: boolean } => {
       const entry = { at: now, graph, readable };
       this.#graphs.set(cacheKey, entry);
       return entry;
     };
-    const refused = (error: AdapterError): boolean => error.code === "unauthorized" || error.code === "forbidden";
-    const scheme = await this.#call("Jira's workflow scheme", { method: "GET", path: "/rest/api/3/workflowscheme/project", query: { projectId } }, workflowSchemeSchema);
-    if (!scheme.ok) {
-      this.plumbing.logger.debug("jira.workflow.unread", { project: projectId, code: scheme.error.code });
-      return refused(scheme.error) ? remember(null, false) : { graph: null, readable: true };
+    const read = await this.#call("Jira's workflow", { method: "POST", path: "/rest/api/3/workflows", json: { projectAndIssueTypes: [{ projectId, issueTypeId }] } }, workflowReadSchema);
+    if (!read.ok) {
+      this.plumbing.logger.debug("jira.workflow.unread", { project: projectId, code: read.error.code });
+      return isRefusal(read.error) ? remember(null, false) : { graph: null, readable: true };
     }
-    const mapping = scheme.value.values.find((value) => value.projectIds === undefined || value.projectIds.includes(projectId))?.workflowScheme;
-    const workflowName = mapping?.issueTypeMappings?.[issueTypeId] ?? mapping?.defaultWorkflow;
-    if (workflowName === undefined) {
-      // A team-managed project has no workflow scheme: its moves find transitions per ticket.
-      return remember(null, true);
+    if (read.value.workflows.length === 0) {
+      return remember(null, false);
     }
-    const workflows = await this.#call(
-      "Jira's workflow",
-      { method: "GET", path: "/rest/api/3/workflow/search", query: { workflowName, expand: "transitions,statuses" } },
-      workflowPageSchema,
-    );
-    if (!workflows.ok) {
-      return refused(workflows.error) ? remember(null, false) : { graph: null, readable: true };
-    }
-    const workflow = workflows.value.values.find((value) => value.id.name === workflowName);
-    const statuses = await this.#projectStatuses({ externalId: projectId });
-    if (workflow === undefined || !statuses.ok) {
-      return { graph: null, readable: true };
-    }
-    const categories = new Map(statuses.value.map((status) => [status.id, toStatus(status)]));
-    const graphStatuses: WorkflowStatus[] = (workflow.statuses ?? []).map((status) => ({ id: status.id, name: status.name, category: categories.get(status.id)?.category ?? "open" }));
-    const transitions: WorkflowTransition[] = (workflow.transitions ?? [])
-      .filter((transition) => transition.type !== "initial")
-      .map((transition) => ({
-        id: transition.id,
-        name: transition.name,
-        from: transition.type === "global" || (transition.from ?? []).length === 0 ? ("any" as const) : (transition.from ?? []),
-        to: transition.to,
-      }));
-    return remember({ statuses: graphStatuses, transitions }, true);
+    return remember(readJiraWorkflows({ workflows: read.value.workflows, statuses: read.value.statuses ?? [] }, null), true);
   }
 
   /**
@@ -1338,7 +1232,7 @@ export class JiraAdapter extends TrackerAdapter {
     const read = issueTypeId === undefined ? { graph: null } : await this.#graph(projectId, issueTypeId);
     const refused = new Set<string>();
     // The workflow less what a screen refused: what the next step is planned on.
-    const graphNow = (): WorkflowGraph | null => (read.graph === null ? null : { statuses: read.graph.statuses, transitions: read.graph.transitions.filter((transition) => !refused.has(transition.id)) });
+    const graphNow = (): TrackerWorkflow | null => (read.graph === null ? null : { ...read.graph, transitions: read.graph.transitions.filter((transition) => !refused.has(transition.id)) });
     const noRoute = (from: string): AdapterResult<never> =>
       adapterError("conflict", `moving a ticket failed: no route of at most ${String(MAX_ROUTE_STEPS)} transitions reaches status ${goal} from status ${from}`);
     let goalCategory = read.graph?.statuses.find((status) => status.id === goal)?.category ?? null;
@@ -1346,7 +1240,7 @@ export class JiraAdapter extends TrackerAdapter {
       if (!read.graph.statuses.some((status) => status.id === goal)) {
         return adapterError("invalid-input", `moving a ticket failed: status ${goal} isn't in the ticket's workflow`);
       }
-      if (findTransitionPath(read.graph, issue.fields.status.id, goal) === null) {
+      if (routeTo(read.graph, issue.fields.status.id, goal) === null) {
         return noRoute(issue.fields.status.id);
       }
     } else {
@@ -1366,7 +1260,7 @@ export class JiraAdapter extends TrackerAdapter {
     let taken = 0;
     while (taken < MAX_ROUTE_STEPS) {
       const graph = graphNow();
-      if (graph !== null && findTransitionPath(graph, current.id, goal, MAX_ROUTE_STEPS - taken) === null) {
+      if (graph !== null && routeTo(graph, current.id, goal, MAX_ROUTE_STEPS - taken) === null) {
         return noRoute(current.id);
       }
       const listed = await this.#call("Jira's transitions", { method: "GET", path: `/rest/api/3/issue/${issue.id}/transitions` }, transitionsSchema);
@@ -1376,7 +1270,7 @@ export class JiraAdapter extends TrackerAdapter {
       const available: AvailableTransition[] = listed.value.transitions
         .filter((transition) => transition.isAvailable !== false && !refused.has(transition.id))
         .map((transition) => ({ id: transition.id, name: transition.name, to: toStatus(transition.to) }));
-      const choice = nextTransition({ available, goal, goalCategory, currentCategory: current.category, visited, graph });
+      const choice = nextTransition({ available, goal, goalCategory, currentCategory: current.category, visited, workflow: graph, stepsLeft: MAX_ROUTE_STEPS - taken });
       if (choice === null) {
         return noRoute(current.id);
       }

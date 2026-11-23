@@ -150,42 +150,56 @@ export const myPermissionsSchema = z.looseObject({
   permissions: z.record(z.string(), z.looseObject({ havePermission: z.boolean() })),
 });
 
-export const workflowSchemeSchema = z.looseObject({
-  values: z.array(
-    z.looseObject({
-      projectIds: z.array(z.string()).optional(),
-      workflowScheme: z.looseObject({
-        defaultWorkflow: z.string().optional(),
-        issueTypeMappings: z.record(z.string(), z.string()).optional(),
+// The workflows API (`/rest/api/3/workflows/search`, `POST /rest/api/3/workflows`), which replaced
+// the classic `workflow/search` (removed 2026-06-01, Atlassian's changelog CHANGE-2569). A workflow
+// names its statuses by a reference; the answer's own status list maps each to its ID and category
+// (`TODO`, `IN_PROGRESS`, `DONE`).
+
+export const workflowStatusSchema = z.looseObject({
+  id,
+  name: z.string(),
+  statusCategory: z.string().optional(),
+  statusReference: z.string().min(1),
+});
+export type JiraWorkflowStatusJson = z.infer<typeof workflowStatusSchema>;
+
+export const workflowSchema = z.looseObject({
+  name: z.string(),
+  statuses: z.array(z.looseObject({ statusReference: z.string().min(1) })).optional(),
+  transitions: z
+    .array(
+      z.looseObject({
+        id,
+        name: z.string(),
+        /** `INITIAL`, `GLOBAL` (from any status) or `DIRECTED` (from its links' statuses). */
+        type: z.string().optional(),
+        toStatusReference: z.string().optional(),
+        links: z.array(z.looseObject({ fromStatusReference: z.string().optional() })).optional(),
       }),
-    }),
-  ),
+    )
+    .optional(),
+});
+export type JiraWorkflowJson = z.infer<typeof workflowSchema>;
+
+/** `GET /workflows/search`: a page of workflows, with the statuses they reference. */
+export const workflowSearchSchema = z.looseObject({
+  values: z.array(workflowSchema),
+  statuses: z.array(workflowStatusSchema).optional(),
+  isLast: z.boolean().optional(),
 });
 
-export const workflowPageSchema = z.looseObject({
-  values: z.array(
-    z.looseObject({
-      id: z.looseObject({ name: z.string() }),
-      transitions: z
-        .array(
-          z.looseObject({
-            id,
-            name: z.string(),
-            from: z.array(id).optional(),
-            to: id,
-            type: z.string().optional(),
-          }),
-        )
-        .optional(),
-      statuses: z.array(z.looseObject({ id, name: z.string() })).optional(),
-    }),
-  ),
-  isLast: z.boolean().optional(),
+/** `POST /workflows`: the workflows of the projects and issue types asked for, with their statuses. */
+export const workflowReadSchema = z.looseObject({
+  workflows: z.array(workflowSchema),
+  statuses: z.array(workflowStatusSchema).optional(),
 });
 
 export const usersSchema = z.array(accountSchema);
 
 export const tenantInfoSchema = z.looseObject({ cloudId: z.string().min(1) });
+
+/** `GET /rest/api/2/serverInfo`, which answers without a credential: Cloud, or Jira Server or Data Center. */
+export const serverInfoSchema = z.looseObject({ deploymentType: z.string().optional() });
 
 export const propertySchema = z.looseObject({ key: z.string().optional(), value: z.unknown() });
 

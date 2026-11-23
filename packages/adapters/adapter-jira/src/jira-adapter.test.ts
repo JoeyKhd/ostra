@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { reachability } from "@ostra/adapter-sdk";
 import type { AdapterResult } from "@ostra/adapter-sdk";
 import { checkTrackerParity, createFakeJira, defineTrackerContractSuite, fakeJiraSuiteFixture, memoryAdapterContext, secondSubjectOf } from "@ostra/adapter-sdk/testing";
 import type { FakeJira } from "@ostra/adapter-sdk/testing";
@@ -7,8 +8,7 @@ import { ticketKeySchema } from "@ostra/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { markdownToAdf } from "./adf.ts";
-import { findJiraCloudId, JIRA_CAPABILITIES, JiraAdapter, jqlTime, MARKERS_PROPERTY, withoutOrderBy } from "./jira-adapter.ts";
-import { planMapping } from "./transitions.ts";
+import { JIRA_CAPABILITIES, JiraAdapter, jqlTime, MARKERS_PROPERTY, withoutOrderBy } from "./jira-adapter.ts";
 import { JIRA_WEBHOOK_MAX_AGE_MS } from "./webhooks.ts";
 
 // The Jira adapter against the fake Jira (spec section 8, ADR 0047): the tracker contract suite
@@ -120,36 +120,13 @@ describe("the Jira adapter", () => {
     const wrong = await adapterOn(fake, "gateway", { token: "ATATTwrong-token-value" }).getTicket(board(), ticketKeySchema.parse("PROJ-1"));
     expect(wrong).toMatchObject({ ok: false, error: { code: "unauthorized" } });
     expect(JSON.stringify(wrong)).not.toContain("ATATTwrong-token-value");
-    // The cloud ID comes from the site's public tenant info, with no credential.
-    expect(await findJiraCloudId(fake.siteUrl)).toEqual({ ok: true, value: fake.cloudId });
-    expect(await findJiraCloudId("not a url")).toMatchObject({ ok: false, error: { code: "invalid-input" } });
-  });
-
-  it("reads back who the token signs in as, the projects it sees, the permissions it lacks, and whether it reads workflows", async () => {
-    const ops = fake.addProject("SHOP", "Globex storefront");
-    const hidden = fake.addProject("SECRET", "Not for ostra");
-    fake.revokePermissions(fake.serviceAccount.accountId, ops.id, ["TRANSITION_ISSUES", "ADD_COMMENTS"]);
-    fake.revokePermissions(fake.serviceAccount.accountId, hidden.id, ["BROWSE_PROJECTS"]);
-    const checked = must(await adapter.checkToken(), "checkToken");
-    expect(checked.account).toMatchObject({ accountId: fake.serviceAccount.accountId, name: "ostra-bot", accountType: "app", serviceAccount: true });
-    expect(checked.projects.map((project) => [project.key, project.missing])).toEqual([
-      [fake.project.key, []],
-      ["SHOP", ["TRANSITION_ISSUES", "ADD_COMMENTS"]],
-    ]);
-    expect(checked.workflowsReadable).toBe(true);
-    // Without `read:workflow:jira`, the rest still reads, and the mapping can't check transitions.
-    const narrow = fake.mintToken(fake.serviceAccount.accountId, ["read:jira-work", "write:jira-work", "read:jira-user"]);
-    expect(must(await adapterOn(fake, "gateway", { token: narrow }).checkToken(), "checkToken without workflows").workflowsReadable).toBe(false);
-    // A person's token reads back as a person's, which the connect page refuses.
-    const personToken = fake.mintToken(fake.person.accountId, ["read:jira-work", "write:jira-work", "read:jira-user", "read:workflow:jira"]);
-    expect(must(await adapterOn(fake, "gateway", { token: personToken, email: fake.person.email }).checkToken(), "a person's checkToken").account).toMatchObject({ serviceAccount: false, accountType: "atlassian" });
   });
 
   it("F-008/c5: declares no magic word, ADF and the JQL filter, and reads its workflow, as the tracker parity table says", async () => {
     expect(await checkTrackerParity(adapter, board())).toEqual([]);
   });
 
-  it("walks a ticket through its workflow's transitions, never writing a status, never through Won't Do, and round a screen that refuses", async () => {
+  it("F-008/c5: walks a ticket through its workflow's transitions, never writing a status, never through Won't Do, and round a screen that refuses, answering the transitions it took in via", async () => {
     const mapping = { started: status("In Progress"), inReview: status("In Review"), done: status("Done") };
     const created = fake.createIssue({ summary: "Walk me" });
     fake.setStatus(created.id, status("Backlog"));
@@ -201,21 +178,114 @@ describe("the Jira adapter", () => {
     expect(fake.issueView(created.id).statusId).toBe(status("To Do"));
   });
 
-  it("reads the board's workflow, its issue types' in one, which plans the mapping's transitions and warnings", async () => {
+  it("F-008/c5: reads a project's workflow through /workflows/search: its statuses with their categories, its transitions from and to, a global one as any, and readable: false for a token without workflow access", async () => {
+    const named = (id: string): string => fake.statuses.find((one) => one.id === id)?.name ?? id;
+    const before = fake.calls().length;
     const workflow = must(await adapter.readWorkflow(board()), "readWorkflow");
+    const reads = fake.calls().slice(before).filter((call) => call.route.includes("workflow"));
+    expect(reads.map((call) => call.route)).toEqual(["GET /rest/api/3/workflows/search"]);
+    expect(new URLSearchParams(reads[0]?.query).get("projectId")).toBe(fake.project.id);
     expect(workflow.readable).toBe(true);
-    expect(workflow.transitions.find((transition) => transition.name === "Won't do")?.from).toBe("any");
-    // Every issue type shares the one workflow here: each transition once.
-    expect(new Set(workflow.transitions.map((transition) => transition.id)).size).toBe(workflow.transitions.length);
-    expect(workflow.statuses.find((one) => one.name === "Won't Do")?.category).toBe("cancelled");
-    const [started, , done] = planMapping(workflow, { started: status("In Progress"), inReview: status("In Review"), done: status("Done") });
-    expect(started?.direct.find((step) => step.transition.name === "Start progress")?.from).toEqual([status("Backlog"), status("To Do")]);
-    // Won't Do is four transitions from Done: past the cap, the mapping warns of it.
-    expect(done?.unreachableFrom).toEqual([status("Won't Do")]);
+    // The statuses by category, Won't Do read as cancelled.
+    expect(workflow.statuses.map((one) => [one.name, one.category])).toEqual([
+      ["Backlog", "open"],
+      ["To Do", "open"],
+      ["In Progress", "started"],
+      ["In Review", "started"],
+      ["Blocked", "started"],
+      ["Done", "done"],
+      ["Won't Do", "cancelled"],
+    ]);
+    // Every transition with its from and to, by the statuses' IDs (the API's references mapped to
+    // them), a global one from any; Jira's initial "Create" isn't one a move takes.
+    expect(workflow.transitions.map((transition) => [transition.id, transition.name, transition.from === "any" ? "any" : transition.from.map(named), named(transition.to)])).toEqual([
+      ["11", "Start progress", ["Backlog", "To Do"], "In Progress"],
+      ["21", "Ready for review", ["In Progress"], "In Review"],
+      ["31", "Back to work", ["In Review"], "In Progress"],
+      ["41", "Done", ["In Review"], "Done"],
+      ["51", "Won't do", "any", "Won't Do"],
+      ["61", "Reopen", ["Done", "Won't Do"], "To Do"],
+      ["71", "Block", ["In Progress"], "Blocked"],
+      ["81", "Unblock", ["Blocked"], "In Progress"],
+      ["91", "Plan", ["Backlog"], "To Do"],
+      ["101", "Close", ["Backlog"], "Done"],
+    ]);
+    // What the Boards mapping reads from it (02's `reachability`): Won't Do is four transitions
+    // from Done, past the cap, so the mapping warns of it.
+    const toDone = reachability(workflow, status("Done"));
+    expect(toDone.filter((one) => one.reach.kind === "unreachable").map((one) => one.status.name)).toEqual(["Won't Do"]);
+    expect(toDone.find((one) => one.status.name === "To Do")?.reach).toMatchObject({ kind: "route", first: { name: "Start progress" }, steps: 3 });
+    // Without `read:workflow:jira`: the statuses alone.
     const narrow = fake.mintToken(fake.serviceAccount.accountId, ["read:jira-work", "write:jira-work", "read:jira-user"]);
-    const blind = must(await adapterOn(fake, "gateway", { token: narrow }).readWorkflow(board()), "readWorkflow without the scope");
-    expect(blind).toMatchObject({ readable: false, transitions: [] });
-    expect(blind.statuses.map((one) => one.id)).toEqual(workflow.statuses.map((one) => one.id));
+    expect(must(await adapterOn(fake, "gateway", { token: narrow }).readWorkflow(board()), "readWorkflow without the scope")).toEqual({ readable: false, statuses: workflow.statuses, transitions: [] });
+    // With the scope, but shown none of the project's workflows (Jira answers an empty page): the same.
+    const hidden = fake.addAccount({ displayName: "ostra-bot-2", email: "ostra-bot-2@serviceaccount.atlassian.com", accountType: "app" });
+    fake.revokePermissions(hidden.accountId, fake.project.id, ["VIEW_READONLY_WORKFLOW"]);
+    const hiddenToken = fake.mintToken(hidden.accountId, ["read:jira-work", "write:jira-work", "read:jira-user", "read:workflow:jira"]);
+    expect(must(await adapterOn(fake, "gateway", { token: hiddenToken, email: hidden.email }).readWorkflow(board()), "readWorkflow shown none")).toEqual({ readable: false, statuses: workflow.statuses, transitions: [] });
+  });
+
+  it("F-008/c5: reads a board whose issue types use two workflows as their union, each transition once, and moves each ticket by its own issue type's, answering the transitions in via", async () => {
+    const site = await createFakeJira();
+    try {
+      const own = adapterOn(site, "gateway");
+      const id = (name: string): string => site.statuses.find((one) => one.name === name)?.id ?? name;
+      const bug = site.issueTypes.find((type) => type.name === "Bug")?.id ?? "";
+      // A Bug goes straight from To Do to In Review by Triage, and has no Block.
+      site.useWorkflow(bug, {
+        name: "Bug workflow",
+        statuses: site.workflow.statuses,
+        transitions: [
+          { id: "11", name: "Start progress", from: [id("Backlog"), id("To Do")], to: id("In Progress") },
+          { id: "201", name: "Triage", from: [id("To Do")], to: id("In Review") },
+          { id: "41", name: "Done", from: [id("In Review")], to: id("Done") },
+          { id: "51", name: "Won't do", from: "any", to: id("Won't Do") },
+          { id: "61", name: "Reopen", from: [id("Done"), id("Won't Do")], to: id("To Do") },
+        ],
+      });
+      const workflow = must(await own.readWorkflow({ externalId: site.project.id }), "readWorkflow");
+      const keys = workflow.transitions.map((transition) => JSON.stringify([transition.from, transition.to, transition.name]));
+      expect(new Set(keys).size).toBe(keys.length);
+      expect(workflow.transitions.map((transition) => transition.name)).toEqual([
+        "Start progress",
+        "Ready for review",
+        "Back to work",
+        "Done",
+        "Won't do",
+        "Reopen",
+        "Block",
+        "Unblock",
+        "Plan",
+        "Close",
+        "Triage",
+      ]);
+      const mapping = { started: id("In Progress"), inReview: id("In Review"), done: id("Done") };
+      const projectBoard = { externalId: site.project.id };
+      // A Bug takes its own Triage; a Task its two steps.
+      const aBug = site.createIssue({ summary: "A bug", issueTypeId: bug });
+      expect(must(await own.moveTicket(projectBoard, { externalId: aBug.id }, "in-review", mapping), "moving the bug")).toEqual({
+        moved: true,
+        status: { id: id("In Review"), name: "In Review", category: "started" },
+        via: [{ id: "201", name: "Triage" }],
+      });
+      const aTask = site.createIssue({ summary: "A task" });
+      expect(must(await own.moveTicket(projectBoard, { externalId: aTask.id }, "in-review", mapping), "moving the task").via).toEqual([
+        { id: "11", name: "Start progress" },
+        { id: "21", name: "Ready for review" },
+      ]);
+      // Blocked is two steps from To Do in the union (Start progress, Block), but a Bug has no way
+      // there: read by its own issue type's workflow, the move is refused before any step, and the
+      // bug stays in To Do rather than stopping halfway.
+      const another = site.createIssue({ summary: "Another bug", issueTypeId: bug });
+      const before = site.calls().length;
+      expect(await own.moveTicket(projectBoard, { externalId: another.id }, "started", { ...mapping, started: id("Blocked") })).toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(site.issueView(another.id).statusId).toBe(id("To Do"));
+      expect(site.calls().slice(before).some((call) => call.route.startsWith("POST") && call.route.endsWith("/transitions"))).toBe(false);
+      // Each issue type's workflow was read once, by the project and issue type, and kept a while.
+      expect(site.calls().filter((call) => call.route === "POST /rest/api/3/workflows")).toHaveLength(2);
+    } finally {
+      await site.close();
+    }
   });
 
   it("F-008/c4: pages through three pages by nextPageToken, oldest change first, inclusive of its time, with bounded JQL in the account's own zone", async () => {

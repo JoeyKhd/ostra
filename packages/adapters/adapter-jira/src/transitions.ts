@@ -1,36 +1,17 @@
-import type { StatusMapping, TicketStatusCategory } from "@ostra/adapter-sdk";
+import { MAX_ROUTE_STEPS, mergeWorkflows, routeTo } from "@ostra/adapter-sdk";
+import type { TicketStatus, TicketStatusCategory, TrackerStatus, TrackerWorkflow, WorkflowTransition } from "@ostra/adapter-sdk";
+
+import type { JiraWorkflowJson, JiraWorkflowStatusJson } from "./schemas.ts";
 
 // Jira moves an issue only along its workflow's transitions (research/trackers.md §2.4, ADR 0047):
-// the same status can't be written directly, and a move can take several steps. This file is the
-// pure part: the workflow as a graph, the shortest way to a status, what a board's mapping can and
-// can't reach (the Boards page's `by …` lines and warnings, boards-mixed.md, choice 7), and which
-// of an issue's available transitions to take next.
+// a status can't be written directly, and a move can take several steps. This file is the pure
+// part: Jira's workflows read into the tracker contract's `TrackerWorkflow`, and which of an
+// issue's available transitions to take next. The route itself (the shortest way of at most
+// `MAX_ROUTE_STEPS`, never through a done or cancelled status) is `routeTo` in `@ostra/adapter-sdk`,
+// the one the domain's mapping check reads too (spec section 5.2).
 
 /** Jira's three status categories (`statusCategory.key`). */
 export type JiraCategoryKey = "new" | "indeterminate" | "done";
-
-/** A status of a workflow, as the mapping shows it. */
-export type WorkflowStatus = { readonly id: string; readonly name: string; readonly category: TicketStatusCategory };
-
-/** A transition of a workflow: from these statuses, or from any (`from: "any"`, a global transition). */
-export type WorkflowTransition = {
-  readonly id: string;
-  readonly name: string;
-  readonly from: readonly string[] | "any";
-  readonly to: string;
-};
-
-/** A workflow's statuses and transitions: the shape of the spec's `TrackerWorkflow` (section 5.2). */
-export type WorkflowGraph = {
-  readonly statuses: readonly WorkflowStatus[];
-  readonly transitions: readonly WorkflowTransition[];
-};
-
-/**
- * The longest route a move takes (Q352, spec choice 20): past three transitions, or with none, the
- * ticket stays put and ostra's comment says so.
- */
-export const MAX_ROUTE_STEPS = 3;
 
 /** Jira's category, in the four ostra shares; a done status named like "won't do" reads as cancelled. */
 export const jiraStatusCategory = (key: string | undefined, name: string): TicketStatusCategory => {
@@ -48,126 +29,86 @@ export const jiraStatusCategory = (key: string | undefined, name: string): Ticke
   }
 };
 
-const takeable = (transition: WorkflowTransition, at: string): boolean =>
-  transition.from === "any" || transition.from.includes(at);
+/** The workflows API's category (`TODO`, `IN_PROGRESS`, `DONE`) as the key the rest of Jira's API uses. */
+export const workflowCategoryKey = (category: string | undefined): JiraCategoryKey | undefined => {
+  switch (category) {
+    case "TODO":
+      return "new";
+    case "IN_PROGRESS":
+      return "indeterminate";
+    case "DONE":
+      return "done";
+    case undefined:
+    default:
+      return undefined;
+  }
+};
 
-const isFinal = (category: TicketStatusCategory): boolean => category === "done" || category === "cancelled";
+/** What Jira's workflows API answers (`/workflows/search` or the bulk read): its workflows, and the statuses they reference. */
+export type JiraWorkflowsAnswer = {
+  readonly workflows: readonly JiraWorkflowJson[];
+  readonly statuses: readonly JiraWorkflowStatusJson[];
+};
 
 /**
- * Whether a walk may pass through a status on its way: never a done or cancelled one, so moving a
- * ticket never closes it on the way (a global "Won't do" then "Reopen" reaches anything).
+ * Jira's workflows as one `TrackerWorkflow`: their union, each transition once per
+ * `(from, to, name)` (spec section 5.2). The workflows API names a status by a reference, which
+ * the answer's status list turns into the status's ID. A global transition is from `any`; Jira's
+ * initial transition (the one that creates an issue) and a transition from or to a status the
+ * answer doesn't name are left out, since no move can take them.
+ *
+ * `board`: the board's statuses (`listStatuses`). Given, they're the workflow's statuses, and a
+ * transition is kept only between them. `null`: the statuses are the workflows' own, in their order.
+ * `readable` is true: the caller decides when the token couldn't read the graph.
  */
-const passable = (graph: WorkflowGraph, id: string): boolean => {
-  const status = graph.statuses.find((one) => one.id === id);
-  return status === undefined || !isFinal(status.category);
-};
-
-/**
- * The shortest walk of transitions from `from` to `to`, at most `maxSteps` long, that passes
- * through no done or cancelled status, or `null` when none reaches it. `[]` when the status is
- * already the goal. A global transition is one step from anywhere.
- */
-export const findTransitionPath = (graph: WorkflowGraph, from: string, to: string, maxSteps: number = MAX_ROUTE_STEPS): readonly WorkflowTransition[] | null => {
-  if (from === to) return [];
-  const previous = new Map<string, { readonly at: string; readonly by: WorkflowTransition }>();
-  const depth = new Map<string, number>([[from, 0]]);
-  const seen = new Set<string>([from]);
-  const queue: string[] = [from];
-  while (queue.length > 0) {
-    const at = queue.shift();
-    if (at === undefined) break;
-    const here = depth.get(at) ?? 0;
-    if ((at !== from && !passable(graph, at)) || here >= maxSteps) continue;
-    for (const transition of graph.transitions) {
-      if (!takeable(transition, at) || seen.has(transition.to)) continue;
-      seen.add(transition.to);
-      depth.set(transition.to, here + 1);
-      previous.set(transition.to, { at, by: transition });
-      if (transition.to === to) {
-        const path: WorkflowTransition[] = [];
-        let step = previous.get(to);
-        while (step !== undefined) {
-          path.unshift(step.by);
-          step = step.at === from ? undefined : previous.get(step.at);
-        }
-        return path;
-      }
-      queue.push(transition.to);
+export const readJiraWorkflows = (answer: JiraWorkflowsAnswer, board: readonly TrackerStatus[] | null): TrackerWorkflow => {
+  const byReference = new Map(answer.statuses.map((status) => [status.statusReference, status]));
+  const known = new Set(board?.map((status) => status.id) ?? answer.statuses.map((status) => status.id));
+  // A reference the list doesn't hold may be the status's ID itself.
+  const idOf = (reference: string | undefined): string | undefined => {
+    if (reference === undefined) return undefined;
+    const id = byReference.get(reference)?.id ?? reference;
+    return known.has(id) ? id : undefined;
+  };
+  const parts = answer.workflows.map((workflow): TrackerWorkflow => {
+    const own: TrackerStatus[] = [];
+    // A workflow that lists no statuses of its own has the answer's.
+    for (const reference of workflow.statuses ?? answer.statuses) {
+      const status = byReference.get(reference.statusReference);
+      if (status === undefined || own.some((one) => one.id === status.id)) continue;
+      const key = workflowCategoryKey(status.statusCategory);
+      own.push({ id: status.id, name: status.name, category: jiraStatusCategory(key, status.name), vendorType: key ?? "undefined", position: own.length });
     }
-  }
-  return null;
-};
-
-/** How many transitions each status is from `to`, by walks `findTransitionPath` takes; a status that can't reach it is missing. */
-export const distancesTo = (graph: WorkflowGraph, to: string): ReadonlyMap<string, number> => {
-  const ids = new Set([...graph.statuses.map((status) => status.id), ...graph.transitions.map((transition) => transition.to)]);
-  const distances = new Map<string, number>([[to, 0]]);
-  // Walk backwards: a status is one further than any status one of its transitions reaches.
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const id of ids) {
-      if (distances.has(id)) continue;
-      let best: number | undefined;
-      for (const transition of graph.transitions) {
-        const there = distances.get(transition.to);
-        const through = transition.to === to || passable(graph, transition.to);
-        if (there !== undefined && through && takeable(transition, id) && transition.to !== id && (best === undefined || there + 1 < best)) best = there + 1;
+    const transitions: WorkflowTransition[] = [];
+    for (const transition of workflow.transitions ?? []) {
+      const to = idOf(transition.toStatusReference);
+      if (transition.type === "INITIAL" || to === undefined) continue;
+      if (transition.type === "GLOBAL") {
+        transitions.push({ id: transition.id, name: transition.name, from: "any", to });
+        continue;
       }
-      if (best !== undefined) {
-        distances.set(id, best);
-        changed = true;
-      }
+      const from = [...new Set((transition.links ?? []).flatMap((link) => idOf(link.fromStatusReference) ?? []))];
+      // A directed transition from no status the answer names can't be taken.
+      if (from.length > 0) transitions.push({ id: transition.id, name: transition.name, from, to });
     }
-  }
-  return distances;
-};
-
-/** One ostra step, as the mapping shows it on a Jira board. */
-export type StepPlan = {
-  readonly step: keyof StatusMapping;
-  readonly target: string;
-  /** The transitions into the target, each from its statuses (`by Start progress, from To Do or Backlog`). */
-  readonly direct: readonly { readonly transition: WorkflowTransition; readonly from: readonly string[] | "any" }[];
-  /** For every other status, the first transition of the shortest walk there. */
-  readonly via: readonly { readonly from: string; readonly transition: WorkflowTransition; readonly steps: number }[];
-  /** The statuses from which no walk of at most `MAX_ROUTE_STEPS` reaches the target: a ticket there stays put. */
-  readonly unreachableFrom: readonly string[];
-  /** The target isn't one of the workflow's statuses. */
-  readonly unknownTarget: boolean;
-};
-
-/** What a board's mapping reaches on one workflow, step by step. */
-export const planMapping = (graph: WorkflowGraph, mapping: StatusMapping): readonly StepPlan[] =>
-  (["started", "inReview", "done"] as const).map((step) => {
-    const target = mapping[step];
-    const unknownTarget = !graph.statuses.some((status) => status.id === target);
-    const direct = graph.transitions.filter((transition) => transition.to === target).map((transition) => ({ transition, from: transition.from }));
-    const via: { readonly from: string; readonly transition: WorkflowTransition; readonly steps: number }[] = [];
-    const unreachableFrom: string[] = [];
-    for (const status of graph.statuses) {
-      if (status.id === target) continue;
-      const path = findTransitionPath(graph, status.id, target);
-      const first = path?.[0];
-      if (path === null || first === undefined) {
-        unreachableFrom.push(status.id);
-      } else {
-        via.push({ from: status.id, transition: first, steps: path.length });
-      }
-    }
-    return { step, target, direct, via, unreachableFrom, unknownTarget };
+    return { readable: true, statuses: board ?? own, transitions };
   });
+  return parts.length === 0 ? { readable: true, statuses: board ?? [], transitions: [] } : mergeWorkflows(parts);
+};
 
 /** A transition an issue can take now (`GET /issue/{id}/transitions`), in the adapter's terms. */
-export type AvailableTransition = { readonly id: string; readonly name: string; readonly to: WorkflowStatus };
+export type AvailableTransition = { readonly id: string; readonly name: string; readonly to: TicketStatus };
+
+const isFinal = (category: TicketStatusCategory): boolean => category === "done" || category === "cancelled";
 
 const RANK: Readonly<Record<TicketStatusCategory, number>> = { open: 0, started: 1, done: 2, cancelled: 2 };
 
 /**
  * Which of an issue's transitions to take toward `goal`: the goal itself first, and otherwise never
- * a done or cancelled status, nor one the walk has been at. With the workflow, the step that leaves
- * the fewest. Without it (no `read:workflow:jira`), a step toward the goal's category, closest
- * first: a guess, which can stop short where the workflow would have gone round. `null`: no way on.
+ * a done or cancelled status, nor one the walk has been at. With the workflow, the step whose route
+ * on to the goal (`routeTo`, within the steps left) is shortest. Without it (no
+ * `read:workflow:jira`), a step toward the goal's category, closest first: a guess, which can stop
+ * short where the workflow would have gone round. `null`: no way on.
  */
 export const nextTransition = (input: {
   readonly available: readonly AvailableTransition[];
@@ -175,17 +116,20 @@ export const nextTransition = (input: {
   readonly goalCategory: TicketStatusCategory | null;
   readonly currentCategory: TicketStatusCategory;
   readonly visited: ReadonlySet<string>;
-  readonly graph: WorkflowGraph | null;
+  readonly workflow: TrackerWorkflow | null;
+  /** How many transitions the move may still take, this one included. Default `MAX_ROUTE_STEPS`. */
+  readonly stepsLeft?: number;
 }): AvailableTransition | null => {
   const direct = input.available.find((transition) => transition.to.id === input.goal);
   if (direct !== undefined) return direct;
   const usable = input.available.filter((transition) => !input.visited.has(transition.to.id) && !isFinal(transition.to.category));
-  if (input.graph !== null) {
-    const distances = distancesTo(input.graph, input.goal);
-    let best: { readonly transition: AvailableTransition; readonly distance: number } | null = null;
+  if (input.workflow !== null) {
+    const { workflow } = input;
+    const after = (input.stepsLeft ?? MAX_ROUTE_STEPS) - 1;
+    let best: { readonly transition: AvailableTransition; readonly steps: number } | null = null;
     for (const transition of usable) {
-      const distance = distances.get(transition.to.id);
-      if (distance !== undefined && (best === null || distance < best.distance)) best = { transition, distance };
+      const route = routeTo(workflow, transition.to.id, input.goal, after);
+      if (route !== null && (best === null || route.length < best.steps)) best = { transition, steps: route.length };
     }
     return best?.transition ?? null;
   }
