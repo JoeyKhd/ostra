@@ -29,6 +29,8 @@ export * from "./fake-linear/fake-linear.ts";
 export * from "./fake-jira/fake-jira.ts";
 export * from "./fake-jira/fake-jql.ts";
 export * from "./fake-jira/suite-fixture.ts";
+// Post-v1 Slack (F-057): the Web API, its OAuth flow and the authorize page.
+export * from "./fake-slack/fake-slack.ts";
 export * from "./stub-models/types.ts";
 export * from "./stub-models/scenario.ts";
 export * from "./stub-models/server.ts";

@@ -18,11 +18,11 @@ import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
 
 // The cases every notification adapter passes (milestone 3, ticket 04; ADR 0050): the panel's, the
-// tracker's (ticket 11) and the two email ones (tickets 12 and 13), each against its own fake (the
-// in-memory rows, the fake Linear server and the Jira fake, the fake Resend API, the fake SMTP
-// server). A notification goes out once per key; a recipient the channel can't reach is reported
-// without failing the others; a rate limit is `rate-limited`; an email carries the link and the
-// subject in both its parts; an adapter with `edits` edits in place.
+// tracker's (ticket 11), the two email ones (tickets 12 and 13) and Slack's (F-057), each against
+// its own fake (the in-memory rows, the fake Linear server and the Jira fake, the fake Resend API,
+// the fake SMTP server and `fake-slack/`). A notification goes out once per key; a recipient the
+// channel can't reach is reported without failing the others; a rate limit is `rate-limited`; an
+// email carries the link and the subject in both its parts; an adapter with `edits` edits in place.
 
 /** What the channel delivered, as its fake saw it: by the provider's ID. */
 export type DeliveredNotification = {
