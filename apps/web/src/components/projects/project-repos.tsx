@@ -100,7 +100,18 @@ export const dropRepo = <T,>(order: readonly T[], id: T, target: T): readonly T[
   return next;
 };
 
-const AddRepo = ({ projectId, taken, full }: { readonly projectId: ProjectId; readonly taken: ReadonlySet<string>; readonly full: boolean }) => {
+const AddRepo = ({
+  projectId,
+  taken,
+  full,
+  onAdded,
+}: {
+  readonly projectId: ProjectId;
+  readonly taken: ReadonlySet<string>;
+  readonly full: boolean;
+  /** F-112/c1: whether the repo's own draft now waits on Environment, beside the saved setup. */
+  readonly onAdded: (drafted: boolean) => void;
+}) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -108,8 +119,9 @@ const AddRepo = ({ projectId, taken, full }: { readonly projectId: ProjectId; re
   const groups = useQuery({ ...trpc.github.reposByAccount.queryOptions(), enabled: open });
   const add = useMutation(
     trpc.projects.addRepo.mutationOptions({
-      onSuccess: async () => {
+      onSuccess: async (added) => {
         setOpen(false);
+        onAdded(added.drafted);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: trpc.projects.repos.queryKey({ projectId }) }),
           queryClient.invalidateQueries({ queryKey: trpc.projects.get.queryKey({ projectId }) }),
@@ -282,6 +294,8 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
   const reorder = useMutation(trpc.projects.reorderRepos.mutationOptions({ onSettled: refresh }));
   const check = useMutation(trpc.projects.checkRepos.mutationOptions({ onSuccess: refresh }));
   const [pending, setPending] = useState<readonly RepoId[] | null>(null);
+  /** F-112/c1: the last add drafted the repo's setup beside the saved environment. */
+  const [drafted, setDrafted] = useState(false);
   const details = project.data?.repos ?? [];
   const serverOrder = (uses.data ?? []).map((use) => use.repoId);
   const order = pending ?? serverOrder;
@@ -315,7 +329,7 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
               <RefreshCwIcon className={cn("stroke-[1.75]", check.isPending && "animate-spin motion-reduce:animate-none")} />
               {check.isPending ? t("repos.checking") : t("repos.checkAgain")}
             </Button>
-            <AddRepo projectId={projectId} taken={new Set(details.map((repo) => repo.fullName.toLowerCase()))} full={details.length >= maxRepos} />
+            <AddRepo projectId={projectId} taken={new Set(details.map((repo) => repo.fullName.toLowerCase()))} full={details.length >= maxRepos} onAdded={setDrafted} />
           </span>
         ) : undefined
       }
@@ -359,6 +373,12 @@ export const ProjectReposView = ({ projectId, maxRepos }: { readonly projectId: 
       ) : (
         <div className="max-w-[760px]">
           <BlockedNotice repos={details} />
+          {drafted ? (
+            <p role="status" className="mt-3 text-ui text-muted" data-testid="repo-drafted">
+              {t("projectRepos.drafted")}{" "}
+              <Link href={`/projects/${projectId}/environment`} className="text-teal hover:underline">{t("projectRepos.draftedLink")}</Link>
+            </p>
+          ) : null}
           {reorder.error === null ? null : <p role="alert" className="mt-3 text-ui text-red">{errorText(reorder.error)}</p>}
           <ol className="mt-[18px]" data-testid="project-repos">
             {rows.map(({ repo, use }, index) => {

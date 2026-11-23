@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppWindowIcon, CheckIcon, FileIcon, FlaskConicalIcon, KeyRoundIcon, LockIcon, PlusIcon, ShieldCheckIcon, TriangleAlertIcon, VariableIcon, XIcon } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 import type { ProjectId } from "@ostra/protocol";
 
@@ -31,6 +31,8 @@ import { ServicesAndChecks, SnapshotProperties } from "./environment-services";
 import { entriesText, lineCount, withoutFinalNewline } from "./environment-words";
 import { EnvironmentProposalTab, ProposalProperties, TestEnvironmentButton } from "./environment-proposal";
 import { AppProperties, AppWarnings, EnvironmentAppTab } from "./environment-app";
+import { DraftChip, RepoDraftBand, RepoDraftEditing, RepoDraftPointer, RepoDraftProperties, RepoDraftStatus } from "./environment-repo-draft";
+import type { DraftActions, RepoDraft } from "./environment-repo-draft";
 
 /**
  * The page's tabs (environment-services.md): `?tab=services`, milestone 8's `?tab=app` (ticket 17),
@@ -132,8 +134,29 @@ const EnvSection = ({ title, count, note, end, children }: { readonly title: Rea
 );
 
 /** The setup script: the shared code editor, with its gutter of line numbers. 3 lines at least. */
-const ScriptEditor = ({ value, readOnly, onChange }: { readonly value: string; readonly readOnly: boolean; readonly onChange: (value: string) => void }) => (
-  <CodeEditor label={t("environment.setupScript")} value={value} readOnly={readOnly} onChange={onChange} placeholder="pnpm install --frozen-lockfile" />
+const ScriptEditor = ({
+  value,
+  readOnly,
+  onChange,
+  markedLines,
+  textareaRef,
+}: {
+  readonly value: string;
+  readonly readOnly: boolean;
+  readonly onChange: (value: string) => void;
+  /** F-112/c1: a new repo's lines after "Edit first", marked until they're saved. */
+  readonly markedLines?: ReadonlySet<number>;
+  readonly textareaRef?: Ref<HTMLTextAreaElement>;
+}) => (
+  <CodeEditor
+    label={t("environment.setupScript")}
+    value={value}
+    readOnly={readOnly}
+    onChange={onChange}
+    placeholder="pnpm install --frozen-lockfile"
+    {...(markedLines === undefined ? {} : { markedLines })}
+    {...(textareaRef === undefined ? {} : { textareaRef })}
+  />
 );
 
 /** The outline badge (`Badge variant="outline"`): 22px, `--line-2`, mono. */
@@ -144,7 +167,24 @@ const Badge = ({ children, className }: { readonly children: ReactNode; readonly
 );
 
 /** The panel: the environment's status, repos and entries; on a draft, what detection found (F-112). */
-const Properties = ({ view, rows, detected, detecting }: { readonly view: View | undefined; readonly rows: readonly Row[]; readonly detected: Detected | undefined; readonly detecting: boolean }) => (
+const Properties = ({
+  view,
+  rows,
+  detected,
+  detecting,
+  drafts,
+  admin,
+  onServices,
+}: {
+  readonly view: View | undefined;
+  readonly rows: readonly Row[];
+  readonly detected: Detected | undefined;
+  readonly detecting: boolean;
+  /** F-112/c1: the drafts of repos added since the environment was saved. */
+  readonly drafts: readonly RepoDraft[];
+  readonly admin: boolean;
+  readonly onServices: () => void;
+}) => (
   <div data-testid="environment-properties">
     <PropGroup title={t("environment.group")}>
       {view === undefined ? (
@@ -166,17 +206,23 @@ const Properties = ({ view, rows, detected, detecting }: { readonly view: View |
               </Status>
             )}
           </PropRow>
-          {view.repos.map((repo) => (
-            <PropRow key={repo.repoId} label={t("environment.repo")}>
-              <span className="truncate font-mono">{repo.fullName}</span>
-            </PropRow>
-          ))}
+          <PropRow label={view.repos.length === 1 ? t("environment.repo") : t("environment.repos")} className="items-start py-[3px]" labelClassName="leading-[26px]">
+            <span className="flex min-w-0 flex-1 flex-col" data-testid="environment-repos">
+              {view.repos.map((repo) => (
+                <span key={repo.repoId} className="flex min-h-[26px] min-w-0 items-center gap-2 font-mono text-[13.5px]">
+                  <span className="truncate">{repo.fullName}</span>
+                  {drafts.some((draft) => draft.repoId === repo.repoId) ? <DraftChip className="h-[19px]">{t("environment.repoDraft.new")}</DraftChip> : null}
+                </span>
+              ))}
+            </span>
+          </PropRow>
           <PropRow label={t("environment.entriesKey")}>
             <span className="truncate">{entriesText(rows.map((row) => row.kind)) || "–"}</span>
           </PropRow>
         </>
       )}
     </PropGroup>
+    {view?.status === "saved" ? <RepoDraftProperties drafts={drafts} admin={admin} onServices={onServices} /> : null}
     {view?.status !== "draft" ? null : detecting && detected === undefined ? (
       <p className="text-sm text-faint">{t("environment.reading")}</p>
     ) : (
@@ -269,17 +315,40 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
   const [now] = useState(() => Date.now());
   const [startError, setStartError] = useState<string | null>(null);
   const detect = useMutation(trpc.environments.detect.mutationOptions());
+  /** After "Edit first" (F-112/c1): the draft whose lines are in the editors, marked, and what the editors held before. */
+  const [editingDraft, setEditingDraft] = useState<{
+    readonly repoId: RepoId;
+    readonly fullName: string;
+    readonly lines: ReadonlySet<number>;
+    readonly before: { readonly script: string; readonly rows: readonly Row[] };
+  } | null>(null);
+  /** Rows a draft put in, not saved yet: "Edit first"'s, and the secrets Apply couldn't keep without a value. */
+  const [markedRows, setMarkedRows] = useState<ReadonlySet<string>>(new Set());
+  const [said, setSaid] = useState<{ readonly kind: "dismissed" | "applied"; readonly repoId: RepoId; readonly fullName: string; readonly secrets: readonly string[] } | null>(null);
+  const [draftError, setDraftError] = useState<{ readonly repoId: string; readonly text: string } | null>(null);
+  const scriptRef = useRef<HTMLTextAreaElement>(null);
+  const bandRef = useRef<HTMLDivElement>(null);
   const save = useMutation(
     trpc.environments.save.mutationOptions({
       onSuccess: async () => {
         setRows((current) => current.map((row) => (row.kind === "secret" && row.value !== "" ? { ...row, value: "", hasValue: true } : row)));
+        // F-112/c1: a new repo's lines, edited first, are saved: the draft is done, and nothing stays marked.
+        setEditingDraft(null);
+        setMarkedRows(new Set());
+        setSaid(null);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: trpc.environments.get.queryKey({ projectId }) }),
+          queryClient.invalidateQueries({ queryKey: trpc.environments.repoDrafts.queryKey({ projectId }) }),
           queryClient.invalidateQueries({ queryKey: trpc.projects.get.queryKey({ projectId }) }),
         ]);
       },
     }),
   );
+  // F-112/c1 (Q345 option (b)): the drafts of repos added since the environment was saved.
+  const repoDrafts = useQuery(trpc.environments.repoDrafts.queryOptions({ projectId }));
+  const applyDraft = useMutation(trpc.environments.applyRepoDraft.mutationOptions());
+  const dismissDraft = useMutation(trpc.environments.dismissRepoDraft.mutationOptions());
+  const undoDismiss = useMutation(trpc.environments.undoDismissRepoDraft.mutationOptions());
 
   const [setupScript, setSetupScript] = useState("");
   const [baseImage, setBaseImage] = useState("");
@@ -339,7 +408,107 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
         envFiles: view.repos.map((repo) => ({ repoId: repo.repoId, path: (envFiles[repo.repoId] ?? repo.envFile).trim() || ".env" })),
         entries: rows.map(toEntry),
       },
+      // F-112/c1: a new repo's lines, put in by "Edit first": this save takes its draft in.
+      ...(editingDraft === null ? {} : { repoDrafts: [editingDraft.repoId] }),
     });
+  };
+
+  // ---------- F-112/c1: a new repo's draft beside the saved setup ----------
+
+  const drafts: readonly RepoDraft[] = environment.data?.status === "saved" ? (repoDrafts.data ?? []) : [];
+  const refreshDrafts = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: trpc.environments.repoDrafts.queryKey({ projectId }) }),
+      queryClient.invalidateQueries({ queryKey: trpc.environments.get.queryKey({ projectId }) }),
+      queryClient.invalidateQueries({ queryKey: trpc.projects.get.queryKey({ projectId }) }),
+    ]);
+  /** "Apply": saved at once; the editors then hold the saved environment, and any secret it named waits for a value. */
+  const onApply = (draft: RepoDraft) => {
+    setDraftError(null);
+    setSaid(null);
+    applyDraft.mutate(
+      { projectId, repoId: draft.repoId },
+      {
+        onSuccess: (result) => {
+          void (async () => {
+            await refreshDrafts();
+            const fresh = await queryClient.query({ ...trpc.environments.get.queryOptions({ projectId }), staleTime: 0 });
+            const secrets = result.secretsWithoutValue.map((name): Row => ({ key: nextKey(), kind: "secret", repoId: draft.repoId, name, value: "", hasValue: false, availableDuringSetup: false }));
+            setSetupScript(withoutFinalNewline(fresh.setupScript ?? ""));
+            setRows([...rowsOf(fresh), ...secrets]);
+            setMarkedRows(new Set(secrets.map((row) => row.key)));
+            setSaid({ kind: "applied", repoId: draft.repoId, fullName: draft.fullName, secrets: result.secretsWithoutValue });
+          })();
+        },
+        onError: (error) => { setDraftError({ repoId: draft.repoId, text: errorText(error) ?? error.message }); },
+      },
+    );
+  };
+  /** "Edit first": the draft's lines go into the editors, marked, unsaved; focus goes to the first marked line. */
+  const onEditFirst = (draft: RepoDraft) => {
+    if (draft.script === null) return;
+    setDraftError(null);
+    setSaid(null);
+    const script = withoutFinalNewline(draft.script);
+    const lines = new Set(draft.lines.flatMap((line, index) => (line.kind === "add" ? [index + 1] : [])));
+    const added = draft.variables.map((variable): Row =>
+      variable.secret
+        ? { key: nextKey(), kind: "secret", repoId: draft.repoId, name: variable.name, value: "", hasValue: false, availableDuringSetup: false }
+        : { key: nextKey(), kind: "variable", repoId: draft.repoId, name: variable.name, value: "", availableDuringSetup: false },
+    );
+    setEditingDraft({ repoId: draft.repoId, fullName: draft.fullName, lines, before: { script: setupScript, rows } });
+    setSetupScript(script);
+    setRows((current) => [...current, ...added]);
+    setMarkedRows(new Set(added.map((row) => row.key)));
+    const first = Math.min(...lines);
+    const offset = script.split("\n").slice(0, first - 1).reduce((sum, line) => sum + line.length + 1, 0);
+    requestAnimationFrame(() => {
+      scriptRef.current?.focus();
+      scriptRef.current?.setSelectionRange(offset, offset);
+    });
+  };
+  /** "Cancel" while editing: the edits go, the draft stays, and focus returns to the band. */
+  const onCancelEditing = () => {
+    if (editingDraft === null) return;
+    setSetupScript(editingDraft.before.script);
+    setRows([...editingDraft.before.rows]);
+    setMarkedRows(new Set());
+    setEditingDraft(null);
+    requestAnimationFrame(() => { bandRef.current?.focus(); });
+  };
+  const onDismiss = (draft: RepoDraft) => {
+    setDraftError(null);
+    dismissDraft.mutate(
+      { projectId, repoId: draft.repoId },
+      {
+        onSuccess: () => {
+          setSaid({ kind: "dismissed", repoId: draft.repoId, fullName: draft.fullName, secrets: [] });
+          void refreshDrafts();
+        },
+        onError: (error) => { setDraftError({ repoId: draft.repoId, text: errorText(error) ?? error.message }); },
+      },
+    );
+  };
+  const onUndo = () => {
+    if (said?.kind !== "dismissed") return;
+    undoDismiss.mutate(
+      { projectId, repoId: said.repoId },
+      {
+        onSuccess: () => {
+          setSaid(null);
+          void refreshDrafts();
+        },
+      },
+    );
+  };
+  const draftActions: DraftActions = {
+    admin,
+    applying: applyDraft.isPending ? applyDraft.variables.repoId : null,
+    busy: dismissDraft.isPending || save.isPending,
+    error: draftError,
+    onApply,
+    onEditFirst,
+    onDismiss,
   };
 
   const router = useRouter();
@@ -377,7 +546,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
       properties={
         tab === "proposal" ? <ProposalProperties proposal={proposal.data ?? null} onboarding={onboarding.data} now={now} /> : tab === "app" ? <AppProperties projectId={projectId} view={view} /> : <>
           <SnapshotProperties projectId={projectId} view={view} admin={admin} servicesTab={tab === "services"} />
-          {tab === "setup" ? <Properties view={view} rows={rows} detected={detect.data} detecting={detect.isPending} /> : null}
+          {tab === "setup" ? <Properties view={view} rows={rows} detected={detect.data} detecting={detect.isPending} drafts={drafts} admin={admin} onServices={() => { selectTab("services"); }} /> : null}
         </>
       }
       wideProperties
@@ -387,7 +556,7 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           eyebrow={
             view === undefined
               ? environment.isPending ? <Skeleton className="my-1 w-32" /> : undefined
-              : view.status === "draft" ? t("environment.draftEyebrow") : savedAgoText(view.savedAt ?? Date.now())
+              : view.status === "draft" ? t("environment.draftEyebrow") : editingDraft !== null ? t("environment.repoDraft.editingEyebrow") : savedAgoText(view.savedAt ?? Date.now())
           }
           title={t("environment.title")}
           lede={created && view?.status === "draft" ? t("environment.createdLede") : t("environment.lede")}
@@ -421,6 +590,8 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
         {environment.error === null ? null : <p role="alert" className="mt-4 text-ui text-red">{errorText(environment.error)}</p>}
         {startError === null ? null : <p role="alert" className="mt-2 text-xs text-red" data-testid="onboarding-error">{startError}</p>}
         {tab === "app" ? <AppWarnings list={appList.data} baseImage={view?.baseImage ?? null} /> : null}
+        {/* F-112/c1: the other tabs point to a new repo's draft on Setup. */}
+        {(tab === "services" || tab === "app") && drafts.length > 0 ? <RepoDraftPointer count={drafts.length} onReview={() => { selectTab("setup"); }} /> : null}
         {/* Ticket 17: a process kept from a task is reviewed on the App tab, which shows it in its band. */}
         {tab !== "proposal" && waiting && !(keptWaiting && tab === "app") ? (
           <p className="mt-2 flex min-h-9 items-center gap-2 text-ui text-text" data-testid="proposal-banner">
@@ -454,8 +625,15 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
           </div>
         ) : (
           <div role="tabpanel" id="environment-panel-setup" aria-labelledby="environment-tab-setup">
+            {/* F-112/c1 (Q345 option (b)): a new repo's draft, between the tabs and the setup script. */}
+            {said === null ? null : <RepoDraftStatus said={said} onUndo={onUndo} undoing={undoDismiss.isPending} />}
+            {editingDraft !== null ? (
+              <RepoDraftEditing fullName={editingDraft.fullName} onCancel={onCancelEditing} />
+            ) : drafts.length > 0 ? (
+              <RepoDraftBand drafts={drafts} actions={draftActions} now={now} bandRef={bandRef} />
+            ) : null}
             <EnvSection title={t("environment.setupScript")} note={t("environment.setupScriptNote")}>
-              <ScriptEditor value={setupScript} readOnly={!admin} onChange={setSetupScript} />
+              <ScriptEditor value={setupScript} readOnly={!admin} onChange={setSetupScript} textareaRef={scriptRef} {...(editingDraft === null ? {} : { markedLines: editingDraft.lines })} />
             </EnvSection>
 
             {view.repos.map((repo) => {
@@ -514,8 +692,8 @@ export const EnvironmentView = ({ projectId }: { readonly projectId: ProjectId }
                           />
                         );
                         return (
-                          <TableRow key={row.key} data-kind={row.kind}>
-                            <TableCell className="h-[37px]">
+                          <TableRow key={row.key} data-kind={row.kind} data-marked={markedRows.has(row.key) ? "" : undefined}>
+                            <TableCell className={cn("h-[37px]", markedRows.has(row.key) && "shadow-[inset_2px_0_0_var(--teal)]")}>
                               <Icon role="img" aria-label={t(`environment.kind.${row.kind}`)} className="size-[15px] stroke-[1.75] text-faint" />
                             </TableCell>
                             <TableCell className="h-[37px] pr-2">

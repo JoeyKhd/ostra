@@ -31,6 +31,11 @@ export type CodeEditorProps = {
   readonly highlightTags?: boolean;
   /** Line numbers (1-based) changed since the last save: a 2px `--line-2` bar at the gutter's left edge. */
   readonly changedLines?: ReadonlySet<number>;
+  /**
+   * Line numbers (1-based) put there for review and not saved yet (F-112/c1, a new repo's lines
+   * after "Edit first"): a 2px `--teal` rule at the gutter's left edge and a 7% `--teal` wash.
+   */
+  readonly markedLines?: ReadonlySet<number>;
   /** A line the validator refused: its number turns `--red`. */
   readonly errorLine?: number | null;
   readonly minLines?: number;
@@ -48,6 +53,7 @@ export const CodeEditor = ({
   readOnly = false,
   highlightTags = false,
   changedLines,
+  markedLines,
   errorLine = null,
   minLines = 3,
   placeholder,
@@ -63,8 +69,12 @@ export const CodeEditor = ({
         {rows.map((line, i) => {
           const n = i + 1;
           return (
-            <div key={n} className="relative grid grid-cols-[48px_minmax(0,1fr)]">
-              {line !== null && changedLines?.has(n) === true ? <span data-changed className="absolute inset-y-0 left-0 w-0.5 bg-line-2" /> : null}
+            <div key={n} className={cn("relative grid grid-cols-[48px_minmax(0,1fr)]", line !== null && markedLines?.has(n) === true && "bg-teal/7")} data-marked={line !== null && markedLines?.has(n) === true ? "" : undefined}>
+              {line !== null && markedLines?.has(n) === true ? (
+                <span className="absolute inset-y-0 left-0 w-0.5 bg-teal" />
+              ) : line !== null && changedLines?.has(n) === true ? (
+                <span data-changed className="absolute inset-y-0 left-0 w-0.5 bg-line-2" />
+              ) : null}
               <span className={cn("pr-3.5 text-right", n === errorLine ? "text-red" : "text-faint")}>{line === null ? "" : n}</span>
               <span className={cn("whitespace-pre-wrap break-words pr-3.5", !highlightTags && "text-text")}>
                 {line === null || line === "" ? "​" : highlightTags ? highlightLine(line) : line}
