@@ -55,14 +55,14 @@ const body = (status: Parameters<typeof LinearBody>[0]["status"], extra: Partial
 describe("the Linear page, not connected", () => {
   it("F-005: shows the three steps, the first one current, and the mode before the click", () => {
     const html = body(none);
-    expect(html).toContain(t("linear.connect.title"));
+    expect(html).toContain(t("trackers.linear.connect.title"));
     expect(html).toContain('data-step="1" data-look="current"');
     expect(html).toContain('data-step="2" data-look="later"');
     expect(html).toContain('data-step="3" data-look="later"');
-    expect(html).toContain(t("linear.mode.sendsToServer"));
-    expect(html).toContain(t("linear.connect.step1.action"));
+    expect(html).toContain(t("trackers.linear.mode.sendsToServer"));
+    expect(html).toContain(t("trackers.linear.connect.step1.action"));
     // No form until the app exists.
-    expect(html).not.toContain(t("linear.connect.step2.clientId"));
+    expect(html).not.toContain(t("trackers.linear.connect.step2.clientId"));
   });
 
   it("F-042: in polling mode says why, names the setting, and asks for no signing secret", () => {
@@ -70,10 +70,10 @@ describe("the Linear page, not connected", () => {
     const html = body(polling);
     expect(html).toContain("a loopback address can&#x27;t be reached from Linear");
     expect(html).toContain("OSTRA_CORE_PUBLIC_URL");
-    expect(html).toContain(t("linear.connect.step2.bodyPolling").trim());
+    expect(html).toContain(t("trackers.linear.connect.step2.bodyPolling").trim());
     const panel = renderToStaticMarkup(<LinearProperties status={polling} />);
-    expect(panel).toContain(t("linear.mode.polling"));
-    expect(panel).toContain(t("linear.panel.webhookOff", { seconds: 60 }));
+    expect(panel).toContain(t("trackers.linear.mode.polling"));
+    expect(panel).toContain(t("trackers.linear.panel.webhookOff", { seconds: 60 }));
     expect(panel).not.toContain("AgentSessionEvent");
   });
 
@@ -83,7 +83,7 @@ describe("the Linear page, not connected", () => {
 
   it("shows what the app will ask for in the panel", () => {
     const panel = renderToStaticMarkup(<LinearProperties status={none} />);
-    expect(panel).toContain(t("linear.panel.asksFor"));
+    expect(panel).toContain(t("trackers.linear.panel.asksFor"));
     for (const scope of common.scopes) expect(panel).toContain(scope);
     expect(panel).toContain("AgentSessionEvent");
   });
@@ -96,16 +96,16 @@ describe("the Linear page, pending", () => {
     const html = body(pending);
     expect(html).toContain('data-step="1" data-look="done"');
     expect(html).toContain('data-step="2" data-look="current"');
-    expect(html).toContain(t("linear.connect.step1.again"));
+    expect(html).toContain(t("trackers.linear.connect.step1.again"));
     expect(html).toContain('id="linear-client-secret" type="password"');
     expect(html).toContain('id="linear-webhook-secret" type="password"');
     expect(html).toContain("by demo");
-    expect(html).toContain(t("linear.connect.startAgain"));
+    expect(html).toContain(t("trackers.linear.connect.startAgain"));
   });
 
   it("never shows a saved value: once saved, step 2 says so and step 3 is current", () => {
     const html = body({ ...pending, appSaved: true });
-    expect(html).toContain(t("linear.connect.step2.saved"));
+    expect(html).toContain(t("trackers.linear.connect.step2.saved"));
     expect(html).not.toContain('id="linear-client-secret"');
     expect(html).toContain('data-step="3" data-look="current"');
   });
@@ -118,60 +118,60 @@ describe("the Linear page, pending", () => {
 describe("the Linear page, connected", () => {
   it("F-005: by webhooks: the workspace, receiving, the last event, a healthy token and Disconnect", () => {
     const html = body(active);
-    expect(html).toContain(t("linear.connection.connected"));
+    expect(html).toContain(t("trackers.linear.connection.connected"));
     expect(html).toContain("acme");
     expect(html).toContain("since 12 Nov");
-    expect(html).toContain(t("linear.events.receiving"));
+    expect(html).toContain(t("trackers.linear.events.receiving"));
     expect(html).toContain("CALC-161");
     expect(html).toContain("2 min ago");
-    expect(html).toContain(t("linear.events.backstopBody", { minutes: 5 }));
-    expect(html).toContain(t("linear.token.healthy"));
+    expect(html).toContain(t("trackers.linear.events.backstopBody", { minutes: 5 }));
+    expect(html).toContain(t("trackers.linear.token.healthy"));
     expect(html).toContain("expires in 21 h");
-    expect(html).toContain(t("linear.disconnect.action"));
+    expect(html).toContain(t("trackers.linear.disconnect.action"));
   });
 
   it("says Just connected after the callback", () => {
-    expect(body(active, { justConnected: true })).toContain(t("linear.connection.justConnected"));
+    expect(body(active, { justConnected: true })).toContain(t("trackers.linear.connection.justConnected"));
   });
 
   it("F-042: by polling: the interval, why there's no webhook, the last poll, no backstop row", () => {
     const html = body({ ...active, mode: "polling", modeReason: "private-network", webhookUrl: null, lastPoll: { at: now - 60_000, changed: 3 } });
-    expect(html).toContain(t("linear.events.polling", { seconds: 60 }));
+    expect(html).toContain(t("trackers.linear.events.polling", { seconds: 60 }));
     expect(html).toContain("a private-network address can&#x27;t be reached from Linear");
     expect(html).toContain("3 tickets changed");
-    expect(html).not.toContain(t("linear.events.backstop"));
+    expect(html).not.toContain(t("trackers.linear.events.backstop"));
   });
 
   it("when webhooks went silent, says since when, in red on the icon only, and how to check", () => {
     const html = body({ ...active, silentSince: Date.UTC(2026, 10, 19, 14, 2) });
     expect(html).toMatch(/Webhooks: silent since \d\d:\d\d/);
-    expect(html).toContain(t("linear.events.silentAfter").trim());
+    expect(html).toContain(t("trackers.linear.events.silentAfter").trim());
     expect(html).toContain("Check the app&#x27;s webhook in Linear");
     expect(html).not.toContain("text-amber");
   });
 
   it("when the token failed, says Linear refused it and offers Authorize again", () => {
     const html = body({ ...active, state: "failed", stateSince: Date.UTC(2026, 10, 19, 14, 2) });
-    expect(html).toContain(t("linear.connection.failed"));
-    expect(html).toContain(t("linear.token.failed"));
-    expect(html).toContain(t("linear.token.authorizeAgain"));
-    expect(html).not.toContain(t("linear.token.healthy"));
+    expect(html).toContain(t("trackers.linear.connection.failed"));
+    expect(html).toContain(t("trackers.linear.token.failed"));
+    expect(html).toContain(t("trackers.linear.token.authorizeAgain"));
+    expect(html).not.toContain(t("trackers.linear.token.healthy"));
   });
 
   it("an api_key connection says Personal API key (development), with no refresh and no Authorize", () => {
     const apiKey: LinearConnection = { ...active, credentialKind: "api_key", appUserName: null, accessTokenExpiresAt: null };
     const panel = renderToStaticMarkup(<LinearProperties status={apiKey} />);
-    expect(panel).toContain(t("linear.panel.personalKey"));
+    expect(panel).toContain(t("trackers.linear.panel.personalKey"));
     const html = body({ ...apiKey, state: "failed" });
     expect(html).toContain("It never refreshes.");
-    expect(html).not.toContain(t("linear.token.refresh"));
-    expect(html).not.toContain(t("linear.token.authorizeAgain"));
+    expect(html).not.toContain(t("trackers.linear.token.refresh"));
+    expect(html).not.toContain(t("trackers.linear.token.authorizeAgain"));
   });
 
   it("the panel shows the app user and where the secrets are, never a client ID", () => {
     const panel = renderToStaticMarkup(<LinearProperties status={active} />);
     expect(panel).toContain("ostra");
-    expect(panel).toContain(t("linear.token.inSecretStore"));
+    expect(panel).toContain(t("trackers.linear.token.inSecretStore"));
     expect(panel).not.toContain("Client ID");
   });
 });

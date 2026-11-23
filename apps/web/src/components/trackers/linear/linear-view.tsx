@@ -7,12 +7,14 @@ import { useState } from "react";
 
 import type { ConnectionId } from "@ostra/protocol";
 
-import { PageFrame, PageHeading } from "@/components/shell/page-frame";
+import { PageFrame } from "@/components/shell/page-frame";
 import { buttonVariants } from "@/components/ui/button";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
+import { ConnectionHeader } from "../connection-header";
+import type { TrackerItem } from "../tracker-words";
 import { AgentModeSections, AgentSessionsGroup } from "./agent-mode";
 import { ErrorLine, LinearBody, LinearProperties } from "./linear-panel";
 import type { LinearActions } from "./linear-panel";
@@ -29,7 +31,17 @@ const callbackError = (value: string | null): string | null => (value === null |
  * (`trackers.linear.*`, `trackers.disconnect`). A connection just made in the picker (`?new=1`)
  * opens at step 1, whose button makes the app in Linear from the pre-filled link. Admins only.
  */
-export const LinearView = ({ connectionId, name }: { readonly connectionId: ConnectionId; readonly name: string }) => {
+export const LinearView = ({
+  connectionId,
+  name,
+  site,
+  boards,
+}: {
+  readonly connectionId: ConnectionId;
+  readonly name: string;
+  readonly site: string | null;
+  readonly boards: TrackerItem["boards"];
+}) => {
   const trpc = useTRPC();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -116,13 +128,13 @@ export const LinearView = ({ connectionId, name }: { readonly connectionId: Conn
         connected ? (
           <a href={linearWorkspaceUrl(data.workspaceKey)} target="_blank" rel="noopener noreferrer" className={buttonVariants()}>
             <ExternalLinkIcon className="stroke-[1.75]" />
-            {t("linear.openInLinear")}
+            {t("trackers.linear.openInLinear")}
           </a>
         ) : undefined
       }
-      properties={<LinearProperties status={data} sessions={data?.agentMode?.on === true ? <AgentSessionsGroup agent={data.agentMode} /> : null} />}
+      properties={<LinearProperties status={data} boards={boards} sessions={data?.agentMode?.on === true ? <AgentSessionsGroup agent={data.agentMode} /> : null} />}
     >
-      <PageHeading title={name} lede={t("linear.lede")} />
+      <ConnectionHeader connectionId={connectionId} kind="linear" name={name} site={site} lede={t("trackers.linear.lede")} admin />
       {error === null ? null : <ErrorLine className="mt-3">{error}</ErrorLine>}
       {status.isError ? <ErrorLine className="mt-6">{errorText(status.error)}</ErrorLine> : null}
       <LinearBody

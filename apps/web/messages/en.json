@@ -3615,124 +3615,7 @@
     "syncedSeconds": "{n} s ago",
     "syncedMinutes": "{n} min ago"
   },
-  "linear": {
-    "lede": "The organization's own Linear app reads tickets and writes back status, one comment and links. Its tokens stay on this server, in the secret store, and never reach an agent.",
-    "openInLinear": "Open in Linear",
-    "connect": {
-      "title": "Connect your Linear app",
-      "started": "Started {at} by {name}.",
-      "startedNoName": "Started {at}.",
-      "startAgain": "Start again",
-      "disconnectedFrom": "Disconnected from {workspace} on {date}. Its boards and tickets stay, read-only.",
-      "step1": {
-        "title": "Create the app in Linear",
-        "body": "ostra fills in the app's name, its callback and its webhook. You press Create in Linear, as a workspace admin.",
-        "action": "Create the app in Linear",
-        "preparing": "Preparing…",
-        "again": "Open in Linear again"
-      },
-      "step2": {
-        "title": "Paste the app's values",
-        "body": "From the app's page in Linear. They go to the secret store and are never shown again.",
-        "bodyPolling": " Polling needs no signing secret.",
-        "clientId": "Client ID",
-        "clientSecret": "Client secret",
-        "webhookSecret": "Webhook signing secret",
-        "saved": "Saved in the secret store.",
-        "replace": "Replace"
-      },
-      "step3": {
-        "title": "Authorize",
-        "body": "Linear asks you to install the app on the workspace, then sends you back here.",
-        "action": "Authorize in Linear",
-        "opening": "Opening Linear…"
-      }
-    },
-    "mode": {
-      "label": "Mode",
-      "webhooks": "Webhooks",
-      "polling": "Polling",
-      "sendsTo": "Linear will send events to",
-      "sendsToServer": "Linear will send events to this server, at",
-      "pollingLine": "This server's address isn't public ({reason}), so the app gets no webhook and ostra asks Linear for changes every {seconds} s. Set {setting} to a public https address to receive events.",
-      "pollingLineNoReason": "This server's address isn't public, so the app gets no webhook and ostra asks Linear for changes every {seconds} s. Set {setting} to a public https address to receive events.",
-      "webhooksHelp": "Linear sends each change to this server as it happens."
-    },
-    "addressProblem": {
-      "invalid-url": "it isn't a valid absolute URL",
-      "not-https": "Linear delivers webhooks only to https:// addresses",
-      "loopback": "a loopback address can't be reached from Linear",
-      "private-network": "a private-network address can't be reached from Linear",
-      "single-label-host": "a host name with no dot is a local name, not a public one",
-      "local-suffix": "a .local, .internal, .lan or .home.arpa name is local, not public",
-      "linear-host": "Linear doesn't accept its own domain as a webhook address",
-      "polling": "the connection polls: Linear's webhooks don't reach it"
-    },
-    "connection": {
-      "title": "Connection",
-      "connected": "Connected",
-      "pending": "Pending",
-      "failed": "Failed",
-      "since": "since {date}",
-      "justConnected": "Just connected"
-    },
-    "events": {
-      "title": "Events",
-      "mode": "Mode",
-      "receiving": "Webhooks: receiving",
-      "polling": "Polling every {seconds} s",
-      "silent": "Webhooks: silent since {time}",
-      "silentAfter": " · polling still finds changes",
-      "silentHelp": "Check the app's webhook in Linear: it may be disabled, or its URL may have changed. Tickets still arrive every {minutes} min.",
-      "webhookUrl": "Webhook URL",
-      "webhook": "Webhook",
-      "webhookNone": "None: this server's address isn't public ({reason}).",
-      "webhookNoneNoReason": "None: this server's address isn't public.",
-      "lastEvent": "Last event",
-      "lastPoll": "Last poll",
-      "updated": "updated",
-      "changed": {
-        "one": "{n} ticket changed",
-        "other": "{n} tickets changed"
-      },
-      "noneYet": "None yet",
-      "backstop": "Backstop",
-      "backstopBody": "Every board is also polled every {minutes} min, so a missed delivery is found."
-    },
-    "token": {
-      "title": "Token",
-      "access": "Access token",
-      "healthy": "Healthy",
-      "expiresIn": " · expires in {left}, refreshed an hour before",
-      "noExpiry": " · it doesn't expire",
-      "failed": "Linear refused the refresh. Polling and writes have stopped.",
-      "authorizeAgain": "Authorize again",
-      "refresh": "Refresh token",
-      "inSecretStore": "In the secret store",
-      "apiKey": "API key",
-      "apiKeyBody": "A personal API key from the server's settings. It never refreshes."
-    },
-    "disconnect": {
-      "title": "Disconnect",
-      "body": "Revokes the token at Linear and stops every board. Boards and their tickets stay, read-only.",
-      "action": "Disconnect",
-      "confirmTitle": "Disconnect Linear?",
-      "confirmBody": "ostra revokes its token at Linear and stops polling and webhooks for every board. Boards, tickets and tasks stay, read-only. To connect again, you authorize the app again.",
-      "running": "Disconnecting…"
-    },
-    "panel": {
-      "app": "App",
-      "appUser": "App user",
-      "personalKey": "Personal API key (development)",
-      "secrets": "Secrets",
-      "asksFor": "The app asks for",
-      "scopes": "Scopes",
-      "webhookEvents": "Webhook events",
-      "eventsHelp": "AgentSessionEvent is asked for now, so agent mode later needs no new app.",
-      "webhook": "Webhook",
-      "webhookOff": "Off: polling every {seconds} s"
-    }
-  },
+
   "trackers": {
     "title": "Trackers",
     "lede": "Where the organization's tickets live. Each client can bring its own Linear workspace or Jira site; a project's Boards then attach teams and projects from any of them.",
@@ -4029,7 +3912,271 @@
           "failed": "Failed",
           "justConnected": "Just connected"
         }
+      },
+      "settings": {
+        "openInJira": "Open in Jira",
+        "events": {
+          "title": "Events",
+          "mode": "Mode",
+          "receiving": "Webhooks: receiving",
+          "polling": "Polling every {seconds} s",
+          "silent": "Webhooks: silent since {time}",
+          "silentAfter": " · polling still finds changes",
+          "silentHelp": "Check the webhook in Jira's Settings › System › WebHooks: it may be disabled, or its URL may have changed. Tickets still arrive every {minutes} min.",
+          "webhookUrl": "Webhook URL",
+          "webhookNone": "None: this server's address isn't public ({reason}).",
+          "webhookNoneNoReason": "None: this server's address isn't public.",
+          "webhookSecret": "Webhook secret",
+          "inSecretStore": "In the secret store",
+          "rotate": "Rotate the secret",
+          "rotateTitle": "Rotate the webhook secret?",
+          "rotateBody": "Jira keeps signing with the old secret until you paste the new one in the webhook's settings. Until then ostra refuses every delivery, and tickets arrive only by the 5-minute backstop.",
+          "rotated": "The new secret. Copy it into Jira's webhook now: ostra won't show it again.",
+          "lastEvent": "Last event",
+          "lastPoll": "Last poll",
+          "updated": "updated",
+          "noneYet": "None yet",
+          "backstop": "Backstop",
+          "backstopBody": "Every board is also polled every {minutes} min, so a missed delivery is found."
+        },
+        "token": {
+          "title": "Service account",
+          "signsInAs": "Signs in as",
+          "token": "Token",
+          "healthy": "Healthy",
+          "expiresIn": " · expires {date}, in {days} days",
+          "expiresTomorrow": "Expires tomorrow, on {date} · paste a new one",
+          "expiresSoon": "Expires in {days} days, on {date} · paste a new one",
+          "expired": "Jira refused the token on {date}. Polling and writes have stopped.",
+          "replace": "Replace",
+          "reaches": "Reaches",
+          "projects": {
+            "one": "1 project",
+            "other": "{n} projects"
+          },
+          "can": " · browse, create, edit, transition, comment",
+          "checked": "checked {ago}",
+          "checkAgain": "Check again",
+          "checking": "Checking…",
+          "signsInAsHidden": "An admin sees which account it signs in as."
+        },
+        "disconnect": {
+          "title": "Disconnect",
+          "body": "Stops the webhook and polling for its {n} boards and deletes the token from the secret store. Boards, tickets and tasks stay, read-only.",
+          "action": "Disconnect",
+          "confirmTitle": "Disconnect {name}?",
+          "confirmBody": "ostra stops the webhook and polling for {site} and deletes its token from the secret store. {boards} stay attached but paused: their tickets and tasks stay, read-only, and no ticket moves. Connecting the same site again resumes them. Delete the webhook in Jira yourself: ostra can't.",
+          "boardsOne": "Its 1 board",
+          "boardsMany": "Its {n} boards",
+          "running": "Disconnecting…"
+        },
+        "panel": {
+          "site": "Site",
+          "cloudId": "Cloud ID",
+          "product": "Product",
+          "jiraCloud": "Jira Cloud",
+          "workflows": "Workflows",
+          "readable": "Readable",
+          "notReadable": "Not readable",
+          "scopes": "Scopes",
+          "missing": "Not granted: {scope}",
+          "webhookEvents": "Webhook events",
+          "boards": "Boards on it"
+        }
       }
+    },
+    "linear": {
+      "lede": "The organization's own Linear app reads tickets and writes back status, one comment and links. Its tokens stay on this server, in the secret store, and never reach an agent.",
+      "openInLinear": "Open in Linear",
+      "connect": {
+        "title": "Connect your Linear app",
+        "started": "Started {at} by {name}.",
+        "startedNoName": "Started {at}.",
+        "startAgain": "Start again",
+        "disconnectedFrom": "Disconnected from {workspace} on {date}. Its boards and tickets stay, read-only.",
+        "step1": {
+          "title": "Create the app in Linear",
+          "body": "ostra fills in the app's name, its callback and its webhook. You press Create in Linear, as a workspace admin.",
+          "action": "Create the app in Linear",
+          "preparing": "Preparing…",
+          "again": "Open in Linear again"
+        },
+        "step2": {
+          "title": "Paste the app's values",
+          "body": "From the app's page in Linear. They go to the secret store and are never shown again.",
+          "bodyPolling": " Polling needs no signing secret.",
+          "clientId": "Client ID",
+          "clientSecret": "Client secret",
+          "webhookSecret": "Webhook signing secret",
+          "saved": "Saved in the secret store.",
+          "replace": "Replace"
+        },
+        "step3": {
+          "title": "Authorize",
+          "body": "Linear asks you to install the app on the workspace, then sends you back here.",
+          "action": "Authorize in Linear",
+          "opening": "Opening Linear…"
+        }
+      },
+      "mode": {
+        "label": "Mode",
+        "webhooks": "Webhooks",
+        "polling": "Polling",
+        "sendsTo": "Linear will send events to",
+        "sendsToServer": "Linear will send events to this server, at",
+        "pollingLine": "This server's address isn't public ({reason}), so the app gets no webhook and ostra asks Linear for changes every {seconds} s. Set {setting} to a public https address to receive events.",
+        "pollingLineNoReason": "This server's address isn't public, so the app gets no webhook and ostra asks Linear for changes every {seconds} s. Set {setting} to a public https address to receive events.",
+        "webhooksHelp": "Linear sends each change to this server as it happens."
+      },
+      "addressProblem": {
+        "invalid-url": "it isn't a valid absolute URL",
+        "not-https": "Linear delivers webhooks only to https:// addresses",
+        "loopback": "a loopback address can't be reached from Linear",
+        "private-network": "a private-network address can't be reached from Linear",
+        "single-label-host": "a host name with no dot is a local name, not a public one",
+        "local-suffix": "a .local, .internal, .lan or .home.arpa name is local, not public",
+        "linear-host": "Linear doesn't accept its own domain as a webhook address",
+        "polling": "the connection polls: Linear's webhooks don't reach it"
+      },
+      "connection": {
+        "title": "Connection",
+        "connected": "Connected",
+        "pending": "Pending",
+        "failed": "Failed",
+        "since": "since {date}",
+        "justConnected": "Just connected"
+      },
+      "events": {
+        "title": "Events",
+        "mode": "Mode",
+        "receiving": "Webhooks: receiving",
+        "polling": "Polling every {seconds} s",
+        "silent": "Webhooks: silent since {time}",
+        "silentAfter": " · polling still finds changes",
+        "silentHelp": "Check the app's webhook in Linear: it may be disabled, or its URL may have changed. Tickets still arrive every {minutes} min.",
+        "webhookUrl": "Webhook URL",
+        "webhook": "Webhook",
+        "webhookNone": "None: this server's address isn't public ({reason}).",
+        "webhookNoneNoReason": "None: this server's address isn't public.",
+        "lastEvent": "Last event",
+        "lastPoll": "Last poll",
+        "updated": "updated",
+        "changed": {
+          "one": "{n} ticket changed",
+          "other": "{n} tickets changed"
+        },
+        "noneYet": "None yet",
+        "backstop": "Backstop",
+        "backstopBody": "Every board is also polled every {minutes} min, so a missed delivery is found."
+      },
+      "token": {
+        "title": "Token",
+        "access": "Access token",
+        "healthy": "Healthy",
+        "expiresIn": " · expires in {left}, refreshed an hour before",
+        "noExpiry": " · it doesn't expire",
+        "failed": "Linear refused the refresh. Polling and writes have stopped.",
+        "authorizeAgain": "Authorize again",
+        "refresh": "Refresh token",
+        "inSecretStore": "In the secret store",
+        "apiKey": "API key",
+        "apiKeyBody": "A personal API key from the server's settings. It never refreshes."
+      },
+      "disconnect": {
+        "title": "Disconnect",
+        "body": "Revokes the token at Linear and stops every board. Boards and their tickets stay, read-only.",
+        "action": "Disconnect",
+        "confirmTitle": "Disconnect Linear?",
+        "confirmBody": "ostra revokes its token at Linear and stops polling and webhooks for every board. Boards, tickets and tasks stay, read-only. To connect again, you authorize the app again.",
+        "running": "Disconnecting…"
+      },
+      "panel": {
+        "app": "App",
+        "appUser": "App user",
+        "personalKey": "Personal API key (development)",
+        "secrets": "Secrets",
+        "asksFor": "The app asks for",
+        "scopes": "Scopes",
+        "webhookEvents": "Webhook events",
+        "eventsHelp": "AgentSessionEvent is asked for now, so agent mode later needs no new app.",
+        "webhook": "Webhook",
+        "webhookOff": "Off: polling every {seconds} s",
+        "boards": "Boards on it",
+        "noBoards": "No board yet"
+      },
+      "agentMode": {
+        "title": "Agent mode",
+        "linearOnly": "Linear only",
+        "lede": "People in Linear delegate a ticket to ostra or @mention it, and follow the work in the ticket's agent session.",
+        "state": "State",
+        "on": "On",
+        "onNotReceiving": "On, not receiving",
+        "off": "Off",
+        "onSince": " · turned on {date}",
+        "onSinceBy": " · turned on {date} by {name}",
+        "justOn": "Just turned on",
+        "address": "Public address",
+        "reachable": " · Reachable: Linear's webhooks arrive here",
+        "unreachable": "Not reachable from Linear",
+        "unreachableNote": "Agent mode needs Linear's webhooks. Set OSTRA_CORE_PUBLIC_URL to a public https address.",
+        "appUser": "App user",
+        "appUserNote": " · offered as a delegate on boards with Start from Linear",
+        "scopes": "Agent scopes",
+        "notGranted": "Not granted yet",
+        "renewal": "Token renewal",
+        "renewalIn": "Next renewal in {h} h, with the rotating refresh token",
+        "renewalNone": "No renewal: the connection uses a key that doesn't expire",
+        "offNote": "Linear asks a workspace admin to authorize ostra's app again, with two more scopes: app:assignable and app:mentionable. Nothing else changes.",
+        "turnOn": "Turn on agent mode",
+        "opening": "Opening Linear…",
+        "turnedOn": "Agent mode is on. Turn on Start from Linear for a board.",
+        "missing": "Linear didn't grant {scopes}. Authorize again and keep every scope checked.",
+        "boardsTitle": "Start from Linear",
+        "boardsLede": "One board per Linear team takes its delegations. Agent mode starts code tasks only.",
+        "noBoardOn": "No board takes delegations yet: people in Linear see ostra, and a delegation gets an error.",
+        "col": {
+          "board": "Board",
+          "team": "Team",
+          "project": "Project"
+        },
+        "boardSwitch": "Start from Linear on {board}",
+        "alreadyOn": "{team} already starts on {board}",
+        "alreadyOnIn": "{team} already starts on {board} in {project}",
+        "nowOn": "{board} takes {team}'s delegations now.",
+        "nowOff": "{board} stopped taking delegations. Open sessions finish.",
+        "eventsTitle": "Last session events",
+        "eventsNone": "No sessions yet. Delegate a ticket to ostra in Linear to start one.",
+        "delegated": "Delegated",
+        "notMember": " · not a member",
+        "outcome": {
+          "started": "Started a task",
+          "waiting": "Waiting for approval",
+          "running": "Working on it",
+          "ended": "Ended",
+          "stopped": "Stopped"
+        },
+        "panel": {
+          "sessions": "Agent sessions",
+          "open": "Open",
+          "awaiting": "Awaiting approval",
+          "posted": "Posted today"
+        }
+      }
+    },
+    "header": {
+      "site": "{kind} · {site}",
+      "workspace": "{kind} · workspace {site}"
+    },
+    "rename": {
+      "action": "Rename {name}",
+      "label": "Connection name",
+      "blank": "Give the connection a name.",
+      "nameTaken": "Another connection is already called {name}. Pick another name.",
+      "save": "Save the name",
+      "cancel": "Stop renaming"
+    },
+    "memberPage": {
+      "lede": "Only the organization's admins connect, change or disconnect trackers."
     }
   },
   "organizationPreviews": {
@@ -8274,63 +8421,7 @@
       }
     }
   },
-  "agentMode": {
-    "title": "Agent mode",
-    "lede": "People in Linear delegate a ticket to ostra or @mention it, and follow the work in the ticket's agent session.",
-    "state": "State",
-    "on": "On",
-    "onNotReceiving": "On, not receiving",
-    "off": "Off",
-    "onSince": " · turned on {date}",
-    "onSinceBy": " · turned on {date} by {name}",
-    "justOn": "Just turned on",
-    "address": "Public address",
-    "reachable": " · Reachable: Linear's webhooks arrive here",
-    "unreachable": "Not reachable from Linear",
-    "unreachableNote": "Agent mode needs Linear's webhooks. Set OSTRA_CORE_PUBLIC_URL to a public https address.",
-    "appUser": "App user",
-    "appUserNote": " · offered as a delegate on boards with Start from Linear",
-    "scopes": "Agent scopes",
-    "notGranted": "Not granted yet",
-    "renewal": "Token renewal",
-    "renewalIn": "Next renewal in {h} h, with the rotating refresh token",
-    "renewalNone": "No renewal: the connection uses a key that doesn't expire",
-    "offNote": "Linear asks a workspace admin to authorize ostra's app again, with two more scopes: app:assignable and app:mentionable. Nothing else changes.",
-    "turnOn": "Turn on agent mode",
-    "opening": "Opening Linear…",
-    "turnedOn": "Agent mode is on. Turn on Start from Linear for a board.",
-    "missing": "Linear didn't grant {scopes}. Authorize again and keep every scope checked.",
-    "boardsTitle": "Start from Linear",
-    "boardsLede": "One board per Linear team takes its delegations. Agent mode starts code tasks only.",
-    "noBoardOn": "No board takes delegations yet: people in Linear see ostra, and a delegation gets an error.",
-    "col": {
-      "board": "Board",
-      "team": "Team",
-      "project": "Project"
-    },
-    "boardSwitch": "Start from Linear on {board}",
-    "alreadyOn": "{team} already starts on {board}",
-    "alreadyOnIn": "{team} already starts on {board} in {project}",
-    "nowOn": "{board} takes {team}'s delegations now.",
-    "nowOff": "{board} stopped taking delegations. Open sessions finish.",
-    "eventsTitle": "Last session events",
-    "eventsNone": "No sessions yet. Delegate a ticket to ostra in Linear to start one.",
-    "delegated": "Delegated",
-    "notMember": " · not a member",
-    "outcome": {
-      "started": "Started a task",
-      "waiting": "Waiting for approval",
-      "running": "Working on it",
-      "ended": "Ended",
-      "stopped": "Stopped"
-    },
-    "panel": {
-      "sessions": "Agent sessions",
-      "open": "Open",
-      "awaiting": "Awaiting approval",
-      "posted": "Posted today"
-    }
-  },
+
   "approvals": {
     "title": "Needs approval",
     "lede": "Tasks started in Linear by people who aren't members of {project}. Nothing runs until a member approves.",

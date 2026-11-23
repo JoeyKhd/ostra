@@ -27,6 +27,10 @@ const world = async (databaseUrl: string, password: string) => {
   const username = `trackers-${run}`;
   const admin = await seedMember({ db, hashPassword, env: { NODE_ENV: "test" } }, { username, email: `${username}@example.com`, password, role: "admin", organizationId });
   if (!admin.ok) throw new Error(`seeding ${username} failed: ${admin.error}`);
+  // Ticket 14's member view: the same organization, a plain member.
+  const memberUsername = `trackers-member-${run}`;
+  const member = await seedMember({ db, hashPassword, env: { NODE_ENV: "test" } }, { username: memberUsername, email: `${memberUsername}@example.com`, password, role: "member", organizationId });
+  if (!member.ok) throw new Error(`seeding ${memberUsername} failed: ${member.error}`);
 
   const now = Date.now();
   const day = 86_400_000;
@@ -39,11 +43,15 @@ const world = async (databaseUrl: string, password: string) => {
       appId: `e2e-trackers-linear-acme-${run}`,
       name: "Acme Linear",
       state: "active",
-      credentialKind: "api_key",
+      credentialKind: "app_oauth",
       webhookMode: "webhooks",
       externalWorkspaceId: `ws-acme-${run}`,
       externalWorkspaceKey: "acme",
       externalWorkspaceName: "Acme",
+      appUserName: "ostra",
+      scopes: ["read", "write", "issues:create", "comments:create", "app:assignable", "app:mentionable"],
+      agentModeAt: new Date(now - 11 * day),
+      accessTokenExpiresAt: new Date(now + 21 * 3_600_000),
       activatedAt: new Date(now - 40 * day),
       lastEventAt: new Date(now - 2 * 60_000),
     },
@@ -63,8 +71,9 @@ const world = async (databaseUrl: string, password: string) => {
       accountEmail: "ostra-bot@example.test",
       appUserId: `jira-account-${run}`,
       appUserName: "ostra-bot",
+      scopes: ["read:jira-work", "write:jira-work", "read:jira-user", "read:workflow:jira"],
       accessTokenSecretRef: `builtin:e2e-jira-token-${run}`,
-      tokenExpiresOn: new Date(Date.UTC(2028, 0, 14)),
+      tokenExpiresOn: new Date(Date.UTC(2027, 8, 14)),
       accessCheckedAt: new Date(now - 20 * day),
       accessCheck: {
         projects: [
@@ -75,6 +84,18 @@ const world = async (databaseUrl: string, password: string) => {
       },
       activatedAt: new Date(now - 21 * day),
       lastEventAt: new Date(now - 6 * 60_000),
+    },
+  });
+  // Its last event, as the delivery that carried it (ticket 14's `Last event` row).
+  await db.webhookDelivery.create({
+    data: {
+      organizationId,
+      connectionId: globex.id,
+      deliveryId: `e2e-delivery-${run}`,
+      event: "issue_updated",
+      ticketKey: "PROJ-14",
+      receivedAt: new Date(now - 6 * 60_000),
+      processedAt: new Date(now - 6 * 60_000 + 200),
     },
   });
   const ops = await db.connection.create({
@@ -120,12 +141,17 @@ const world = async (databaseUrl: string, password: string) => {
   const calculator = await board("calculator", `trackers-calculator-${run}`, `10001-${run}`, "PROJ", "Globex Calculator");
   const shop = await board("globex-shop", `trackers-shop-${run}`, `10002-${run}`, "SHOP", "Globex Shop");
 
+  // A Linear board too, so Acme Linear's panel lists one `Boards on it` row (ticket 14).
+  const webProject = await db.project.create({ data: { organizationId, name: "web-storefront", slug: `trackers-web-${run}`, access: "open" } });
+  const web = await db.board.create({ data: { organizationId, projectId: webProject.id, connectionId: acme.id, externalId: `team-web-${run}`, name: "Acme Web", key: "WEB", statusMap: { ...mapping } } });
+
   await db.$disconnect();
   return {
     username,
+    memberUsername,
     organizationId,
     connections: { acme: acme.id, globex: globex.id, ops: ops.id, northwind: northwind.id },
-    boards: { calculator, shop },
+    boards: { calculator, shop, web: { projectId: webProject.id, boardId: web.id, projectName: webProject.name } },
   };
 };
 

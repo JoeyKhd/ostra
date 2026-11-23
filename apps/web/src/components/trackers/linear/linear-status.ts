@@ -48,23 +48,23 @@ export const formatLeft = (at: number, now: number): string => {
 };
 
 /** Why Linear can't reach an address: the pre-check's code (or `polling`, for a connection that polls), in words. */
-export const addressProblemText = (problem: LinearAddressProblem | "polling"): string => t(`linear.addressProblem.${problem}`);
+export const addressProblemText = (problem: LinearAddressProblem | "polling"): string => t(`trackers.linear.addressProblem.${problem}`);
 
 /** The polling sentence, with the reason when the pre-check gave one; `{setting}` stays for the caller to set in mono. */
 export const pollingLine = (reason: LinearAddressProblem | null, seconds: number): string =>
   reason === null
-    ? t("linear.mode.pollingLineNoReason", { seconds, setting: "{setting}" })
-    : t("linear.mode.pollingLine", { reason: addressProblemText(reason), seconds, setting: "{setting}" });
+    ? t("trackers.linear.mode.pollingLineNoReason", { seconds, setting: "{setting}" })
+    : t("trackers.linear.mode.pollingLine", { reason: addressProblemText(reason), seconds, setting: "{setting}" });
 
 /** The connection row's status: its words and tone. */
 export const connectionTone = (state: LinearConnection["state"]): { readonly tone: "green" | "red" | "grey"; readonly label: string } => {
   switch (state) {
     case "active":
-      return { tone: "green", label: t("linear.connection.connected") };
+      return { tone: "green", label: t("trackers.linear.connection.connected") };
     case "failed":
-      return { tone: "red", label: t("linear.connection.failed") };
+      return { tone: "red", label: t("trackers.linear.connection.failed") };
     case "pending":
-      return { tone: "grey", label: t("linear.connection.pending") };
+      return { tone: "grey", label: t("trackers.linear.connection.pending") };
     default:
       return state satisfies never;
   }

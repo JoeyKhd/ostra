@@ -42,16 +42,16 @@ const KeyRow = ({ label, children, testId }: { readonly label: string; readonly 
 );
 
 const outcomeOf = (event: SessionEvent): string => {
-  if (event.state === "awaiting_approval") return t("agentMode.outcome.waiting");
-  if (event.taskId === null) return t("agentMode.outcome.ended");
+  if (event.state === "awaiting_approval") return t("trackers.linear.agentMode.outcome.waiting");
+  if (event.taskId === null) return t("trackers.linear.agentMode.outcome.ended");
   switch (event.taskState ?? "") {
     case "stopped":
-      return t("agentMode.outcome.stopped");
+      return t("trackers.linear.agentMode.outcome.stopped");
     case "running":
     case "preparing":
-      return t("agentMode.outcome.running");
+      return t("trackers.linear.agentMode.outcome.running");
     default:
-      return t("agentMode.outcome.started");
+      return t("trackers.linear.agentMode.outcome.started");
   }
 };
 
@@ -66,19 +66,19 @@ const takenBy = (board: Board, boards: readonly Board[]): Board | undefined =>
 export const AgentModeState = ({ agent, justTurnedOn }: { readonly agent: AgentMode; readonly justTurnedOn: boolean }) =>
   agent.on ? (
     <>
-      {agent.reachable ? <Status tone="green" className="text-green">{t("agentMode.on")}</Status> : <Status tone="red" className="text-text">{t("agentMode.onNotReceiving")}</Status>}
+      {agent.reachable ? <Status tone="green" className="text-green">{t("trackers.linear.agentMode.on")}</Status> : <Status tone="red" className="text-text">{t("trackers.linear.agentMode.onNotReceiving")}</Status>}
       <span className="text-muted">
-        {agent.since === null ? "" : agent.turnedOnByName === null ? t("agentMode.onSince", { date: day(agent.since) }) : t("agentMode.onSinceBy", { date: day(agent.since), name: agent.turnedOnByName })}
+        {agent.since === null ? "" : agent.turnedOnByName === null ? t("trackers.linear.agentMode.onSince", { date: day(agent.since) }) : t("trackers.linear.agentMode.onSinceBy", { date: day(agent.since), name: agent.turnedOnByName })}
       </span>
       {justTurnedOn ? (
         <span className="ml-auto flex items-center gap-1 text-faint">
           <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
-          {t("agentMode.justOn")}
+          {t("trackers.linear.agentMode.justOn")}
         </span>
       ) : null}
     </>
   ) : (
-    <Status tone="grey">{t("agentMode.off")}</Status>
+    <Status tone="grey">{t("trackers.linear.agentMode.off")}</Status>
   );
 
 /** The Public address row: the address Linear's webhooks arrive at, or why Linear can't reach it. */
@@ -87,12 +87,12 @@ export const PublicAddress = ({ agent }: { readonly agent: AgentMode }) =>
     <>
       <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
       <span className="min-w-0 break-all font-mono text-text">{agent.publicAddress}</span>
-      <span className="text-muted">{t("agentMode.reachable")}</span>
+      <span className="text-muted">{t("trackers.linear.agentMode.reachable")}</span>
     </>
   ) : (
     <>
       <TriangleAlertIcon aria-hidden className="size-[14px] stroke-[1.75] text-red" />
-      <span>{t("agentMode.unreachable")}</span>
+      <span>{t("trackers.linear.agentMode.unreachable")}</span>
       {agent.unreachableReason === null ? null : <span className="text-muted">· {addressProblemText(agent.unreachableReason)}</span>}
     </>
   );
@@ -115,7 +115,7 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
     trpc.trackers.linear.setBoardAgentMode.mutationOptions({
       onSuccess: (result) => {
         const board = status.agentMode?.boards.find((one) => one.boardId === result.boardId);
-        if (board !== undefined) setLine({ kind: "status", text: result.on ? t("agentMode.nowOn", { board: board.name, team: board.teamKey ?? board.name }) : t("agentMode.nowOff", { board: board.name }) });
+        if (board !== undefined) setLine({ kind: "status", text: result.on ? t("trackers.linear.agentMode.nowOn", { board: board.name, team: board.teamKey ?? board.name }) : t("trackers.linear.agentMode.nowOff", { board: board.name }) });
         void refresh();
         void queryClient.invalidateQueries({ queryKey: trpc.boards.pathKey() });
       },
@@ -133,36 +133,36 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
 
   return (
     <>
-      <Section title={t("agentMode.title")}>
-        <p className="mb-1 text-[12.5px] text-muted">{t("agentMode.lede")}</p>
+      <Section title={t("trackers.linear.agentMode.title")} note={t("trackers.linear.agentMode.linearOnly")} noteClassName="text-faint">
+        <p className="mb-1 text-[12.5px] text-muted">{t("trackers.linear.agentMode.lede")}</p>
         <ul className="border-t border-line" data-testid="agent-mode">
-          <KeyRow label={t("agentMode.state")} testId="agent-mode-state">
+          <KeyRow label={t("trackers.linear.agentMode.state")} testId="agent-mode-state">
             <AgentModeState agent={agent} justTurnedOn={justTurnedOn} />
           </KeyRow>
-          <KeyRow label={t("agentMode.address")} testId="agent-mode-address">
+          <KeyRow label={t("trackers.linear.agentMode.address")} testId="agent-mode-address">
             <PublicAddress agent={agent} />
           </KeyRow>
-          <KeyRow label={t("agentMode.appUser")}>
+          <KeyRow label={t("trackers.linear.agentMode.appUser")}>
             <span className="font-mono">{status.appUserName ?? "–"}</span>
-            <span className="text-muted">{t("agentMode.appUserNote")}</span>
+            <span className="text-muted">{t("trackers.linear.agentMode.appUserNote")}</span>
           </KeyRow>
-          <KeyRow label={t("agentMode.scopes")} testId="agent-mode-scopes">
-            {agent.grantedScopes.length === 0 ? <span className="text-muted">{t("agentMode.notGranted")}</span> : agent.grantedScopes.map((scope) => <Chip key={scope} className="font-mono text-xs text-text">{scope}</Chip>)}
+          <KeyRow label={t("trackers.linear.agentMode.scopes")} testId="agent-mode-scopes">
+            {agent.grantedScopes.length === 0 ? <span className="text-muted">{t("trackers.linear.agentMode.notGranted")}</span> : agent.grantedScopes.map((scope) => <Chip key={scope} className="font-mono text-xs text-text">{scope}</Chip>)}
           </KeyRow>
-          <KeyRow label={t("agentMode.renewal")}>
-            <span className="text-muted">{renewalHours === null ? t("agentMode.renewalNone") : t("agentMode.renewalIn", { h: renewalHours })}</span>
+          <KeyRow label={t("trackers.linear.agentMode.renewal")}>
+            <span className="text-muted">{renewalHours === null ? t("trackers.linear.agentMode.renewalNone") : t("trackers.linear.agentMode.renewalIn", { h: renewalHours })}</span>
           </KeyRow>
         </ul>
-        {agent.reachable ? null : <p className="mt-2 text-[12.5px] text-muted">{t("agentMode.unreachableNote")}</p>}
-        {agent.on && agent.missingScopes.length > 0 ? <p role="alert" className="mt-2 text-[12.5px] text-red">{t("agentMode.missing", { scopes: agent.missingScopes.join(", ") })}</p> : null}
+        {agent.reachable ? null : <p className="mt-2 text-[12.5px] text-muted">{t("trackers.linear.agentMode.unreachableNote")}</p>}
+        {agent.on && agent.missingScopes.length > 0 ? <p role="alert" className="mt-2 text-[12.5px] text-red">{t("trackers.linear.agentMode.missing", { scopes: agent.missingScopes.join(", ") })}</p> : null}
         {agent.on ? (
-          justTurnedOn ? <p role="status" className="mt-2 text-[12.5px] text-muted">{t("agentMode.turnedOn")}</p> : null
+          justTurnedOn ? <p role="status" className="mt-2 text-[12.5px] text-muted">{t("trackers.linear.agentMode.turnedOn")}</p> : null
         ) : (
           <div className="mt-3">
-            <p className="text-[12.5px] text-muted">{t("agentMode.offNote")}</p>
+            <p className="text-[12.5px] text-muted">{t("trackers.linear.agentMode.offNote")}</p>
             <Button variant="primary" className="mt-2.5" disabled={enable.isPending || enable.isSuccess || status.mode === "polling"} onClick={() => { enable.mutate({ connectionId: status.connectionId }); }} data-testid="turn-on-agent-mode">
               {enable.isPending || enable.isSuccess ? <LoaderCircleIcon className="animate-spin" /> : <ArrowUpRightIcon />}
-              {enable.isPending || enable.isSuccess ? t("agentMode.opening") : t("agentMode.turnOn")}
+              {enable.isPending || enable.isSuccess ? t("trackers.linear.agentMode.opening") : t("trackers.linear.agentMode.turnOn")}
             </Button>
             {enable.isError ? <p role="alert" className="mt-2 text-[12.5px] text-red">{errorText(enable.error)}</p> : null}
           </div>
@@ -171,13 +171,13 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
 
       {agent.on ? (
         <>
-          <Section title={t("agentMode.boardsTitle")} count={onCount}>
-            <p className="mb-1 text-[12.5px] text-muted">{t("agentMode.boardsLede")}</p>
-            {onCount === 0 ? <p className="mb-1 text-[12.5px] text-muted">{t("agentMode.noBoardOn")}</p> : null}
+          <Section title={t("trackers.linear.agentMode.boardsTitle")} count={onCount}>
+            <p className="mb-1 text-[12.5px] text-muted">{t("trackers.linear.agentMode.boardsLede")}</p>
+            {onCount === 0 ? <p className="mb-1 text-[12.5px] text-muted">{t("trackers.linear.agentMode.noBoardOn")}</p> : null}
             <div className="grid h-7 grid-cols-[minmax(0,1fr)_80px_auto] items-center gap-x-3 border-b border-line text-[11.5px] font-medium text-faint sm:grid-cols-[minmax(0,1fr)_120px_200px_auto]">
-              <span>{t("agentMode.col.board")}</span>
-              <span>{t("agentMode.col.team")}</span>
-              <span className="hidden sm:block">{t("agentMode.col.project")}</span>
+              <span>{t("trackers.linear.agentMode.col.board")}</span>
+              <span>{t("trackers.linear.agentMode.col.team")}</span>
+              <span className="hidden sm:block">{t("trackers.linear.agentMode.col.project")}</span>
               <span />
             </div>
             <ul data-testid="agent-boards">
@@ -192,15 +192,15 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
                       {other === undefined ? null : (
                         <span className="hidden text-xs text-faint md:inline">
                           {other.projectId === board.projectId
-                            ? t("agentMode.alreadyOn", { team: board.teamKey ?? "", board: other.name })
-                            : t("agentMode.alreadyOnIn", { team: board.teamKey ?? "", board: other.name, project: other.projectName })}
+                            ? t("trackers.linear.agentMode.alreadyOn", { team: board.teamKey ?? "", board: other.name })
+                            : t("trackers.linear.agentMode.alreadyOnIn", { team: board.teamKey ?? "", board: other.name, project: other.projectName })}
                         </span>
                       )}
                       {setBoard.isPending && setBoard.variables.boardId === board.boardId ? <LoaderCircleIcon aria-hidden className="size-3 animate-spin text-faint" /> : null}
                       <Switch
                         checked={board.startFromLinear}
                         disabled={other !== undefined || setBoard.isPending}
-                        aria-label={t("agentMode.boardSwitch", { board: board.name })}
+                        aria-label={t("trackers.linear.agentMode.boardSwitch", { board: board.name })}
                         onCheckedChange={(on) => { setLine(null); setBoard.mutate({ boardId: board.boardId, on }); }}
                       />
                     </span>
@@ -215,22 +215,22 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
             )}
           </Section>
 
-          <Section title={t("agentMode.eventsTitle")}>
-            {agent.reachable ? null : <p className="mb-1 text-[12.5px] text-muted" data-testid="agent-events-unreachable">{t("agentMode.unreachableNote")}</p>}
+          <Section title={t("trackers.linear.agentMode.eventsTitle")}>
+            {agent.reachable ? null : <p className="mb-1 text-[12.5px] text-muted" data-testid="agent-events-unreachable">{t("trackers.linear.agentMode.unreachableNote")}</p>}
             {agent.lastSessionEvents.length === 0 ? (
-              <p className="h-9 text-[13px] text-faint">{t("agentMode.eventsNone")}</p>
+              <p className="h-9 text-[13px] text-faint">{t("trackers.linear.agentMode.eventsNone")}</p>
             ) : (
               <ul className="border-t border-line" data-testid="agent-events">
                 {agent.lastSessionEvents.map((event) => (
                   <li key={event.agentSessionId} className="grid min-h-9 grid-cols-[52px_90px_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line text-ui sm:grid-cols-[52px_90px_80px_minmax(0,1fr)_auto]">
                     <span className="font-mono text-xs text-faint">{clock(event.at, now)}</span>
-                    <span className="text-text">{t("agentMode.delegated")}</span>
+                    <span className="text-text">{t("trackers.linear.agentMode.delegated")}</span>
                     <span className="hidden font-mono text-ui sm:block">
                       {event.taskId === null ? event.ticketKey ?? "–" : <Link href={`/tasks/${event.taskId}`} className="hover:underline">{event.ticketKey ?? "–"}</Link>}
                     </span>
                     <span className="truncate text-text">
                       {event.creatorName}
-                      {event.matched ? null : <span className="text-faint">{t("agentMode.notMember")}</span>}
+                      {event.matched ? null : <span className="text-faint">{t("trackers.linear.agentMode.notMember")}</span>}
                     </span>
                     <span className="text-right text-[12.5px] text-muted">{outcomeOf(event)}</span>
                   </li>
@@ -251,9 +251,9 @@ export const AgentModeSections = ({ status, now, justTurnedOn }: { readonly stat
 export const AgentSessionsGroup = ({ agent }: { readonly agent: AgentMode | null }) =>
   agent?.on !== true ? null : (
     <div data-testid="agent-sessions">
-      <PanelLabel>{t("agentMode.panel.sessions")}</PanelLabel>
-      <PropRow label={t("agentMode.panel.open")} labelWidth={132}><span className="font-mono">{agent.sessions.open}</span></PropRow>
-      <PropRow label={t("agentMode.panel.awaiting")} labelWidth={132}><span className="font-mono">{agent.sessions.awaitingApproval}</span></PropRow>
-      <PropRow label={t("agentMode.panel.posted")} labelWidth={132}><span className="font-mono">{agent.sessions.postedToday}</span></PropRow>
+      <PanelLabel>{t("trackers.linear.agentMode.panel.sessions")}</PanelLabel>
+      <PropRow label={t("trackers.linear.agentMode.panel.open")} labelWidth={132}><span className="font-mono">{agent.sessions.open}</span></PropRow>
+      <PropRow label={t("trackers.linear.agentMode.panel.awaiting")} labelWidth={132}><span className="font-mono">{agent.sessions.awaitingApproval}</span></PropRow>
+      <PropRow label={t("trackers.linear.agentMode.panel.posted")} labelWidth={132}><span className="font-mono">{agent.sessions.postedToday}</span></PropRow>
     </div>
   );

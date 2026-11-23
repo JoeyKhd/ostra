@@ -33,9 +33,10 @@ test("F-012/c1, F-040/c1: an admin turns on agent mode, switches a board on, and
   await expect(page.getByTestId("agent-events")).toContainText("Casey Moore");
   await expect(page.getByTestId("agent-events")).toContainText("Waiting for approval");
   await shootM6(page, "linear-agent-mode");
-  // The project's Boards page shows the same switch, on.
+  // The project's Boards page agrees: its panel says the board takes delegations (ticket 15's
+  // redesign moved the switch to the connection's page).
   await page.goto(`/projects/${world.projectId}/boards`);
-  await expect(page.getByRole("switch", { name: `Start from Linear on ${world.boardName}` })).toBeChecked();
+  await expect(page.getByTestId("board-properties")).toContainText("Takes delegations");
 
   // Home: each outside task is a needs-you row whose "Approve" opens the project's Needs approval.
   const [first, second, third] = world.tasks;

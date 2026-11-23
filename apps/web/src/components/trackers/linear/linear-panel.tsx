@@ -25,6 +25,9 @@ import type { StepLook } from "@/components/ui/step-tick";
 import { cn } from "@/lib/cn";
 import { plural, t } from "@/lib/messages";
 
+import { ConnectionBoards } from "../connection-boards";
+import type { TrackerItem } from "../tracker-words";
+
 import {
   addressProblemText,
   connectSteps,
@@ -91,11 +94,11 @@ const ModeLine = ({ status }: { readonly status: LinearStatus }) => (
         <WithSetting text={pollingLine(status.modeReason, status.pollSeconds)} setting="OSTRA_CORE_PUBLIC_URL" />
       ) : status.state !== "none" && status.webhookUrl !== null ? (
         <>
-          {t("linear.mode.sendsTo")} <code className="break-all font-mono text-sm text-text">{status.webhookUrl}</code>
+          {t("trackers.linear.mode.sendsTo")} <code className="break-all font-mono text-sm text-text">{status.webhookUrl}</code>
         </>
       ) : (
         <>
-          {t("linear.mode.sendsToServer")} <code className="font-mono text-sm text-text">/webhooks/linear/…</code>
+          {t("trackers.linear.mode.sendsToServer")} <code className="font-mono text-sm text-text">/webhooks/linear/…</code>
         </>
       )}
     </span>
@@ -132,15 +135,15 @@ const AppValuesForm = ({ status, act, current }: { readonly status: LinearStatus
     setWebhookSecret("");
   };
   return (
-    <form onSubmit={submit} noValidate aria-label={t("linear.connect.step2.title")} className="mt-3 max-w-[460px]">
-      <Field id="linear-client-id" label={t("linear.connect.step2.clientId")}>
+    <form onSubmit={submit} noValidate aria-label={t("trackers.linear.connect.step2.title")} className="mt-3 max-w-[460px]">
+      <Field id="linear-client-id" label={t("trackers.linear.connect.step2.clientId")}>
         <Input id="linear-client-id" autoComplete="off" spellCheck={false} className="font-mono" disabled={busy} value={clientId} onChange={(e) => { setClientId(e.target.value); }} />
       </Field>
-      <Field id="linear-client-secret" label={t("linear.connect.step2.clientSecret")}>
+      <Field id="linear-client-secret" label={t("trackers.linear.connect.step2.clientSecret")}>
         <Input id="linear-client-secret" type="password" autoComplete="off" className="font-mono" disabled={busy} value={clientSecret} onChange={(e) => { setClientSecret(e.target.value); }} />
       </Field>
       {webhooks ? (
-        <Field id="linear-webhook-secret" label={t("linear.connect.step2.webhookSecret")}>
+        <Field id="linear-webhook-secret" label={t("trackers.linear.connect.step2.webhookSecret")}>
           <Input id="linear-webhook-secret" type="password" autoComplete="off" className="font-mono" disabled={busy} value={webhookSecret} onChange={(e) => { setWebhookSecret(e.target.value); }} />
         </Field>
       ) : null}
@@ -161,29 +164,29 @@ const ConnectSection = ({ status, actions, now, appMade }: { readonly status: Li
   const saved = steps.saved && !replacing;
   const current = currentStep({ created: steps.created, saved });
   return (
-    <Section title={t("linear.connect.title")}>
+    <Section title={t("trackers.linear.connect.title")}>
       {status.state === "pending" ? (
         <p className="mb-1 text-sm text-faint">
           {status.startedByName === null
-            ? t("linear.connect.startedNoName", { at: formatDayTime(status.startedAt, now) })
-            : t("linear.connect.started", { at: formatDayTime(status.startedAt, now), name: status.startedByName })}{" "}
+            ? t("trackers.linear.connect.startedNoName", { at: formatDayTime(status.startedAt, now) })
+            : t("trackers.linear.connect.started", { at: formatDayTime(status.startedAt, now), name: status.startedByName })}{" "}
           <Button variant="link" className="h-auto px-0 text-sm" disabled={actions.startAgain.pending} onClick={() => { actions.startAgain.run(); }}>
-            {t("linear.connect.startAgain")}
+            {t("trackers.linear.connect.startAgain")}
           </Button>
         </p>
       ) : status.state === "none" && status.lastRevoked !== null ? (
         <p className="mb-1 text-sm text-faint">
-          {t("linear.connect.disconnectedFrom", { workspace: status.lastRevoked.workspaceKey ?? "Linear", date: formatDay(status.lastRevoked.at, now) })}
+          {t("trackers.linear.connect.disconnectedFrom", { workspace: status.lastRevoked.workspaceKey ?? "Linear", date: formatDay(status.lastRevoked.at, now) })}
         </p>
       ) : null}
       <ol className="rows" data-testid="linear-steps">
-        <Step n={1} look={stepLook(1, current)} title={t("linear.connect.step1.title")} body={t("linear.connect.step1.body")}>
+        <Step n={1} look={stepLook(1, current)} title={t("trackers.linear.connect.step1.title")} body={t("trackers.linear.connect.step1.body")}>
           <ModeLine status={status} />
           <div className="mt-3">
             {steps.created ? (
               status.state !== "none" && status.manifestUrl !== null ? (
                 <a href={status.manifestUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ui text-teal hover:underline">
-                  {t("linear.connect.step1.again")}
+                  {t("trackers.linear.connect.step1.again")}
                   <ArrowUpRightIcon aria-hidden className="size-[14px] stroke-[1.75]" />
                 </a>
               ) : null
@@ -192,7 +195,7 @@ const ConnectSection = ({ status, actions, now, appMade }: { readonly status: Li
                 {actions.start.error === null ? null : <ErrorLine className="mb-3">{actions.start.error}</ErrorLine>}
                 <Button variant="primary" disabled={actions.start.pending} onClick={() => { actions.start.run(); }}>
                   {actions.start.pending ? <LoaderCircleIcon className="animate-spin" /> : <ArrowUpRightIcon className="stroke-[1.75]" />}
-                  {actions.start.pending ? t("linear.connect.step1.preparing") : t("linear.connect.step1.action")}
+                  {actions.start.pending ? t("trackers.linear.connect.step1.preparing") : t("trackers.linear.connect.step1.action")}
                 </Button>
               </>
             )}
@@ -201,15 +204,15 @@ const ConnectSection = ({ status, actions, now, appMade }: { readonly status: Li
         <Step
           n={2}
           look={stepLook(2, current)}
-          title={t("linear.connect.step2.title")}
-          body={status.mode === "polling" ? `${t("linear.connect.step2.body")}${t("linear.connect.step2.bodyPolling")}` : t("linear.connect.step2.body")}
+          title={t("trackers.linear.connect.step2.title")}
+          body={status.mode === "polling" ? `${t("trackers.linear.connect.step2.body")}${t("trackers.linear.connect.step2.bodyPolling")}` : t("trackers.linear.connect.step2.body")}
         >
           {!steps.created ? null : saved ? (
             <p className="mt-2 flex items-center gap-1.5 text-sm text-muted">
               <LockIcon aria-hidden className="size-[13px] stroke-[1.75]" />
-              {t("linear.connect.step2.saved")}
+              {t("trackers.linear.connect.step2.saved")}
               <Button variant="link" className="h-auto px-0 ml-1 text-sm" onClick={() => { setReplacing(true); }}>
-                {t("linear.connect.step2.replace")}
+                {t("trackers.linear.connect.step2.replace")}
               </Button>
             </p>
           ) : (
@@ -226,12 +229,12 @@ const ConnectSection = ({ status, actions, now, appMade }: { readonly status: Li
             />
           )}
         </Step>
-        <Step n={3} look={stepLook(3, current)} title={t("linear.connect.step3.title")} body={t("linear.connect.step3.body")}>
+        <Step n={3} look={stepLook(3, current)} title={t("trackers.linear.connect.step3.title")} body={t("trackers.linear.connect.step3.body")}>
           <div className="mt-3">
             {actions.authorize.error === null ? null : <ErrorLine className="mb-3">{actions.authorize.error}</ErrorLine>}
             <Button variant={current === 3 ? "primary" : "outline"} disabled={current !== 3 || actions.authorize.pending} onClick={() => { actions.authorize.run(); }}>
               {actions.authorize.pending ? <LoaderCircleIcon className="animate-spin" /> : <ArrowUpRightIcon className="stroke-[1.75]" />}
-              {actions.authorize.pending ? t("linear.connect.step3.opening") : t("linear.connect.step3.action")}
+              {actions.authorize.pending ? t("trackers.linear.connect.step3.opening") : t("trackers.linear.connect.step3.action")}
             </Button>
           </div>
         </Step>
@@ -264,7 +267,7 @@ const ModeValue = ({ status, now }: { readonly status: LinearConnection; readonl
     return (
       <>
         <RefreshCwIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-muted" />
-        {t("linear.events.polling", { seconds: status.pollSeconds })}
+        {t("trackers.linear.events.polling", { seconds: status.pollSeconds })}
       </>
     );
   if (status.silentSince !== null)
@@ -272,15 +275,15 @@ const ModeValue = ({ status, now }: { readonly status: LinearConnection; readonl
       <>
         <TriangleAlertIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-red" />
         <span className="min-w-0">
-          {t("linear.events.silent", { time: formatWhen(status.silentSince, now) })}
-          <span className="text-muted">{t("linear.events.silentAfter")}</span>
+          {t("trackers.linear.events.silent", { time: formatWhen(status.silentSince, now) })}
+          <span className="text-muted">{t("trackers.linear.events.silentAfter")}</span>
         </span>
       </>
     );
   return (
     <>
       <RadioTowerIcon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-muted" />
-      {t("linear.events.receiving")}
+      {t("trackers.linear.events.receiving")}
     </>
   );
 };
@@ -292,7 +295,7 @@ const ConnectedSections = ({ status, actions, now, justConnected, agentMode }: {
   const apiKey = status.credentialKind === "api_key";
   return (
     <>
-      <Section title={t("linear.connection.title")}>
+      <Section title={t("trackers.linear.connection.title")}>
         <ul className="rows">
           <li className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 py-1.5 sm:grid-cols-[160px_auto_minmax(0,1fr)_auto]" data-testid="linear-connection">
             <Status tone={tone.tone} className={cn(status.state === "active" && "text-green", status.state === "failed" && "text-red")}>
@@ -304,33 +307,31 @@ const ConnectedSections = ({ status, actions, now, justConnected, agentMode }: {
               {justConnected && status.state === "active" ? (
                 <span className="inline-flex items-center gap-1.5">
                   <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
-                  {t("linear.connection.justConnected")}
+                  {t("trackers.linear.connection.justConnected")}
                 </span>
               ) : status.state === "failed" ? (
-                t("linear.connection.since", { date: formatWhen(status.stateSince, now) })
+                t("trackers.linear.connection.since", { date: formatWhen(status.stateSince, now) })
               ) : status.activatedAt === null ? null : (
-                t("linear.connection.since", { date: formatDay(status.activatedAt, now) })
+                t("trackers.linear.connection.since", { date: formatDay(status.activatedAt, now) })
               )}
             </span>
           </li>
         </ul>
       </Section>
 
-      {agentMode}
-
-      <Section title={t("linear.events.title")}>
+      <Section title={t("trackers.linear.events.title")}>
         <ul className="rows">
-          <KeyRow label={t("linear.events.mode")}>
+          <KeyRow label={t("trackers.linear.events.mode")}>
             <ModeValue status={status} now={now} />
           </KeyRow>
           {polling ? (
-            <KeyRow label={t("linear.events.webhook")}>
+            <KeyRow label={t("trackers.linear.events.webhook")}>
               <span className="text-muted">
-                {status.modeReason === null ? t("linear.events.webhookNoneNoReason") : t("linear.events.webhookNone", { reason: addressProblemText(status.modeReason) })}
+                {status.modeReason === null ? t("trackers.linear.events.webhookNoneNoReason") : t("trackers.linear.events.webhookNone", { reason: addressProblemText(status.modeReason) })}
               </span>
             </KeyRow>
           ) : status.webhookUrl === null ? null : (
-            <KeyRow label={t("linear.events.webhookUrl")} end={<CopyButton text={status.webhookUrl} />}>
+            <KeyRow label={t("trackers.linear.events.webhookUrl")} end={<CopyButton text={status.webhookUrl} />}>
               <span className="min-w-0 truncate font-mono text-ui text-faint" title={status.webhookUrl}>
                 {middleTruncate(status.webhookUrl, 64)}
               </span>
@@ -338,22 +339,22 @@ const ConnectedSections = ({ status, actions, now, justConnected, agentMode }: {
           )}
           {polling ? (
             <KeyRow
-              label={t("linear.events.lastPoll")}
+              label={t("trackers.linear.events.lastPoll")}
               end={status.lastPoll === null ? undefined : <span className="font-mono text-sm text-faint">{formatAgo(status.lastPoll.at, now)}</span>}
             >
               {status.lastPoll === null ? (
-                <span className="text-faint">{t("linear.events.noneYet")}</span>
+                <span className="text-faint">{t("trackers.linear.events.noneYet")}</span>
               ) : status.lastPoll.changed > 0 ? (
-                <span className="text-muted">{plural(status.lastPoll.changed, "linear.events.changed.one", "linear.events.changed.other")}</span>
+                <span className="text-muted">{plural(status.lastPoll.changed, "trackers.linear.events.changed.one", "trackers.linear.events.changed.other")}</span>
               ) : null}
             </KeyRow>
           ) : (
             <KeyRow
-              label={t("linear.events.lastEvent")}
+              label={t("trackers.linear.events.lastEvent")}
               end={status.lastEvent === null ? undefined : <span className="font-mono text-sm text-faint">{formatAgo(status.lastEvent.at, now)}</span>}
             >
               {status.lastEvent === null ? (
-                <span className="text-faint">{t("linear.events.noneYet")}</span>
+                <span className="text-faint">{t("trackers.linear.events.noneYet")}</span>
               ) : status.lastEvent.type === null ? null : (
                 <span className="min-w-0 truncate">
                   <span className="font-mono text-ui text-text">{status.lastEvent.type}</span>
@@ -361,7 +362,7 @@ const ConnectedSections = ({ status, actions, now, justConnected, agentMode }: {
                     <>
                       {" "}
                       <span className="font-mono text-ui text-muted">{status.lastEvent.ticketKey}</span>{" "}
-                      <span className="text-muted">{t("linear.events.updated")}</span>
+                      <span className="text-muted">{t("trackers.linear.events.updated")}</span>
                     </>
                   )}
                 </span>
@@ -369,45 +370,45 @@ const ConnectedSections = ({ status, actions, now, justConnected, agentMode }: {
             </KeyRow>
           )}
           {polling ? null : (
-            <KeyRow label={t("linear.events.backstop")}>
-              <span className="text-text">{t("linear.events.backstopBody", { minutes: status.reconcileMinutes })}</span>
+            <KeyRow label={t("trackers.linear.events.backstop")}>
+              <span className="text-text">{t("trackers.linear.events.backstopBody", { minutes: status.reconcileMinutes })}</span>
             </KeyRow>
           )}
         </ul>
         {!polling && status.silentSince !== null ? (
-          <p className="mt-2 text-sm text-faint">{t("linear.events.silentHelp", { minutes: status.reconcileMinutes })}</p>
+          <p className="mt-2 text-sm text-faint">{t("trackers.linear.events.silentHelp", { minutes: status.reconcileMinutes })}</p>
         ) : null}
       </Section>
 
-      <Section title={t("linear.token.title")}>
+      <Section title={t("trackers.linear.token.title")}>
         <ul className="rows">
           {apiKey ? (
-            <KeyRow label={t("linear.token.apiKey")}>
+            <KeyRow label={t("trackers.linear.token.apiKey")}>
               <LockIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75] text-muted" />
-              <span className="text-muted">{t("linear.token.apiKeyBody")}</span>
+              <span className="text-muted">{t("trackers.linear.token.apiKeyBody")}</span>
             </KeyRow>
           ) : (
             <>
-              <KeyRow label={t("linear.token.access")}>
+              <KeyRow label={t("trackers.linear.token.access")}>
                 {status.state === "failed" ? (
                   <>
                     <TriangleAlertIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75] text-red" />
-                    <span>{t("linear.token.failed")}</span>
+                    <span>{t("trackers.linear.token.failed")}</span>
                   </>
                 ) : (
                   <span className="min-w-0">
                     <Status tone="green" className="text-green">
-                      {t("linear.token.healthy")}
+                      {t("trackers.linear.token.healthy")}
                     </Status>
                     <span className="text-muted">
-                      {status.accessTokenExpiresAt === null ? t("linear.token.noExpiry") : t("linear.token.expiresIn", { left: formatLeft(status.accessTokenExpiresAt, now) })}
+                      {status.accessTokenExpiresAt === null ? t("trackers.linear.token.noExpiry") : t("trackers.linear.token.expiresIn", { left: formatLeft(status.accessTokenExpiresAt, now) })}
                     </span>
                   </span>
                 )}
               </KeyRow>
-              <KeyRow label={t("linear.token.refresh")}>
+              <KeyRow label={t("trackers.linear.token.refresh")}>
                 <LockIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75] text-muted" />
-                <span className="text-muted">{t("linear.token.inSecretStore")}</span>
+                <span className="text-muted">{t("trackers.linear.token.inSecretStore")}</span>
               </KeyRow>
             </>
           )}
@@ -417,25 +418,27 @@ const ConnectedSections = ({ status, actions, now, justConnected, agentMode }: {
             {actions.authorize.error === null ? null : <ErrorLine className="mb-3">{actions.authorize.error}</ErrorLine>}
             <Button variant="primary" disabled={actions.authorize.pending} onClick={() => { actions.authorize.run(); }}>
               {actions.authorize.pending ? <LoaderCircleIcon className="animate-spin" /> : <ArrowUpRightIcon className="stroke-[1.75]" />}
-              {actions.authorize.pending ? t("linear.connect.step3.opening") : t("linear.token.authorizeAgain")}
+              {actions.authorize.pending ? t("trackers.linear.connect.step3.opening") : t("trackers.linear.token.authorizeAgain")}
             </Button>
           </div>
         ) : null}
       </Section>
 
-      <Section title={t("linear.disconnect.title")}>
+      {agentMode}
+
+      <Section title={t("trackers.linear.disconnect.title")}>
         <ul className="rows">
           <li className="flex min-h-12 flex-wrap items-center justify-between gap-3 py-2">
-            <span className="min-w-0 text-body text-text">{t("linear.disconnect.body")}</span>
+            <span className="min-w-0 text-body text-text">{t("trackers.linear.disconnect.body")}</span>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button disabled={actions.disconnect.pending}>{actions.disconnect.pending ? t("linear.disconnect.running") : t("linear.disconnect.action")}</Button>
+                <Button disabled={actions.disconnect.pending}>{actions.disconnect.pending ? t("trackers.linear.disconnect.running") : t("trackers.linear.disconnect.action")}</Button>
               </AlertDialogTrigger>
               <AlertDialogContent
-                title={t("linear.disconnect.confirmTitle")}
-                body={t("linear.disconnect.confirmBody")}
+                title={t("trackers.linear.disconnect.confirmTitle")}
+                body={t("trackers.linear.disconnect.confirmBody")}
                 cancel={t("common.cancel")}
-                action={t("linear.disconnect.action")}
+                action={t("trackers.linear.disconnect.action")}
                 onAction={() => { actions.disconnect.run(); }}
               />
             </AlertDialog>
@@ -463,7 +466,7 @@ export type LinearBodyProps = {
 export const LinearBody = ({ status, actions, now, justConnected, agentMode, appMade = true }: LinearBodyProps) => {
   if (status === undefined)
     return (
-      <Section title={t("linear.connection.title")}>
+      <Section title={t("trackers.linear.connection.title")}>
         <ul className="rows" aria-busy>
           {[0, 1, 2].map((i) => (
             <li key={i} className="flex h-10 items-center gap-4">
@@ -501,60 +504,68 @@ export const Sep = () => <div className="my-3.5 h-px bg-line" />;
  * The properties panel: the app (connected) or what it will ask for (not yet), its scopes, agent
  * mode's sessions while it's on (`sessions`, linear-agent-mode.md's order), and its events.
  */
-export const LinearProperties = ({ status, sessions = null }: { readonly status: LinearStatus | undefined; readonly sessions?: ReactNode }) => {
+export const LinearProperties = ({
+  status,
+  sessions = null,
+  boards = [],
+}: {
+  readonly status: LinearStatus | undefined;
+  readonly sessions?: ReactNode;
+  readonly boards?: TrackerItem["boards"];
+}) => {
   if (status === undefined)
     return (
       <div>
-        <PanelLabel>{t("linear.panel.app")}</PanelLabel>
-        <PropRow label={t("linear.panel.appUser")}>–</PropRow>
-        <PropRow label={t("linear.panel.secrets")}>–</PropRow>
+        <PanelLabel>{t("trackers.linear.panel.app")}</PanelLabel>
+        <PropRow label={t("trackers.linear.panel.appUser")}>–</PropRow>
+        <PropRow label={t("trackers.linear.panel.secrets")}>–</PropRow>
       </div>
     );
   const connected = status.state === "active" || status.state === "failed";
   const events =
     status.mode === "polling" ? (
-      <PropRow label={t("linear.panel.webhook")}>
-        <span className="text-muted">{t("linear.panel.webhookOff", { seconds: status.pollSeconds })}</span>
+      <PropRow label={t("trackers.linear.panel.webhook")}>
+        <span className="text-muted">{t("trackers.linear.panel.webhookOff", { seconds: status.pollSeconds })}</span>
       </PropRow>
     ) : (
       <>
-        <PanelLabel count={status.webhookEvents.length}>{t("linear.panel.webhookEvents")}</PanelLabel>
+        <PanelLabel count={status.webhookEvents.length}>{t("trackers.linear.panel.webhookEvents")}</PanelLabel>
         <MonoList items={status.webhookEvents} />
-        <p className="mt-3 text-sm text-muted">{t("linear.panel.eventsHelp")}</p>
+        <p className="mt-3 text-sm text-muted">{t("trackers.linear.panel.eventsHelp")}</p>
       </>
     );
   return (
     <div>
       {connected ? (
         <>
-          <PanelLabel>{t("linear.panel.app")}</PanelLabel>
-          <PropRow label={t("linear.panel.appUser")}>
+          <PanelLabel>{t("trackers.linear.panel.app")}</PanelLabel>
+          <PropRow label={t("trackers.linear.panel.appUser")}>
             {status.credentialKind === "api_key" ? (
-              <span className="text-muted">{t("linear.panel.personalKey")}</span>
+              <span className="text-muted">{t("trackers.linear.panel.personalKey")}</span>
             ) : (
               <span className="truncate font-mono">{status.appUserName ?? "–"}</span>
             )}
           </PropRow>
-          <PropRow label={t("linear.panel.secrets")}>
+          <PropRow label={t("trackers.linear.panel.secrets")}>
             <LockIcon aria-hidden />
-            <span className="text-muted">{t("linear.token.inSecretStore")}</span>
+            <span className="text-muted">{t("trackers.linear.token.inSecretStore")}</span>
           </PropRow>
           <Sep />
-          <PanelLabel count={status.scopes.length}>{t("linear.panel.scopes")}</PanelLabel>
+          <PanelLabel count={status.scopes.length}>{t("trackers.linear.panel.scopes")}</PanelLabel>
         </>
       ) : (
         <>
-          <PanelLabel>{t("linear.mode.label")}</PanelLabel>
-          <div className="mb-1 text-ui text-text">{status.mode === "polling" ? t("linear.mode.polling") : t("linear.mode.webhooks")}</div>
+          <PanelLabel>{t("trackers.linear.mode.label")}</PanelLabel>
+          <div className="mb-1 text-ui text-text">{status.mode === "polling" ? t("trackers.linear.mode.polling") : t("trackers.linear.mode.webhooks")}</div>
           <p className="text-sm text-muted">
             {status.mode === "polling" ? (
               <WithSetting text={pollingLine(status.modeReason, status.pollSeconds)} setting="OSTRA_CORE_PUBLIC_URL" />
             ) : (
-              t("linear.mode.webhooksHelp")
+              t("trackers.linear.mode.webhooksHelp")
             )}
           </p>
           <Sep />
-          <PanelLabel count={status.scopes.length}>{t("linear.panel.asksFor")}</PanelLabel>
+          <PanelLabel count={status.scopes.length}>{t("trackers.linear.panel.asksFor")}</PanelLabel>
         </>
       )}
       <MonoList items={status.scopes} />
@@ -566,6 +577,9 @@ export const LinearProperties = ({ status, sessions = null }: { readonly status:
       )}
       <Sep />
       {events}
+      <Sep />
+      <PanelLabel count={boards.length}>{t("trackers.linear.panel.boards")}</PanelLabel>
+      <ConnectionBoards boards={boards} />
     </div>
   );
 };
