@@ -1,4 +1,3 @@
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { repoIdSchema } from "@ostra/protocol";
@@ -7,11 +6,11 @@ import { t } from "@/lib/messages";
 import { resultWords } from "@/task/thread/words";
 
 import { releasedHoldText } from "./review-words";
-import { CodeHeadRows, statusWithSubState } from "./task-rounds";
+import { statusWithSubState } from "./task-rounds";
 
 // Milestone 6's review follow-ups (ticket 41, F-035, F-101): the task page in review against
-// `task-rounds.md`: the status's sub-state, the Code group's Head and CI, a released hold's line and
-// each round's outcome, its turn's push line since milestone 10 (ticket 14).
+// `task-rounds.md`: the status's sub-state, a released hold's line and each round's outcome, its
+// turn's push line since milestone 10 (ticket 14; ticket 17 dropped the panel's Head row).
 
 const at = Date.UTC(2026, 10, 20, 10, 34);
 
@@ -23,12 +22,7 @@ describe("the task page in review (task-rounds.md)", () => {
     expect(statusWithSubState({ state: "running", reason: null, subState: null })).toBe("Running");
   });
 
-  it("F-035/c1: the Code group shows the head and its CI, and each round's push and how its CI went", () => {
-    const failed = renderToStaticMarkup(<CodeHeadRows headSha="3f9c21ab7e" ci={{ state: "failed", failing: "unit-tests" }} />);
-    expect(failed).toContain(">3f9c21a</span>");
-    expect(failed).toContain("Failed · unit-tests");
-    expect(renderToStaticMarkup(<CodeHeadRows headSha="3f9c21ab7e" ci={{ state: "passed", failing: null }} />)).toContain("Passed");
-    expect(renderToStaticMarkup(<CodeHeadRows headSha={null} ci={null} />)).toContain("No CI");
+  it("F-035/c1: each round's push says how its CI went", () => {
     // A round's push to the open PR is its turn's result line, with CI's verdict once it says.
     const push = { kind: "push" as const, push: { repoId: repoIdSchema.parse("0196f1a0-ca1c-7000-8000-000000000001"), branch: "ostra/calc-192", headSha: "b20e7f31aa".padEnd(40, "0"), ref: "refs/heads/ostra/calc-192", hidden: false, checks: null, firstPr: null } };
     const line = (ci: "passed" | "failed" | "running" | null): string => resultWords(push, t, { later: true, ci }).words.map((segment) => segment.text).join("");

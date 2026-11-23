@@ -26,16 +26,6 @@ export const jobsOfWords = (jobs: CiJobs): string => plural(jobs.total, "task.ci
 /** The words a check run keeps while it runs, never a conclusion. */
 const runningWords: readonly string[] = ["queued", "in_progress", "waiting", "requested", "pending"];
 
-/**
- * The jobs of a task's PRs while CI runs on their heads, added up (the stage line's `CI running ·
- * 2 of 4 jobs`), or `null` when none runs or none counted a job.
- */
-export const runningCiJobs = (repos: readonly { readonly ci: { readonly state: string; readonly jobs: CiJobs } | null }[]): CiJobs | null => {
-  const running = repos.flatMap((repo) => (repo.ci?.state === "running" ? [repo.ci.jobs] : []));
-  const sum = running.reduce((total, jobs) => ({ done: total.done + jobs.done, total: total.total + jobs.total }), { done: 0, total: 0 });
-  return sum.total === 0 ? null : sum;
-};
-
 /** The sub-state in words: the stage the review loop is at. */
 export const subStateWords = (subState: SubState, rounds: { readonly ci: Count; readonly review: Count }): string | null => {
   switch (subState) {
@@ -209,40 +199,7 @@ export const findingsSummary = (aiReview: boolean, findings: readonly Pick<Revie
   return parts.length === 0 ? t("review.panel.nothingOpen") : parts.join(" · ");
 };
 
-// ---------- the task page: stages, rounds, the cap ----------
-
-export type StageState = "done" | "current" | "ahead";
-export type Stage = { readonly id: NonNullable<SubState>; readonly words: string; readonly state: StageState };
-
-const ORDER: readonly NonNullable<SubState>[] = ["ci_running", "fixing_ci", "ai_review", "fixing_findings", "waiting_for_reviewer"];
-
-/**
- * The stage line: the five stages, or three with the AI review off. A stage before the current one
- * is done only when it happened in this pass (CI fixed, findings fixed); one passed over stays ahead.
- * Milestone 10 (F-151/c6): CI running, as the current stage, counts its jobs (`CI running · 2 of 4 jobs`).
- */
-export const stagesOf = (input: { readonly subState: SubState; readonly aiReview: boolean; readonly ci: Count; readonly review: Count; readonly ciJobs?: CiJobs | null }): readonly Stage[] => {
-  const shown = ORDER.filter((id) => input.aiReview || (id !== "ai_review" && id !== "fixing_findings"));
-  const at = input.subState === null ? -1 : shown.indexOf(input.subState);
-  return shown.map((id, index) => {
-    const happened = id === "fixing_ci" ? input.ci.used > 0 : id === "fixing_findings" ? input.review.used > 0 : true;
-    const state: StageState = index === at ? "current" : index < at && happened ? "done" : "ahead";
-    const jobs = input.ciJobs ?? null;
-    const words =
-      id === "ci_running" && state === "current" && jobs !== null
-        ? t("review.stage.ciRunningJobs", { jobs: jobsOfWords(jobs) })
-        : id === "fixing_ci"
-        ? state === "ahead" && input.ci.used === 0
-          ? t("review.stage.fixingCiPlain")
-          : t("review.stage.fixingCi", { n: Math.max(1, input.ci.used), limit: input.ci.limit })
-        : id === "fixing_findings"
-          ? state === "ahead" && input.review.used === 0
-            ? t("review.stage.fixingFindingsPlain")
-            : t("review.stage.fixingFindings", { n: Math.max(1, input.review.used), limit: input.review.limit })
-          : (subStateWords(id, input) ?? "");
-    return { id, words, state };
-  });
-};
+// ---------- the task page: rounds and the cap ----------
 
 /** A round card's name. */
 export const roundName = (round: Pick<TaskRound, "kind" | "number" | "cause">, limits: Limits): string => {

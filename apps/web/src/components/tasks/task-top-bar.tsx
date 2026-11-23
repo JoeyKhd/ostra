@@ -1,10 +1,9 @@
 "use client";
 
-import { AppWindowIcon, ArrowUpRightIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, LinkIcon, Minimize2Icon, PanelRightIcon, ScanSearchIcon, SquareIcon } from "lucide-react";
+import { AppWindowIcon, ArrowUpRightIcon, CheckIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, LinkIcon, Minimize2Icon, PanelRightIcon, SquareIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import type { TaskId } from "@ostra/protocol";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -151,7 +150,6 @@ export const TaskTopBar = ({ task, expanded, side, onSide, onCollapse, stop, loc
   /** A review task's `Properties` toggle: whether the panel shows, and its press; `null` without one. */
   readonly properties?: { readonly on: boolean; readonly onToggle: () => void } | null;
 }) => {
-  const taskId: TaskId = task.id;
   const stopped = task.state === "stopped";
   const prs = task.repos.flatMap((repo): BarPr[] => {
     const href = repo.pr === null ? null : safeHref(repo.pr.url);
@@ -174,8 +172,9 @@ export const TaskTopBar = ({ task, expanded, side, onSide, onCollapse, stop, loc
       </ToggleGroupItem>
     </ToggleGroup>
   );
+  // s6.md: on a phone `Stop` and `Take it local` live in the composer's `…` menu, not the bar.
   const stopButton = task.capabilities.stop && !stopped ? (
-    <Button className={barButton} data-action="stop" onClick={stop.run} disabled={stop.stopping || stop.pending} aria-label={stop.stopping ? t("taskPage.stopping") : t("taskPage.stop")}>
+    <Button className={cn(barButton, "max-sm:hidden")} data-action="stop" onClick={stop.run} disabled={stop.stopping || stop.pending} aria-label={stop.stopping ? t("taskPage.stopping") : t("taskPage.stop")}>
       <SquareIcon aria-hidden /> <span className="max-sm:hidden">{stop.stopping ? t("taskPage.stopping") : t("taskPage.stop")}</span>
     </Button>
   ) : null;
@@ -210,13 +209,13 @@ export const TaskTopBar = ({ task, expanded, side, onSide, onCollapse, stop, loc
     <>
       {sideToggle}
       <CopyLink />
-      {task.kind === "code" && task.repos.some((repo) => repo.pr?.state === "open") ? (
-        <Link href={`/tasks/${taskId}/review`} className={cn(buttonVariants(), barButton)} aria-label={t("review.button")} data-action="open-review">
-          <ScanSearchIcon aria-hidden /> <span className="max-sm:hidden">{t("review.button")}</span>
-        </Link>
-      ) : null}
+
       <PrButtons prs={prs} />
-      {task.kind === "code" ? <TakeItLocal pushed={task.repos.some((repo) => repo.headSha !== null)} load={local.load} onOpen={local.onOpen} /> : null}
+      {task.kind === "code" ? (
+        <span className="max-sm:hidden">
+          <TakeItLocal pushed={task.repos.some((repo) => repo.headSha !== null)} load={local.load} onOpen={local.onOpen} />
+        </span>
+      ) : null}
       {stopButton}
     </>
   );

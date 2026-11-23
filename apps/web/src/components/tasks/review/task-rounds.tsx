@@ -1,19 +1,18 @@
 "use client";
 
-import { CheckIcon, HandIcon, LoaderCircleIcon, PauseCircleIcon, XIcon } from "lucide-react";
+import { HandIcon } from "lucide-react";
 import Link from "next/link";
 
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 
 import { taskStateLine } from "../task-words";
 import type { TaskReason, TaskLimit, TaskState } from "../task-words";
 
-import { capBody, capTitle, stagesOf } from "./review-words";
-import type { CapKind, CiJobs, Limits, Stage, SubState } from "./review-words";
+import { capBody, capTitle } from "./review-words";
+import type { CapKind, Limits, SubState } from "./review-words";
 
 // The task page in review (app-targets/m6/task-rounds.md; F-035, F-101, F-105, ticket 35): the
 // stage line under the status, "automatic turns N of 4", the cap's needs-you with "Keep working",
@@ -21,49 +20,6 @@ import type { CapKind, CiJobs, Limits, Stage, SubState } from "./review-words";
 // message's outlined bubble in the thread (ticket 12); its outcome, its turn's push line (ticket 14).
 
 type Count = { readonly used: number; readonly limit: number };
-
-const StageGlyph = ({ stage, needsYou, held }: { readonly stage: Stage; readonly needsYou: boolean; readonly held: boolean }) => {
-  if (stage.state === "done") return <CheckIcon aria-hidden className="size-[14px] stroke-[2] text-green" />;
-  if (stage.state === "current") {
-    if (held) return <PauseCircleIcon aria-hidden className="size-[14px] stroke-[1.75] text-muted" />;
-    return <span aria-hidden className={cn("inline-block size-2.5 rounded-full", needsYou ? "bg-amber" : "bg-text")} />;
-  }
-  return <span aria-hidden className="inline-block size-2.5 rounded-full border border-faint" />;
-};
-
-/** The five stages of the loop, joined by hairlines; at the right, the automatic turns. */
-export const StageLine = ({ subState, aiReview, counts, needsYou, held, ciJobs = null }: {
-  readonly subState: SubState;
-  readonly aiReview: boolean;
-  readonly counts: { readonly ci: Count; readonly review: Count; readonly automaticTurns: Count };
-  readonly needsYou: boolean;
-  readonly held: boolean;
-  /** Milestone 10 (F-151/c6): the PRs' jobs while CI runs, for `CI running · 2 of 4 jobs`. */
-  readonly ciJobs?: CiJobs | null;
-}) => {
-  const stages = stagesOf({ subState, aiReview, ci: counts.ci, review: counts.review, ciJobs });
-  return (
-    <div className="mt-2.5 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="stage-line" data-sub-state={subState ?? ""}>
-      {/* Tight enough that the five stages and the turns fit one row beside the panel at 1440 (task-rounds.webp). */}
-      <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-        {stages.map((stage, index) => (
-          <li key={stage.id} className="flex items-center gap-1.5 whitespace-nowrap" data-stage={stage.id} data-state={stage.state}>
-            {index > 0 ? <span aria-hidden className="h-px w-3 bg-line-2" /> : null}
-            <StageGlyph stage={stage} needsYou={needsYou} held={held} />
-            <span className={cn(stage.state === "current" ? "font-medium text-text" : stage.state === "done" ? "text-muted" : "text-faint")}>{stage.words}</span>
-          </li>
-        ))}
-      </ol>
-      {counts.automaticTurns.used === 0 ? null : (
-        <Tooltip content={t("review.turnsHelp", { limit: counts.automaticTurns.limit })}>
-          <span className="ml-auto whitespace-nowrap text-xs text-faint" data-testid="automatic-turns">
-            {t("review.line.turns")} <span className="font-mono text-[13px] text-text">{t("review.line.turnsCount", { used: counts.automaticTurns.used, limit: counts.automaticTurns.limit })}</span>
-          </span>
-        </Tooltip>
-      )}
-    </div>
-  );
-};
 
 /** The cap's needs-you at the thread's end, when the task stopped at a round's limit. */
 export const RoundsInThread = ({ taskId, limits, cap, capInput, isDriver, driver, keep, onTakeOver }: {
@@ -134,37 +90,6 @@ export const statusWithSubState = (task: { readonly state: TaskState; readonly r
       return task.subState satisfies never;
   }
 };
-
-/** The Code group's `Head` and `CI` rows for a repo with a PR (task-rounds.md). */
-export const CodeHeadRows = ({ headSha, ci }: { readonly headSha: string | null; readonly ci: { readonly state: "passed" | "failed" | "running" | "none"; readonly failing: string | null } | null }) => (
-  <>
-    <PropRow label={t("taskPage.head")}>
-      <span className="font-mono text-ui" data-testid="code-head">{headSha === null ? "–" : headSha.slice(0, 7)}</span>
-    </PropRow>
-    <PropRow label={t("taskPage.ci")}>
-      <span className="flex min-w-0 items-center gap-1.5 text-ui" data-testid="code-ci" data-ci={ci?.state ?? "none"}>
-        {ci?.state === "passed" ? (
-          <>
-            <CheckIcon aria-hidden className="size-[14px] stroke-[1.75] text-green" />
-            {t("taskPage.ciPassed")}
-          </>
-        ) : ci?.state === "failed" ? (
-          <>
-            <XIcon aria-hidden className="size-[14px] stroke-[1.75] text-red" />
-            <span className="truncate">{ci.failing === null ? t("taskPage.ciFailed") : `${t("taskPage.ciFailed")} · ${ci.failing}`}</span>
-          </>
-        ) : ci?.state === "running" ? (
-          <>
-            <LoaderCircleIcon aria-hidden className="size-[14px] animate-spin stroke-[1.75] text-muted" />
-            {t("taskPage.ciRunning")}
-          </>
-        ) : (
-          <span className="text-faint">{t("taskPage.ciNone")}</span>
-        )}
-      </span>
-    </PropRow>
-  </>
-);
 
 /** The panel's Rounds group: each count of its limit since a person last acted, and a hold. */
 export const RoundsGroup = ({ counts, aiReview, since, held }: {

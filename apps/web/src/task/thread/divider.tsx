@@ -61,11 +61,11 @@ export const Divider = ({ divider, now }: { readonly divider: DividerInput; read
       aria-label={words.time === null ? words.text : `${words.text} ${words.time}`}
       data-part="divider"
       data-divider={divider.kind}
-      className="my-[18px] flex items-center gap-2.5 whitespace-nowrap text-sm text-faint before:h-px before:min-w-6 before:flex-1 before:bg-line after:h-px after:min-w-6 after:flex-1 after:bg-line"
+      className="my-[18px] flex items-center gap-2.5 whitespace-nowrap text-sm text-faint max-sm:whitespace-normal before:h-px before:min-w-6 before:flex-1 before:bg-line after:h-px after:min-w-6 after:flex-1 after:bg-line"
     >
-      <span className="inline-flex min-w-0 items-center gap-2 [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]">
+      <span className="inline-flex min-w-0 items-center gap-2 max-sm:flex-wrap [&_svg]:size-[14px] [&_svg]:shrink-0 [&_svg]:stroke-[1.75]">
         {iconOf(divider)}
-        <span className={day ? "font-mono text-xs" : "min-w-0 truncate"}>{divider.kind === "restored" && divider.runner !== null ? <WithRunner text={words.text} runner={divider.runner} /> : words.text}</span>
+        <span className={day ? "font-mono text-xs" : "min-w-0 truncate max-sm:whitespace-normal"}>{divider.kind === "restored" && divider.runner !== null ? <WithRunner text={words.text} runner={divider.runner} /> : words.text}</span>
         {words.time === null ? null : <span className="font-mono text-xs">{words.time}</span>}
       </span>
     </div>

@@ -88,7 +88,7 @@ const FirstTime = () => {
   );
 };
 
-/** The popover's contents: the same in the popover and in the phone's bottom sheet. */
+/** The commands a member runs to take the task's branches local: the popover's, the phone sheet's and `s6.md`'s `…` menu. */
 export const TakeItLocalCard = ({ load }: { readonly load: LocalLoad }) => {
   const loading = load.kind === "loading";
   const local = load.kind === "ready" ? load.local : null;

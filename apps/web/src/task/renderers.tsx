@@ -5,7 +5,6 @@ import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import {
   AppWindowIcon,
   ArchiveIcon,
-  BrainIcon,
   HistoryIcon,
   LayersIcon,
   LightbulbIcon,
@@ -39,7 +38,7 @@ import { AppProcessLine, AttachmentsRow, NoBrowserLine, SkippedLine } from "@/co
 import { monthWord } from "@/components/tasks/budget-reason";
 import { RowState } from "@/components/tasks/subagent-marks";
 import { TicketFilesRow } from "@/components/tasks/attachments/thread-files";
-import { callCount, nodeDurationMs, shortDuration, stateWord, subagentLabel } from "@/components/tasks/subagent-words";
+import { callCount, nodeDurationMs, shortDuration, stateWord } from "@/components/tasks/subagent-words";
 import { NeedsYou } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
 import { formatDuration } from "@/lib/format";
@@ -47,7 +46,7 @@ import { t } from "@/lib/messages";
 
 import { filesOutsideText } from "./files-outside-words";
 import { restoredDetail, savedDetail } from "./marker-words";
-import { useDataPart, useSubagentOwner, useSubagentStartedBy, useTaskContext, useToolPart } from "./task-context";
+import { useDataPart, useTaskContext } from "./task-context";
 import type { ToolLikePart } from "./task-context";
 import { Divider } from "./thread/divider";
 import { DiffBlock, OutputBlock } from "./thread/step-output";
@@ -85,12 +84,6 @@ const markdownComponents = {
   img: ({ alt }: { readonly alt?: string | undefined }) => <span className="text-faint">[{alt ?? t("task.image")}]</span>,
 };
 
-export const AssistantText = ({ streaming }: { readonly streaming: boolean }) => (
-  <div data-part="text" data-streaming={streaming ? "true" : "false"} className="agent-md">
-    <MarkdownTextPrimitive smooth={false} components={markdownComponents} />
-  </div>
-);
-
 /**
  * F-138: an agent's text outside the thread's parts (a subagent's prompt and answer, in its
  * window), with the thread's own rules: markdown, no raw HTML, safe links, no remote image.
@@ -109,16 +102,6 @@ export const AgentMarkdown = ({ text, className, image, streaming, "data-part": 
       <MarkdownTextPrimitive smooth={false} components={image === undefined ? markdownComponents : { ...markdownComponents, img: image }} />
     </div>
   </TextMessagePartProvider>
-);
-
-export const Reasoning = ({ text, streaming }: { readonly text: string; readonly streaming: boolean }) => (
-  <details data-part="reasoning" data-streaming={streaming ? "true" : "false"} open={streaming} className="group text-muted">
-    <summary className="flex min-h-7 cursor-pointer list-none items-center text-body hover:text-text">
-      <span className="flex w-8 shrink-0 pl-1.5 text-faint"><BrainIcon className="size-[14px] stroke-[1.75]" /></span>
-      {streaming ? t("task.thinking") : t("task.thought")}
-    </summary>
-    <p className="mb-1 ml-8 whitespace-pre-wrap border-l border-line pl-3 text-sm">{text}</p>
-  </details>
 );
 
 /**
@@ -402,36 +385,6 @@ export const SubagentRow = ({ node, onOpen, popup, compact = false }: { readonly
         <span className="min-w-0 truncate text-muted">{node.description}</span>
       </Line>
     </button>
-  );
-};
-
-export const ToolRow = ({ toolCallId }: { readonly toolCallId: string }) => {
-  const part = useToolPart(toolCallId);
-  const started = useSubagentStartedBy(toolCallId);
-  const owner = useSubagentOwner(toolCallId);
-  const { openSubagents } = useTaskContext();
-  if (part === undefined) return null;
-  if (started !== undefined && openSubagents !== undefined) {
-    // F-138: the main agent's call that started a subagent opens the window on it. Nothing is nested under it.
-    return (
-      <div data-part="tool" data-tool-kind="subagent" data-state={part.state}>
-        <SubagentRow node={started.node} popup onOpen={() => { openSubagents(started.messageId, started.node.id); }} />
-      </div>
-    );
-  }
-  if (owner !== undefined) {
-    // F-138: a subagent's call is in the thread for its approval only, which names the subagent.
-    return (
-      <div data-part="tool" data-subagent={owner.node.id} data-state={part.state}>
-        <ApprovalNote part={part} asker={subagentLabel(owner.node)} className="ml-8" />
-      </div>
-    );
-  }
-  return (
-    <div data-part="tool" data-tool-kind={part.type === "dynamic-tool" ? part.toolName : part.type.slice(5)} data-state={part.state}>
-      <ToolBody part={part} />
-      <ApprovalNote part={part} />
-    </div>
   );
 };
 

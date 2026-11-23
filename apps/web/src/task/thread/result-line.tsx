@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 
 import type { PushedData, TurnResult } from "@ostra/task-view";
 
+import { usePhone } from "@/components/tasks/take-it-local";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
@@ -175,6 +176,7 @@ const PushLine = ({ result, itemId, turnAt }: { readonly result: PushResult; rea
   const open = isRunOpen(state, toggle);
   const words = resultWords(result, t, pushContextOf(result.push, turnAt, results));
   const openId = `push-${itemId}`;
+  const phone = usePhone();
   return (
     <div data-part="result" data-result="push" data-open={open ? "true" : "false"}>
       <button
@@ -183,13 +185,18 @@ const PushLine = ({ result, itemId, turnAt }: { readonly result: PushResult; rea
         aria-controls={open ? openId : undefined}
         onClick={() => { store.toggleRun(toggle); }}
         className={cn(
+          // s6.md: at 390 the push line wraps, its whole line the 44px tap target, the chevron after the last word.
           "my-1.5 -ml-1.5 flex min-h-7 max-w-full items-center gap-2 whitespace-nowrap rounded-md px-1.5 text-ui text-faint hover:bg-hover hover:text-muted [&>svg]:size-[14px] [&>svg]:shrink-0 [&>svg]:stroke-[1.75]",
+          phone && "min-h-11 items-start whitespace-normal py-2",
           open && "text-muted",
         )}
       >
         {iconOf(result)}
-        <span data-part="result-words" className="min-w-0 truncate"><Segments segments={words.words} mono="font-mono text-[13px]" /></span>
-        <ChevronRightIcon aria-hidden className={cn("text-faint", open && "rotate-90")} />
+        <span data-part="result-words" className={cn("min-w-0 truncate", phone && "whitespace-normal")}>
+          <Segments segments={words.words} mono="font-mono text-[13px]" />
+          {phone ? <ChevronRightIcon aria-hidden className={cn("ml-0.5 inline size-3.5 align-[-2px] text-faint", open && "rotate-90")} /> : null}
+        </span>
+        {phone ? null : <ChevronRightIcon aria-hidden className={cn("text-faint", open && "rotate-90")} />}
       </button>
       {open ? <PushOpen push={result.push} id={openId} /> : null}
     </div>
@@ -203,9 +210,9 @@ export const ResultLine = ({ result, itemId, turnAt = null }: { readonly result:
   const words = resultWords(result, t);
   const reviewUrl = result.kind === "review" ? (result.review.posted[0]?.url ?? null) : null;
   return (
-    <div data-part="result" data-result={result.kind} className="my-1.5 flex min-h-7 items-center gap-2 whitespace-nowrap text-ui text-faint [&>svg]:size-[14px] [&>svg]:shrink-0 [&>svg]:stroke-[1.75]">
+    <div data-part="result" data-result={result.kind} className="my-1.5 flex min-h-7 items-center gap-2 whitespace-nowrap text-ui text-faint max-sm:flex-wrap max-sm:whitespace-normal [&>svg]:size-[14px] [&>svg]:shrink-0 [&>svg]:stroke-[1.75]">
       {iconOf(result)}
-      <span data-part="result-words" className="min-w-0 truncate">
+      <span data-part="result-words" className="min-w-0 truncate max-sm:whitespace-normal">
         {result.kind === "review" ? <ReviewWords segments={words.words} url={reviewUrl} /> : <Segments segments={words.words} mono="font-mono text-[13px]" />}
       </span>
       {words.action === null ? null : <span className="ml-1 flex shrink-0">{actionOf(result, words.action.label, workspace.taskId, results)}</span>}

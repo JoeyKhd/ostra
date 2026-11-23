@@ -188,19 +188,21 @@ const StepRow = ({ step, message }: { readonly step: RunStep; readonly message: 
   const whole = step.kind === "ostra" || words.verb === null;
   return (
     <li ref={row} data-step={step.kind} data-state={step.state} className="scroll-my-24">
-      <div className="grid min-h-7 grid-cols-[22px_72px_minmax(0,1fr)] items-center text-ui">
-        <span className="flex items-center text-faint [&_svg]:size-[14px]" aria-hidden>{step.state === "running" ? <Spinner /> : iconOf(step)}</span>
+      {/* s6.md: on a phone the verb sits inline before its subject (22px icon | verb | subject, 8px
+          gaps), a long subject wraps under itself, and a row is at least 36px tall. */}
+      <div className="grid min-h-7 grid-cols-[22px_72px_minmax(0,1fr)] items-center text-ui max-sm:flex max-sm:min-h-9 max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 max-sm:gap-y-0.5">
+        <span className="flex items-center text-faint [&_svg]:size-[14px] max-sm:shrink-0" aria-hidden>{step.state === "running" ? <Spinner /> : iconOf(step)}</span>
         {whole ? (
-          <span className="col-span-2 flex min-w-0 items-baseline gap-2.5 whitespace-nowrap">
+          <span className="col-span-2 flex min-w-0 items-baseline gap-2.5 whitespace-nowrap max-sm:flex-wrap max-sm:whitespace-normal">
             {words.verb === null ? null : <span className="shrink-0 text-muted">{words.verb}</span>}
-            {words.subject.length === 0 ? null : <span className={cn("min-w-0 truncate", style.box)} title={step.fullSubject}><Segments segments={words.subject} mono={style.mono} /></span>}
+            {words.subject.length === 0 ? null : <span className={cn("min-w-0 truncate max-sm:break-words max-sm:whitespace-normal", style.box)} title={step.fullSubject}><Segments segments={words.subject} mono={style.mono} /></span>}
             {end}
           </span>
         ) : (
           <>
-            <span className={cn("whitespace-nowrap", quiet ? "text-faint" : "text-muted")}>{words.verb}</span>
-            <span className="flex min-w-0 items-baseline gap-2.5 whitespace-nowrap">
-              <span data-part="step-subject" className={cn("min-w-0 truncate", style.box)} title={step.fullSubject}><Segments segments={words.subject} mono={style.mono} /></span>
+            <span className={cn("whitespace-nowrap max-sm:shrink-0", quiet ? "text-faint" : "text-muted")}>{words.verb}</span>
+            <span className="flex min-w-0 items-baseline gap-2.5 whitespace-nowrap max-sm:flex-1 max-sm:flex-wrap max-sm:whitespace-normal">
+              <span data-part="step-subject" className={cn("min-w-0 truncate max-sm:break-words max-sm:whitespace-normal", style.box)} title={step.fullSubject}><Segments segments={words.subject} mono={style.mono} /></span>
               {end}
             </span>
           </>

@@ -29,11 +29,11 @@ import { TaskAppSupportLine } from "./attachments/attachments-group";
 import { TicketContextRows } from "./attachments/ticket-context-thread";
 import { monthWord } from "./budget-reason";
 import { PhoneTaskSections } from "./phone-task-sections";
-import { TaskPrs } from "./task-prs";
+
 import { HeldNoKey, NoKeySentence, WhoPicks } from "./no-key";
 import { adminNames } from "./no-key-words";
 import type { NoKey } from "./no-key";
-import { AgentGot, MergedHint, TicketLine, TicketProperties, composerInputOf, composerMode, idleHeader, limitStateOf, SpendCapComposer } from "./task-ticket";
+import { AgentGot, MergedHint, TicketProperties, composerInputOf, composerMode, idleHeader, limitStateOf, SpendCapComposer } from "./task-ticket";
 import { headerActivity, stateTone } from "./task-words";
 import { ApprovalCard, PlanBlock, QuestionCard, WatcherBar, approvalReceipt } from "./task-answers";
 import { NeedsYouCards, NeedsYouLive } from "./needs-you-cards";
@@ -63,8 +63,8 @@ import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { Chip } from "@/components/ui/status";
 import { DraftView } from "./draft/draft-view";
 import { DraftProperties } from "./draft/draft-properties";
-import { capOf, runningCiJobs } from "./review/review-words";
-import { RoundsGroup, RoundsInThread, StageLine, statusWithSubState } from "./review/task-rounds";
+import { capOf } from "./review/review-words";
+import { RoundsGroup, RoundsInThread, statusWithSubState } from "./review/task-rounds";
 import { AiReviewLine, FollowUpWaiting } from "./review/follow-up";
 import { followUpWaitWords } from "./review/follow-up-words";
 import { formatClock } from "@/lib/format";
@@ -648,13 +648,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             stoppedAt={stoppedAt}
             reconnecting={log.state.connection === "reconnecting"}
           />
-          {inLoop ? <StageLine subState={data.subState} aiReview={aiReview} counts={data.roundCounts} needsYou={cap !== null && isDriver} held={heldNow} ciJobs={runningCiJobs(data.repos)} /> : null}
-          {/* A review or refine task makes no PR of its own: no PR line (the README's choice 10). */}
-          {data.kind === "code" ? (
-            <div className="max-sm:hidden">
-              <TaskPrs repos={data.repos} />
-            </div>
-          ) : null}
+
+
           <TaskAppSupportLine taskId={taskId} />
           {data.waiting?.kind === "no-runner" && data.waiting.reason.code === "needs-services-runner" ? (
             <p className="mt-1.5 text-ui text-muted" data-testid="task-dispatch-note">{servicesWaitText(data.waiting.reason.online)}</p>
@@ -696,7 +691,6 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           ) : null}
           {/* Under 640px the ticket, its sync and the PRs are sections of their own (m2's `phone-task`). */}
           <div className="max-sm:hidden">
-            {data.ticket === null ? null : <TicketLine ticket={data.ticket} />}
             {data.source === "ticket" && tab !== "draft" && !contextInThread ? <AgentGot files={data.contextFiles} /> : null}
           </div>
           <PhoneTaskSections
@@ -796,6 +790,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
             : mode.kind === "none" && data.capabilities.reopenBlocked === "spend_cap"
               ? { instead: <SpendCapComposer /> }
               : {})}
+          // s6.md (ticket 17): the phone's `…` menu holds `Stop` and `Take it local`; the composer adds `Interrupt and send`.
+          composerPhoneMenu={{
+            stop: data.capabilities.stop && !stopped ? { run: () => { stop.mutate({ taskId }); }, stopping, pending: stop.isPending } : null,
+            local: data.kind === "code" ? { load: localLoad, onOpen: () => { setLocalOpened(true); } } : null,
+          }}
           canInterrupt={data.capabilities.interrupt}
           running={running}
           agent={{ name: data.agent?.agentName ?? t("task.agent"), model: data.agent?.model?.name ?? null }}

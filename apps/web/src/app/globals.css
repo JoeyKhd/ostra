@@ -382,6 +382,12 @@
     padding: 1px 5px;
     border-radius: 5px;
   }
+  /* s6.md: on a phone the agent's prose is 15px, as a member's bubble is. */
+  @media (max-width: 639px) {
+    .thread-prose {
+      font-size: 15px;
+    }
+  }
 }
 
 /*

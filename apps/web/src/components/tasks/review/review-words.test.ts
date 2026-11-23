@@ -1,32 +1,16 @@
 import { gitShaSchema, memberIdSchema, repoIdSchema } from "@ostra/protocol";
 import { describe, expect, it } from "vitest";
 
-import { aiReviewWords, capBody, capOf, findingStateWords, findingsSentWords, findingsSummary, prCiRow, reviewRunningText, stagesOf, viewerReview } from "./review-words";
+import { aiReviewWords, capBody, capOf, findingStateWords, findingsSentWords, findingsSummary, prCiRow, reviewRunningText, viewerReview } from "./review-words";
 
-// F-035, F-101, F-102 (ticket 35): the review loop's words, each on its own. The stage line marks a
-// stage done only when it happened in this pass, the round line's dot speaks to a reviewer still to
-// review, and the cap's words name the cap the task stopped at.
+// F-035, F-101, F-102 (ticket 35): the review loop's words, each on its own. Milestone 10 (ticket 17)
+// dropped the stage strip: the loop's stage is the status line's sub-state and the Checks tab's
+// marker, and the round line's dot speaks to a reviewer still to review; the cap's words name the
+// cap the task stopped at.
 
 const limits = { ciRounds: 2, reviewRounds: 2, automaticTurns: 4 };
 
 describe("the review loop's words (ticket 35)", () => {
-  it("F-101/c3: the stage line marks the current stage, the stages that happened this pass done, and the rest ahead", () => {
-    const fixingFindings = stagesOf({ subState: "fixing_findings", aiReview: true, ci: { used: 0, limit: 2 }, review: { used: 1, limit: 2 } });
-    expect(fixingFindings.map((stage) => [stage.words, stage.state])).toEqual([
-      ["CI running", "done"],
-      ["Fixing CI", "ahead"],
-      ["AI review", "done"],
-      ["Fixing findings 1 of 2", "current"],
-      ["Waiting for a reviewer", "ahead"],
-    ]);
-    // With the AI review off, its two stages aren't drawn.
-    expect(stagesOf({ subState: "waiting_for_reviewer", aiReview: false, ci: { used: 2, limit: 2 }, review: { used: 0, limit: 2 } }).map((stage) => [stage.words, stage.state])).toEqual([
-      ["CI running", "done"],
-      ["Fixing CI 2 of 2", "done"],
-      ["Waiting for a reviewer", "current"],
-    ]);
-  });
-
   it("F-102/c1: the round line's dot is the viewer's own review: amber to review, green once approved, else anyone's wait", () => {
     const me = memberIdSchema.parse("m1");
     const reviewers = (state: string | null) => [{ state: "pr_open" as const, reviewers: [{ login: "alex", team: null, member: { memberId: me, name: "Alex" }, source: "codeowners" as const, state }] }];

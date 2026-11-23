@@ -134,14 +134,14 @@ const MessageBubble = ({ message, agentMessage }: { readonly message: TaskUIMess
         {meta?.optimistic === true ? <Tag tag="sending">{t("task.sending")}</Tag> : null}
       </div>
       {files?.type === "data-message-files" ? (
-        <div className="mb-1.5 flex max-w-[82%] flex-col items-end" data-part="bubble-files">
+        <div className="mb-1.5 flex max-w-[82%] flex-col items-end max-sm:max-w-[88%]" data-part="bubble-files">
           <ThreadMessageFiles data={files.data} author={author === undefined ? "" : memberName(author.memberId)} />
         </div>
       ) : null}
       {empty ? null : (
         <div
           data-part="bubble-box"
-          className={cn("min-w-0 max-w-[82%] rounded-2xl px-3.5 pb-2.5 pt-[9px] text-body leading-[1.55] text-text [overflow-wrap:anywhere]", outlined ? "border border-line-2" : "bg-sel")}
+          className={cn("min-w-0 max-w-[82%] rounded-2xl px-3.5 pb-2.5 pt-[9px] text-body leading-[1.55] text-text [overflow-wrap:anywhere] max-sm:max-w-[88%] max-sm:text-[15px]", outlined ? "border border-line-2" : "bg-sel")}
         >
           {intent === "pr-comment" ? (
             <div data-part="pr-comment" data-seq={github?.seq}>

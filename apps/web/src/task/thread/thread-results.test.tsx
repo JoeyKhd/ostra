@@ -15,8 +15,7 @@ import type { Scene } from "@ostra/task-view/testing";
 
 import { cardStatusParts } from "@/components/home/board-words";
 import { cardStatusOf } from "@/components/home/home-board-view";
-import { prCiRow, runningCiJobs, stagesOf } from "@/components/tasks/review/review-words";
-import { StageLine } from "@/components/tasks/review/task-rounds";
+import { prCiRow } from "@/components/tasks/review/review-words";
 import { markerWithCi } from "@/components/tasks/task-checks/check-words";
 import { ChecksTabMarker } from "@/components/tasks/task-checks/task-checks";
 import { t } from "@/lib/messages";
@@ -260,15 +259,6 @@ describe("what a turn made (F-151/c6)", () => {
     expect(markerWithCi({ kind: "passed" }, [ci("failed", ["e2e"])])).toEqual({ kind: "failing", count: 1 });
     expect(markerWithCi({ kind: "none" }, [ci("none")])).toEqual({ kind: "none" });
     expect(renderToStaticMarkup(<ChecksTabMarker marker={markerWithCi({ kind: "passed" }, [ci("running")])} />)).toContain(`aria-label="${t("taskTabs.checksRunning")}"`);
-    // Milestone 6's stage line: CI running, as the current stage, counts its jobs.
-    const repos = [{ ci: { state: "running", jobs: { done: 2, total: 4 } } }, { ci: null }];
-    expect(runningCiJobs(repos)).toEqual({ done: 2, total: 4 });
-    expect(runningCiJobs([{ ci: { state: "passed", jobs: { done: 4, total: 4 } } }])).toBeNull();
-    const counts = { ci: { used: 0, limit: 2 }, review: { used: 0, limit: 2 } };
-    expect(stagesOf({ subState: "ci_running", aiReview: true, ...counts, ciJobs: { done: 2, total: 4 } })[0]).toMatchObject({ state: "current", words: "CI running · 2 of 4 jobs" });
-    expect(stagesOf({ subState: "ai_review", aiReview: true, ...counts, ciJobs: { done: 2, total: 4 } })[0]?.words).toBe("CI running");
-    const line = renderToStaticMarkup(<StageLine subState="ci_running" aiReview counts={{ ...counts, automaticTurns: { used: 0, limit: 4 } }} needsYou={false} held={false} ciJobs={{ done: 2, total: 4 }} />);
-    expect(textOf(line)).toContain("CI running · 2 of 4 jobs");
     // The review screen's CI row.
     const job = (name: string, conclusion: string | null) => ({ name, conclusion });
     expect(prCiRow({ state: "passed", checks: [job("build", "success"), job("lint", "success"), job("test", "success")], completedAt: 1 }).words).toBe("Passed · 3 jobs");

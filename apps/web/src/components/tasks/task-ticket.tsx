@@ -1,11 +1,9 @@
 "use client";
 
-import { ArrowUpRightIcon, ChevronRightIcon, CircleAlertIcon, GitMergeIcon, PaperclipIcon, RotateCcwIcon } from "lucide-react";
+import { ChevronRightIcon, CircleAlertIcon, GitMergeIcon, PaperclipIcon, RotateCcwIcon } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { TicketStatusIcon } from "@/components/inbox/ticket-icons";
-import { priorityText } from "@/components/inbox/inbox-words";
 import { PropGroup, PropRow } from "@/components/shell/page-frame";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { NeedsYou } from "@/components/ui/needs-you";
@@ -106,31 +104,6 @@ export const SpendValue = ({ spend }: { readonly spend: Spend }) => {
     </>
   );
 };
-
-/** The ticket line under the title: its status, and a link to it on Linear. */
-export const TicketLine = ({ ticket }: { readonly ticket: NonNullable<TaskDetail["ticket"]> }) => (
-  <p className="mt-3 flex flex-wrap items-center gap-2 text-body" data-testid="task-ticket">
-    <span className="inline-flex h-[26px] items-center gap-1.5 rounded-md border border-line-2 px-2.5 text-ui text-muted">
-      <TicketStatusIcon category={ticket.status.category} />
-      {ticket.status.name ?? "–"}
-    </span>
-    {ticket.labels.slice(0, 3).map((label) => (
-      <span key={label} className="inline-flex h-[26px] items-center rounded-md border border-line-2 px-2.5 text-ui text-muted">{label}</span>
-    ))}
-    {ticket.labels.length > 3 ? <span className="text-ui text-faint">+{ticket.labels.length - 3}</span> : null}
-    {ticket.priority === null || ticket.priority === 0 ? null : (
-      <span className="text-ui text-muted">
-        <span aria-hidden className="text-faint">· </span>
-        {t("taskPage.priority", { level: priorityText(ticket.priority) })}
-      </span>
-    )}
-    {ticket.removed ? <span className="text-ui text-faint">{t("taskPage.ticketRemoved")}</span> : null}
-    <a href={ticket.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ui text-teal hover:underline">
-      {t("taskPage.openInLinear")}
-      <ArrowUpRightIcon aria-hidden className="size-[14px] stroke-[1.75]" />
-    </a>
-  </p>
-);
 
 /** "What the agent got": collapsed by default; the ticket's files when it has any. */
 export const AgentGot = ({ files }: { readonly files: TaskDetail["contextFiles"] }) => {

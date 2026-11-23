@@ -143,7 +143,6 @@
       "running": "running",
       "startedRound": "started CI round {n}"
     },
-    "button": "Review",
     "crumb": "Review",
     "openToApprove": "Open on GitHub to approve",
     "openOnGithub": "Open on GitHub",
@@ -152,7 +151,6 @@
     "filesChanged": "{n} files changed",
     "noPr": "No pull request yet. The review screen fills in once the agent's first push opens one.",
     "backToTask": "Back to the task",
-    "turnsHelp": "Turns ostra started by itself since a person last acted. At {limit}, the driver decides.",
     "line": {
       "yourReview": "Waiting for your review",
       "youApproved": "You approved on GitHub",
@@ -169,12 +167,9 @@
     },
     "stage": {
       "ciRunning": "CI running",
-      "ciRunningJobs": "CI running · {jobs}",
       "fixingCi": "Fixing CI {n} of {limit}",
-      "fixingCiPlain": "Fixing CI",
       "aiReview": "AI review",
       "fixingFindings": "Fixing findings {n} of {limit}",
-      "fixingFindingsPlain": "Fixing findings",
       "waitingForReviewer": "Waiting for a reviewer"
     },
     "ci": {
@@ -2162,8 +2157,6 @@
     "sending": "sending…",
     "image": "image",
     "imageRemote": "Image not shown: it's on another server.",
-    "thinking": "Thinking",
-    "thought": "Thought",
     "loadEarlier": "Load earlier turns",
     "plan": "Plan",
     "compacting": "Compacting the conversation…",
@@ -2572,6 +2565,7 @@
       "reopenReviewPlaceholder": "Message {agent} to reopen the review…",
       "hintReopenReview": "Send reopens the review on a fresh box.",
       "nextTurn": "The next turn's model and effort",
+      "menu": "More actions",
       "attach": {
         "label": "Attach files",
         "tip": "Attach files · or paste or drop them",
@@ -3226,8 +3220,7 @@
       "reasoning": "Reasoning",
       "reasoningTip": "Counted inside out. Priced as output.",
       "ranAt": "Ran at {level}: this model has no {asked}.",
-      "ranAtDefault": "Ran at the default: this model takes no effort level.",
-      "usageReasoning": "{n} reasoning"
+      "ranAtDefault": "Ran at the default: this model takes no effort level."
     }
   },
   "newTask": {
@@ -3427,12 +3420,7 @@
     "context": "Context",
     "code": "Code",
     "repo": "Repo",
-    "head": "Head",
     "ci": "CI",
-    "ciPassed": "Passed",
-    "ciFailed": "Failed",
-    "ciRunning": "Running",
-    "ciNone": "No CI",
     "branch": "Branch",
     "pr": "PR",
     "noPr": "None yet",
@@ -3481,7 +3469,6 @@
     "on": "on",
     "copyLink": "Copy the link",
     "linkCopied": "Link copied",
-    "openInLinear": "Open in Linear",
     "ticketRemoved": "removed from Linear",
     "agentGot": "What the agent got",
     "agentGotSummary": "title, description and labels",
@@ -3523,7 +3510,6 @@
     "ticketKey": "Key",
     "ticketStatus": "Status",
     "ticketBoard": "Board",
-    "priority": "{level} priority",
     "session": {
       "label": "Session"
     },
@@ -5571,7 +5557,6 @@
       "planApproved": "Approved",
       "planApprovedEdited": "Approved · edited",
       "planChangesAsked": "Changes asked",
-      "turn": "{input} in · {output} out",
       "rules": "Approval rules",
       "fromTask": "this task · {name}"
     },

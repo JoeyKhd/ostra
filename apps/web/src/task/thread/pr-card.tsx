@@ -100,9 +100,9 @@ export const PrCard = ({ pr, ci }: { readonly pr: PullRequestData; readonly ci: 
         )}
       </div>
       {ci === null ? null : (
-        <div data-part="pr-ci" data-ci={ci.state} className="ml-[25px] mt-1 flex items-center gap-2 whitespace-nowrap text-[13.5px] text-muted">
+        <div data-part="pr-ci" data-ci={ci.state} className="ml-[25px] mt-1 flex items-center gap-2 whitespace-nowrap text-[13.5px] text-muted max-sm:whitespace-normal">
           {ci.state === "running" ? <Spinner /> : null}
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 truncate max-sm:whitespace-normal">
             {/* The AI review's tail sits 8px after the line, as the target's flex gap sets it. */}
             {ciLine(ci, t, { aiReview: results?.aiReview ?? false }).map((segment, index) => (
               <span key={index} className={cn(toneClass(segment.tone), segment.mono && "font-mono text-[13px]", segment.text === " · " && "ml-1")}>{segment.text}</span>

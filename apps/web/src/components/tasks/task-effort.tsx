@@ -4,6 +4,7 @@ import type { EffortLevel } from "@ostra/protocol";
 
 import { effortHint, effortLabel, offersChoice } from "@/components/effort/effort-words";
 import { PropRow } from "@/components/shell/page-frame";
+import { usePhone } from "@/components/tasks/take-it-local";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -118,13 +119,16 @@ export const NextTurnMenu = ({ model, effort, canChange, onChange, pending }: {
   readonly onChange: (level: EffortLevel) => void;
   readonly pending: boolean;
 }) => {
+  const phone = usePhone();
   if (effort === null) return null;
   const choice = offersChoice(effort.levels);
+  // s6.md: a phone shows the model short (`Sonnet 5.5 · High`), without its vendor's name.
+  const shown = !phone || !model?.startsWith("Claude ") ? model : model.slice(7);
   const words = (
     <>
-      {model === null ? null : <span className="truncate">{model}</span>}
+      {shown === null ? null : <span className="truncate">{shown}</span>}
       {/* The spaces are the text's (a flex row draws the gaps); the dot is only drawn. */}
-      {model === null || !choice ? null : <>{" "}<span aria-hidden className="mx-0.5">·</span>{" "}</>}
+      {shown === null || !choice ? null : <>{" "}<span aria-hidden className="mx-0.5">·</span>{" "}</>}
       {choice ? <span className="shrink-0">{effortLabel(effort.level)}</span> : null}
     </>
   );

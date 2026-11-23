@@ -37,7 +37,7 @@ import type { TaskContextValue } from "./task-context";
 import { answersOf } from "./thread/answers";
 import { Bubble } from "./thread/bubble";
 import { Composer } from "./thread/composer";
-import type { ComposerFiles, SentFiles } from "./thread/composer";
+import type { ComposerFiles, PhoneMenuActions, SentFiles } from "./thread/composer";
 import { showsInterrupt } from "./thread/composer-words";
 import type { ComposerWords } from "./thread/composer-words";
 import { Divider } from "./thread/divider";
@@ -151,6 +151,8 @@ export type TaskThreadProps = {
   readonly composerWords?: ComposerWords | null;
   /** Milestone 10 (ticket 11, F-137): under the composer at its right, the next turn's model and level (`NextTurnMenu`). */
   readonly composerNextTurn?: ReactNode;
+  /** Milestone 10 (ticket 17, s6.md): the phone's `…` menu beside the composer's own Interrupt and send. */
+  readonly composerPhoneMenu?: PhoneMenuActions | null;
   /** A line in the composer's place when neither send nor reopen applies (a merged task). */
   readonly instead?: ReactNode;
   readonly hasEarlier: boolean;
@@ -196,7 +198,7 @@ const NO_TURNS: readonly UsageTurn[] = [];
 const NO_NAMES: readonly string[] = [];
 const noCi = (): HeadCi | null => null;
 
-export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi, runnerName = null, title, results, onLiveDoing }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, composerPhoneMenu = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi, runnerName = null, title, results, onLiveDoing }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -216,6 +218,38 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
   const focused = useRef<number | null>(null);
   // Milestone 10 (ticket 13): the thread's scroll, for the pill that brings back a block scrolled away.
   const viewport = useRef<HTMLDivElement>(null);
+
+  // Milestone 10 (ticket 17, parts.md "Keyboard and screen readers"): `j` and `k` move between the
+  // runs' lines and the blocks that wait on the member, in reading order. A field keeps its keys.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "j" && event.key !== "k") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      const root = document.querySelector("[data-part='thread']");
+      if (root === null) return;
+      const stops = [...root.querySelectorAll<HTMLElement>("[data-nav='run-line'], [data-waits]")];
+      if (stops.length === 0) return;
+      const at = stops.findIndex((node) => node.contains(document.activeElement));
+      const next = at === -1 ? (event.key === "j" ? 0 : stops.length - 1) : event.key === "j" ? Math.min(at + 1, stops.length - 1) : Math.max(at - 1, 0);
+      const stop = stops[next];
+      if (stop === undefined) return;
+      event.preventDefault();
+      if (stop.matches("[data-waits]")) {
+        const control = stop.querySelector<HTMLElement>("button, input, textarea, select, [tabindex='0']");
+        if (control !== null) {
+          control.focus();
+          control.scrollIntoView({ block: "nearest" });
+          return;
+        }
+      }
+      stop.focus();
+      stop.scrollIntoView({ block: "nearest" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, []);
 
   // F-121: how many pictures the log holds, so the thread reads the attachments again when one comes.
   const attachmentsAdded = useMemo(() => log.events.filter(({ event }) => event.kind === "attachment.added").length, [log.events]);
@@ -448,8 +482,9 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
             </div>
             {canSend || canReopen ? (
               // parts.md part 1: the box sits right under the thread's 10px end, the composer as wide as the column.
-              <div className="max-w-[720px] shrink-0">
-                <Composer interrupt={showsInterrupt({ canSend, running, canInterrupt })} onSend={sendText} reopen={!canSend} words={composerWords} nextTurn={composerNextTurn} files={composerFiles} />
+              // s6.md: at a phone's width the dock spans the page, 10px in (the column's 16px sides undone).
+              <div className="max-w-[720px] shrink-0 max-md:-mx-4">
+                <Composer interrupt={showsInterrupt({ canSend, running, canInterrupt })} onSend={sendText} reopen={!canSend} words={composerWords} nextTurn={composerNextTurn} phoneMenu={composerPhoneMenu} files={composerFiles} />
               </div>
             ) : instead !== undefined ? (
               <div className="max-w-[720px] shrink-0">{instead}</div>

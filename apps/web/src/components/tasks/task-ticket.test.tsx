@@ -6,7 +6,7 @@ import { blobIdSchema, ticketIdSchema, ticketWriteIdSchema } from "@ostra/protoc
 import { t } from "@/lib/messages";
 import { formatSize, restoredDetail, savedDetail } from "@/task/marker-words";
 
-import { AgentGot, LimitBlock, RestoreConflict, TicketLine, TicketProperties, boxText, composerMode, idleHeader, reopenBlockedText, SpendCapComposer, spendText, trackerName } from "./task-ticket";
+import { AgentGot, LimitBlock, RestoreConflict, TicketProperties, boxText, composerMode, idleHeader, reopenBlockedText, SpendCapComposer, spendText, trackerName } from "./task-ticket";
 import type { ComposerInput, LimitState, TaskDetail } from "./task-ticket";
 
 // F-064, F-031, F-032, F-033, F-047, F-068, F-097: the task page for tickets, reopening and limits
@@ -120,9 +120,9 @@ describe("the ticket (task-ticket.md)", () => {
     const html = renderToStaticMarkup(<TicketProperties task={{ ticket, sync: [], canRetry: false }} now={now} retry={idle} createTicket={null} />);
     expect(html).toContain(t("taskPage.ticketBoard"));
     expect(html).toContain("Calculator");
-    const strip = renderToStaticMarkup(<TicketLine ticket={ticket} />);
-    expect(strip).toContain("frontend");
-    expect(strip).toContain("High priority");
+    // Milestone 10 (ticket 17, "Drop them"): the header's ticket strip is gone; the ticket's status
+    // and board are the panel's Ticket group, and its words the thread's first bubble.
+    expect(html).toContain("In Review");
   });
 });
 

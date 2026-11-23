@@ -206,15 +206,18 @@ describe("a review task's page (F-151/c7)", () => {
     expect(headingOf(refine)).toEqual({ key: "CALC-192", source: "from a prompt", title: "Shape the history panel's ticket", crumb: "CALC-192" });
   });
 
-  it("F-151/c7: a code task's tabs and top bar are unchanged: Preview | Properties, copy link, Review, PR #483, Take it local", () => {
+  it("F-151/c7: a code task's tabs and top bar: Preview | Properties, copy link, PR #483, Take it local (no Review button)", () => {
     expect(tabsOf("code")).toEqual(["activity", "changes", "checks", "events"]);
     expect(openTabOf("code", "checks", false)).toBe("checks");
     expect(openTabOf("code", "draft", false)).toBe("activity");
     const bar = topBarOf(s2);
     expect(bar).toContain('data-testid="side-pane-toggle"');
-    const order = ["side-pane-toggle", "copy-link", "open-review", "PR #483", "take-it-local"].map((mark) => bar.indexOf(mark));
+    const order = ["side-pane-toggle", "copy-link", "PR #483", "take-it-local"].map((mark) => bar.indexOf(mark));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // Milestone 10 (ticket 17, the maintainer's "Drop them"): the review screen is reached from the
+    // status line, the properties panel's Code group and the review's result links, not the bar.
+    expect(bar).not.toContain('data-action="open-review"');
     expect(bar).not.toContain('data-action="open-code-task"');
     expect(bar).not.toContain('data-action="properties-toggle"');
     expect(bar).not.toContain('data-action="stop"');

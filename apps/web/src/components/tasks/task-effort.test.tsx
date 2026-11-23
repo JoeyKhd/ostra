@@ -6,10 +6,9 @@ import { memberIdSchema } from "@ostra/protocol";
 import type { EffortChangeData } from "@ostra/task-view";
 
 import { t } from "@/lib/messages";
-import { TurnUsage, clampText, turnUsageText } from "@/task/effort-marks";
 import { createTaskIndexStore, TaskContext } from "@/task/task-context";
 import { Divider } from "@/task/thread/divider";
-import { dividerWords } from "@/task/thread/words";
+import { dividerWords, footerFacts } from "@/task/thread/words";
 
 import { ReasoningRow, TaskEffortRow, taskEffortView } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
@@ -76,20 +75,19 @@ describe("the task's effort in the thread", () => {
   const plain = { inputTokens: 48_000, outputTokens: 9_100, cacheReadTokens: 0, cacheWriteTokens: 0, estimated: false };
   const usage = { ...plain, reasoningTokens: 6_400 };
 
-  it("F-137/c11: a turn's usage line carries its level and reasoning tokens", () => {
-    expect(turnUsageText({ effort: "max", usage })).toBe("Max · 48k in · 9.1k out · 6.4k reasoning");
-    expect(turnUsageText({ usage: plain })).toBe("48k in · 9.1k out");
-    expect(turnUsageText({ effort: "default", usage: plain })).toBe("48k in · 9.1k out");
-    expect(turnUsageText({ effort: "max" })).toBeNull();
+  // Milestone 10 (ticket 16, ticket 17): a turn's numbers left the column for its opened run's
+  // footer; the level and reasoning tokens are the footer's facts now.
+  it("F-137/c11: a turn's footer carries its level and reasoning tokens", () => {
+    expect(footerFacts({ ordinal: 1, effort: "max", usage }, "code", t).map((fact) => fact.text)).toEqual(["Turn 1", "Max", "48k in", "9.1k out", "6.4k reasoning"]);
+    expect(footerFacts({ ordinal: 1, usage: plain }, "code", t).map((fact) => fact.text)).toEqual(["Turn 1", "48k in", "9.1k out"]);
+    expect(footerFacts({ ordinal: 1, effort: "default", usage: plain }, "code", t).map((fact) => fact.text)).toEqual(["Turn 1", "48k in", "9.1k out"]);
   });
 
   it("F-137/c9: a clamped turn says what it ran at and why", () => {
-    expect(clampText({ effort: "max", adjustedFrom: "xhigh" })).toBe("Ran at Max: this model has no Extra high.");
-    expect(clampText({ adjustedFrom: "high" })).toBe(t("tasks.effort.ranAtDefault"));
-    expect(clampText({ effort: "max" })).toBeNull();
-    const html = renderToStaticMarkup(<TurnUsage meta={{ firstSeq: 1, lastSeq: 2, effort: "max", adjustedFrom: "xhigh", usage }} />);
-    expect(html).toContain('data-part="turn-usage"');
-    expect(html).toContain('data-part="turn-clamp"');
+    const level = footerFacts({ ordinal: 1, effort: "max", adjustedFrom: "xhigh" }, "code", t)[1];
+    expect(level?.text).toBe("Max, asked Extra high");
+    expect(level?.tip).toBe("Ran at Max: this model has no Extra high.");
+    expect(footerFacts({ ordinal: 1, effort: "max" }, "code", t)[1]?.tip).toBeNull();
   });
 
   it("F-137/c8: the marker names who set which level, and from the next turn only during one", () => {
