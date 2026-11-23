@@ -1,26 +1,35 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownIcon, ArrowUpIcon, MessageCircleQuestionIcon, PlusIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+import { ArrowDownIcon, ArrowUpIcon, CheckIcon, ListChecksIcon, MessageCircleQuestionIcon, PencilIcon, PlusIcon, XIcon } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import type { ApprovalDecision, PlanEntry, TaskId } from "@ostra/protocol";
 
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
-import { NeedsYou, useFocusOnAppear } from "@/components/ui/needs-you";
+import { NeedsYou } from "@/components/ui/needs-you";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 import { AgentMarkdown } from "@/task/renderers";
+import { somethingElseWords } from "@/task/thread/words";
+
+import { answerOf, choicesOf, emptyQuestionForm, isChoice, ownOpen, pick, SOMETHING_ELSE, typeOwn, typeText } from "./question-form";
+import type { QuestionForm } from "./question-form";
 
 // Ticket 43 (task-approval.md, task-plan.md; F-026, F-063, F-024): what the task page answers. Any
 // member answers an approval; the driver answers the agent's questions and its plan, and a watcher
 // sees them read-only with "Take over to answer". Everything here comes from `tasks.get`, so the
 // thread's own fold stays a read of the log.
+//
+// Milestone 10 (F-151, ticket 13, parts.md part 11): drawn in the compact thread at that part's
+// sizes, inside the amber rule (`NeedsYouInThread`): the question's choices as a radio group with
+// `Something else…`, the plan as a numbered list right in the rule, the approval's card under its
+// asking step. Each block that waits on its viewer says what for (`data-waits`), for the pill.
 
 type Task = RouterOutputs["tasks"]["get"];
 export type ApprovalView = Task["approvals"][number];
@@ -85,18 +94,37 @@ export const wantsSentence = (kind: "path" | "command" | "url" | "tool" | null, 
   }
 };
 
-/** A pattern a task rule adds, in words: `Edit config/settings.json in this task`. */
-export const forThisTaskWords = (rule: { readonly tool: string; readonly pattern: string }): string => {
-  switch (rule.tool) {
-    case "edit":
-      return t("taskAnswers.forTask.edit", { pattern: rule.pattern });
-    case "execute":
-      return t("taskAnswers.forTask.execute", { pattern: rule.pattern });
-    case "fetch":
-      return t("taskAnswers.forTask.fetch", { pattern: rule.pattern });
+/**
+ * What "Approve for this task" also approves, by what asked (task-approval.md, "Approve for this
+ * task"; `states-asks.md` cell 1): `commands that start with` + mono `pnpm db`. The pattern is
+ * drawn mono; a file's line names no pattern.
+ */
+export const ForThisTaskLine = ({ kind, pattern }: { readonly kind: "path" | "command" | "url" | "tool" | null; readonly pattern: string }) => {
+  let words: string;
+  switch (kind) {
+    case "path":
+      return <>{t("taskAnswers.forTaskAlso.path")}</>;
+    case "command":
+      words = t("taskAnswers.forTaskAlso.command", { pattern: "\u0000" });
+      break;
+    case "url":
+      words = t("taskAnswers.forTaskAlso.url", { pattern: "\u0000" });
+      break;
+    case "tool":
+    case null:
+      words = t("taskAnswers.forTaskAlso.tool", { pattern: "\u0000" });
+      break;
     default:
-      return t("taskAnswers.forTask.other", { pattern: rule.pattern });
+      return kind satisfies never;
   }
+  const [before = "", after = ""] = words.split("\u0000");
+  return (
+    <>
+      {before}
+      <span className="font-mono text-[12.5px] text-text-2">{pattern}</span>
+      {after}
+    </>
+  );
 };
 
 /** The warning under the deny's reason: the turn ends, and the session's other open approvals close. */
@@ -188,8 +216,8 @@ export const ApprovalCard = ({
       data-testid="approval"
       item={approval.approvalId}
       focusOnAppear
+      waits="approval"
       title={approval.answerableAnyway ? t("taskAnswers.expiredTitle") : t("task.approval.title")}
-      className="my-2.5"
       {...(denying
         ? {}
         : {
@@ -233,10 +261,11 @@ export const ApprovalCard = ({
           </div>
         ) : (
           <>
+            {/* parts.md part 11: the pattern line 13px `--muted` with its pattern mono, then the footnote 13px `--faint`, 8px apart. */}
             {approval.forThisTask === null || !offered("allow_task") ? null : (
-              <p className="text-xs text-muted" data-part="for-this-task">{t("taskAnswers.forTaskAdds", { rule: forThisTaskWords(approval.forThisTask) })}</p>
+              <p className="mb-2 text-muted" data-part="for-this-task"><ForThisTaskLine kind={approval.subject?.kind ?? null} pattern={approval.forThisTask.pattern} /></p>
             )}
-            <p className="text-xs text-faint">{t("taskAnswers.anyMember", { project })}</p>
+            <p>{t("taskAnswers.anyMember", { project })}</p>
             <Refused message={refused} />
           </>
         )
@@ -251,7 +280,7 @@ export const ApprovalCard = ({
             : askSentence(approval.subject?.kind ?? null, agent)}
       </p>
       {approval.subject === null ? null : (
-        <code className="mt-2 inline-block max-w-full break-all rounded-[6px] border border-line bg-surface px-2.5 py-1.5 font-mono text-[12.5px] leading-[1.4] text-text" data-part="subject">
+        <code className="mt-2 inline-block max-w-full break-all rounded-[6px] border border-line bg-surface px-2.5 py-1.5 font-mono text-[13px] leading-[1.3] text-text" data-part="subject">
           {approval.subject.value}
         </code>
       )}
@@ -261,12 +290,77 @@ export const ApprovalCard = ({
 
 /** The agent's question as the thread draws its messages: Markdown, no raw HTML, safe links (ADR 0036). */
 export const QuestionMessage = ({ text, className }: { readonly text: string; readonly className?: string }) => (
-  <div data-part="question-message" className={cn("font-medium", className)}>
+  <div data-part="question-message" className={className}>
     <AgentMarkdown text={text} />
   </div>
 );
 
-/** The agent's question: a form for the driver, read-only with "Take over to answer" for anyone else. */
+/**
+ * One field's choices (parts.md part 11): a radio group, 30px rows (44px on a phone), a 16px radio
+ * with a 1.5px `--control-line` ring (chosen: a 5px `--text` ring), the label 14px; the enum's values,
+ * then `Something else…`, which opens a 32px field under it. A watcher's are at 50% and disabled.
+ * Native radios, one name a field: Tab reaches the group once, and the arrows move and choose at once.
+ */
+const Choices = ({ field, choices, form, onPick, onOwn, ownField, disabled, label }: {
+  readonly field: QuestionView["fields"][number];
+  readonly choices: readonly string[];
+  readonly form: QuestionForm;
+  readonly onPick: (value: string) => void;
+  readonly onOwn: (words: string) => void;
+  readonly ownField: (node: HTMLInputElement | null) => void;
+  readonly disabled: boolean;
+  readonly label: string;
+}) => {
+  const name = useId();
+  const words = somethingElseWords(t);
+  return (
+    <div role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} data-part="choices" className={cn("flex flex-col", disabled && "opacity-50")}>
+      {choices.map((choice) => {
+        const other = choice === SOMETHING_ELSE;
+        return (
+          <div key={choice} className="contents">
+            <label className={cn("flex min-h-[30px] w-fit items-center gap-2.5 text-ui text-text max-sm:min-h-11 max-sm:text-lede", !disabled && "cursor-pointer")} data-part="choice">
+              <input
+                type="radio"
+                name={name}
+                value={choice}
+                checked={form.chosen[field.id] === choice}
+                disabled={disabled}
+                aria-disabled={disabled || undefined}
+                onChange={() => { onPick(choice); }}
+                className="size-4 shrink-0 appearance-none rounded-full border-[1.5px] border-control-line checked:border-[5px] checked:border-text"
+              />
+              {other ? words.choice : choice}
+            </label>
+            {other && ownOpen(form, field.id) ? (
+              <Input
+                ref={ownField}
+                aria-label={words.field}
+                value={form.own[field.id] ?? ""}
+                onChange={(event) => { onOwn(event.target.value); }}
+                data-part="something-else"
+                className="my-0.5 ml-[26px] h-8 max-w-[460px] rounded-[6px] text-ui"
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/** The first choice of a question block, for the focus once its viewer can answer (after `Take over to answer`). */
+const firstChoice = (block: HTMLElement | null): HTMLElement | null => block?.querySelector<HTMLElement>("input:not([disabled])") ?? null;
+
+/**
+ * The agent's question (parts.md part 11, `s1.md`): for the driver, the choices and `Send answer`,
+ * asleep (the panel's disabled button) until every field holds a value, `Sending…` in flight,
+ * `⌘↵` / `Ctrl+↵` too; it sends the answers with `other` naming the fields answered in words. For
+ * anyone else, the quiet block: the same choices at 50% and disabled, `Take over to answer`, which
+ * takes over and then focuses the first choice. `freeText`: the agent takes words for a choice
+ * (`capabilities.questionFreeText`), so each enum ends with `Something else…`; without it the form
+ * is milestone 3's.
+ */
 export const QuestionCard = ({
   taskId,
   question,
@@ -276,6 +370,7 @@ export const QuestionCard = ({
   onTakeOver,
   takingOver,
   repeats = false,
+  freeText = false,
 }: {
   readonly taskId: TaskId;
   readonly question: QuestionView;
@@ -286,58 +381,107 @@ export const QuestionCard = ({
   readonly takingOver: boolean;
   /** The question is the agent's own message, just above: the card points at it, never repeats it. */
   readonly repeats?: boolean;
+  /** The agent takes a member's own words for a choice: each enum offers `Something else…`. */
+  readonly freeText?: boolean;
 }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const [values, setValues] = useState<Readonly<Record<string, string>>>({});
+  const [form, setForm] = useState<QuestionForm>(emptyQuestionForm);
+  const [focusField, setFocusField] = useState<string | null>(null);
+  const [focusChoice, setFocusChoice] = useState(false);
+  const holder = useRef<HTMLDivElement>(null);
   const answer = useMutation(trpc.questions.answer.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.tasks.get.queryKey({ taskId }) }) }));
-  const complete = question.fields.every((field) => (values[field.id] ?? "").trim() !== "");
-  const card = useFocusOnAppear<HTMLDivElement>(true);
-  const set = (id: string, value: string) => { setValues((now) => ({ ...now, [id]: value })); };
+  const sent = answerOf(question.fields, form);
+  const busy = answer.isPending || answer.isSuccess;
+  const send = () => {
+    if (sent === null || busy || !isDriver) return;
+    answer.mutate({ taskId, questionId: question.questionId, answers: { ...sent.answers }, other: [...sent.other] });
+  };
+  // `Take over to answer`: once this member drives, the focus goes to the first choice.
+  useEffect(() => {
+    if (!focusChoice || !isDriver) return;
+    setFocusChoice(false);
+    firstChoice(holder.current)?.focus();
+  }, [focusChoice, isDriver]);
+  const ownField = (fieldId: string) => (node: HTMLInputElement | null) => {
+    if (node !== null && focusField === fieldId) {
+      node.focus();
+      setFocusField(null);
+    }
+  };
+  const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      send();
+    }
+  };
+  const single = question.fields.length === 1;
   return (
-    <div ref={card} tabIndex={-1} role="group" aria-label={t("task.question.title")} className="my-2.5 border-l-(length:--rule-needs-you) border-amber pl-3 focus:outline-2 focus:outline-offset-2 focus:outline-teal" data-testid="question" data-item={question.questionId}>
-      <div className="flex items-center gap-2 text-body font-semibold text-amber-text">
-        <MessageCircleQuestionIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {t("task.question.title")}
-      </div>
-      {repeats ? (
-        <p className="mt-1 text-muted" data-part="question-above">{t("taskPage.needsYouCard.questionAbove", { agent })}</p>
-      ) : (
-        <QuestionMessage text={question.message} className="mt-1" />
-      )}
-      <fieldset disabled={!isDriver} aria-disabled={!isDriver} className={cn("mt-2 flex flex-col gap-2", !isDriver && "opacity-50")}>
-        {question.fields.map((field) =>
-          field.type === "select" && field.options !== undefined && field.options.length > 0 ? (
-            <div key={field.id} role="radiogroup" aria-label={field.label}>
-              {field.label === "" ? null : <p className="mb-1 text-xs text-faint">{field.label}</p>}
-              {field.options.map((option) => (
-                <label key={option} className="flex h-[26px] items-center gap-2 text-ui">
-                  <input type="radio" name={`${question.questionId}-${field.id}`} value={option} checked={values[field.id] === option} onChange={() => { set(field.id, option); }} />
-                  {option}
-                </label>
-              ))}
-            </div>
+    <div ref={holder} onKeyDown={onKey} className="contents">
+      <NeedsYou
+        data-testid="question"
+        item={question.questionId}
+        focusOnAppear={isDriver}
+        tone={isDriver ? "amber" : "quiet"}
+        waits={isDriver ? "question" : null}
+        icon={<MessageCircleQuestionIcon aria-hidden />}
+        title={t("task.question.title")}
+        actions={
+          isDriver ? (
+            <>
+              <Button
+                size="sm"
+                variant="amber"
+                className="h-7 disabled:border-line-2 disabled:bg-surface disabled:text-faint disabled:opacity-40 max-sm:h-11 max-sm:w-full max-sm:text-lede"
+                disabled={sent === null || busy}
+                onClick={send}
+                data-action="answer-question"
+              >
+                {answer.isPending ? t("taskAnswers.question.sending") : t("taskAnswers.question.send")}
+              </Button>
+              <span className="ml-1.5 text-sm text-faint max-sm:ml-0">{t("taskAnswers.question.driverFoot", { agent })}</span>
+            </>
           ) : (
-            <label key={field.id} className="block">
-              <span className="mb-1 block text-xs text-faint">{field.label}</span>
-              <Input value={values[field.id] ?? ""} onChange={(event) => { set(field.id, event.target.value); }} className="h-8" />
-            </label>
-          ),
-        )}
-      </fieldset>
-      {isDriver ? (
-        <>
-          <Button size="sm" variant="amber" className="mt-3 h-7" disabled={!complete || answer.isPending || answer.isSuccess} onClick={() => { answer.mutate({ taskId, questionId: question.questionId, answers: values }); }} data-action="answer-question">
-            {answer.isPending ? t("taskAnswers.question.sending") : t("taskAnswers.question.send")}
-          </Button>
-          <p className="mt-2 text-xs text-faint">{t("taskAnswers.question.driverFoot", { agent })}</p>
-        </>
-      ) : (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button size="sm" className="h-7" onClick={onTakeOver} disabled={takingOver} data-action="take-over-to-answer">{t("taskAnswers.question.takeOver")}</Button>
-          <span className="text-xs text-faint">{driver === null ? t("taskAnswers.question.nobody") : t("taskAnswers.question.driverAnswers", { name: driver })}</span>
+            <>
+              <Button size="sm" className="h-7" onClick={() => { setFocusChoice(true); onTakeOver(); }} disabled={takingOver} data-action="take-over-to-answer">{t("taskAnswers.question.takeOver")}</Button>
+              <span className="ml-1.5 text-sm text-faint">{driver === null ? t("taskAnswers.question.nobody") : t("taskAnswers.question.driverAnswers", { name: driver })}</span>
+            </>
+          )
+        }
+        {...(answer.error === null ? {} : { footer: <Refused message={errorText(answer.error)} /> })}
+      >
+        {repeats ? <p className="text-muted" data-part="question-above">{t("taskPage.needsYouCard.questionAbove", { agent })}</p> : <QuestionMessage text={question.message} />}
+        <div className="mt-2 flex flex-col gap-2" data-part="question-fields">
+          {question.fields.map((field) => {
+            const label = field.label === "" ? t("task.question.title") : field.label;
+            const shown = single && isChoice(field) ? null : field.label === "" ? null : <p className="mb-1 text-xs text-faint">{field.label}</p>;
+            return isChoice(field) ? (
+              <div key={field.id}>
+                {shown}
+                <Choices
+                  field={field}
+                  choices={choicesOf(field, freeText)}
+                  form={form}
+                  label={label}
+                  disabled={!isDriver}
+                  onPick={(value) => {
+                    const picked = pick(form, field.id, value);
+                    setForm(picked.form);
+                    setFocusField(picked.focus?.field ?? null);
+                  }}
+                  onOwn={(words) => { setForm((now) => typeOwn(now, field.id, words)); }}
+                  ownField={ownField(field.id)}
+                />
+              </div>
+            ) : (
+              <label key={field.id} className={cn("block", !isDriver && "opacity-50")}>
+                {field.label === "" ? null : <span className="mb-1 block text-xs text-faint">{field.label}</span>}
+                <Input disabled={!isDriver} value={form.chosen[field.id] ?? ""} onChange={(event) => { const words = event.target.value; setForm((now) => typeText(now, field.id, words)); }} className="h-8 max-w-[460px] rounded-[6px] text-ui" />
+              </label>
+            );
+          })}
         </div>
-      )}
-      <Refused message={answer.error === null ? null : errorText(answer.error)} />
+      </NeedsYou>
     </div>
   );
 };
@@ -358,20 +502,43 @@ export const moveStep = <T,>(steps: readonly T[], index: number, by: -1 | 1): re
   return next;
 };
 
-const PlanList = ({ entries, edited }: { readonly entries: readonly PlanEntry[]; readonly edited?: readonly boolean[] }) => (
-  <ol className="mt-1 list-decimal pl-5">
+/** A plan entry's words, its inline code mono (`src/keys/shortcuts.ts`): drawn as text, never HTML. */
+const EntryText = ({ text }: { readonly text: string }) => (
+  <>
+    {text.split(/`([^`]+)`/g).map((piece, index) =>
+      index % 2 === 1 ? (
+        <code key={index} className="rounded-[5px] border border-line bg-surface px-[5px] py-px font-mono text-[13px]">
+          {piece}
+        </code>
+      ) : (
+        piece
+      ),
+    )}
+  </>
+);
+
+/**
+ * The plan's entries (parts.md part 11, `s5.md`): a numbered list right inside the rule, no box in
+ * the block: 26px rows, the number Plex Mono 12.5px `--faint` in a 24px column, the entry 14.5px.
+ */
+const PlanList = ({ entries }: { readonly entries: readonly PlanEntry[] }) => (
+  <ol className="pt-px" data-part="plan-entries">
     {entries.map((entry, i) => (
-      <li key={i} className="py-0.5 text-body">
-        {entry.content}
-        {edited?.[i] === true ? <span className="ml-2 text-xs text-faint">{t("taskAnswers.plan.edited")}</span> : null}
+      <li key={i} className="grid min-h-[26px] grid-cols-[24px_minmax(0,1fr)] items-baseline py-px text-body leading-[1.5] text-text">
+        <span className="font-mono text-[12.5px] text-faint">{i + 1}</span>
+        <span className="[overflow-wrap:anywhere]">
+          <EntryText text={entry.content} />
+        </span>
       </li>
     ))}
   </ol>
 );
 
 /**
- * The plan (task-plan.md): proposed, it's the needs-you block with Approve plan, Edit and approve and
- * Ask for changes for the driver; approved, a receipt with the plan as approved and `edited` marks.
+ * The plan (task-plan.md, `s5.md`): proposed, the needs-you block with its entries as a numbered list
+ * right in the rule, then Approve plan, Edit and approve and Ask for changes to the plan for the
+ * driver, and the watcher's quiet block with `Take over to answer`. The editor and the request for
+ * changes are milestone 3's, inside the same rule. Answered, it's ticket 12's receipt instead.
  */
 export const PlanBlock = ({
   taskId,
@@ -399,15 +566,8 @@ export const PlanBlock = ({
   const answer = useMutation(trpc.plans.answer.mutationOptions({ onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.tasks.get.queryKey({ taskId }) }) }));
   const busy = answer.isPending || answer.isSuccess;
 
-  if (plan.approved !== null) {
-    return (
-      <div className="my-3" data-testid="plan-approved">
-        <p className="text-sm text-muted">{t("taskAnswers.plan.approvedBy", { name: plan.approved.by?.name ?? t("taskPage.someone") })}</p>
-        <PlanList entries={plan.approved.entries} edited={plan.approved.edited} />
-      </div>
-    );
-  }
-  if (plan.itemId === null) return null;
+  // Answered, the plan is its receipt after the plan turn (ticket 12's `PlanReceipt`): no block.
+  if (plan.approved !== null || plan.itemId === null) return null;
 
   const approve = (entries: readonly PlanEntry[]) => {
     answer.mutate({ taskId, decision: "approve", entries: [...entries], message: plan.message });
@@ -462,21 +622,29 @@ export const PlanBlock = ({
       </div>
     );
   } else {
-    body = <PlanList entries={plan.entries} />;
+    // A plan with no entries is its message alone, already in the thread just above: point at it.
+    body =
+      plan.entries.length === 0 ? (
+        <p className="text-muted" data-part="plan-line">{plan.message.trim() === "" ? t("taskPage.needsYouCard.planOnly", { agent }) : t("taskPage.needsYouCard.planAbove", { agent })}</p>
+      ) : (
+        <PlanList entries={plan.entries} />
+      );
   }
 
   return (
     <NeedsYou
       data-testid="plan"
+      icon={<ListChecksIcon aria-hidden />}
       title={t("taskAnswers.plan.title")}
-      className="my-3"
+      tone={isDriver ? "amber" : "quiet"}
+      waits={isDriver ? "plan" : null}
       {...(mode === "view" && isDriver
         ? {
             actions: (
               <>
+                <Button size="sm" variant="amber" className="h-7" disabled={busy} onClick={() => { approve(plan.entries); }} data-action="approve-plan"><CheckIcon aria-hidden />{t("taskAnswers.plan.approve")}</Button>
+                <Button size="sm" className="h-7" disabled={busy} onClick={() => { setMode("edit"); }} data-action="edit-plan"><PencilIcon aria-hidden />{t("taskAnswers.plan.edit")}</Button>
                 <Button size="sm" className="h-7" disabled={busy} onClick={() => { setMode("changes"); }} data-action="ask-plan-changes">{t("taskAnswers.plan.askChanges")}</Button>
-                <Button size="sm" className="h-7" disabled={busy} onClick={() => { setMode("edit"); }} data-action="edit-plan">{t("taskAnswers.plan.edit")}</Button>
-                <Button size="sm" variant="amber" className="h-7" disabled={busy} onClick={() => { approve(plan.entries); }} data-action="approve-plan">{t("taskAnswers.plan.approve")}</Button>
               </>
             ),
           }
@@ -486,9 +654,9 @@ export const PlanBlock = ({
           {isDriver ? (
             <span>{t("taskAnswers.plan.driverFoot", { agent })}</span>
           ) : (
-            <span className="flex flex-wrap items-center gap-2">
-              <Button size="sm" className="h-7" onClick={onTakeOver} disabled={takingOver}>{t("taskAnswers.question.takeOver")}</Button>
-              {driver === null ? t("taskAnswers.question.nobody") : t("taskAnswers.plan.driverAnswers", { name: driver })}
+            <span className="text-muted">
+              {driver === null ? t("taskAnswers.watcher.nobody") : t("taskAnswers.plan.driverAnswers", { name: driver })}{" "}
+              <Button variant="link" className="text-sm" onClick={onTakeOver} disabled={takingOver} data-action="take-over-to-answer">{t("taskAnswers.question.takeOver")}</Button>
             </span>
           )}
           {plan.revision === null ? null : <p className="mt-1">{t("taskAnswers.plan.revisionAsked", { name: plan.revision.by?.name ?? t("taskPage.someone") })}</p>}
@@ -496,8 +664,6 @@ export const PlanBlock = ({
         </>
       }
     >
-      {/* The plan's message is the turn's last agent message, already in the thread: point at it. */}
-      <p className="text-muted" data-part="plan-line">{plan.message.trim() === "" ? t("taskPage.needsYouCard.planOnly", { agent }) : t("taskPage.needsYouCard.planAbove", { agent })}</p>
       {body}
     </NeedsYou>
   );

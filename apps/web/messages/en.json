@@ -5407,13 +5407,12 @@
       "url": "{agent} wants to reach this address:",
       "tool": "{agent} wants to call this tool:"
     },
-    "forTask": {
-      "edit": "Edit {pattern} in this task",
-      "execute": "Run {pattern} in this task",
-      "fetch": "Fetch {pattern} in this task",
-      "other": "Use {pattern} in this task"
+    "forTaskAlso": {
+      "path": "Approve for this task also approves later edits of this file.",
+      "command": "Approve for this task also approves commands that start with {pattern}.",
+      "url": "Approve for this task also approves requests to {pattern}.",
+      "tool": "Approve for this task also approves calls to {pattern}."
     },
-    "forTaskAdds": "Approve for this task also approves later requests that match: {rule}.",
     "anyMember": "Any member of {project} can answer. The first answer wins.",
     "answeredFirst": "Someone answered this first.",
     "approveOnce": "Approve once",
@@ -5453,7 +5452,7 @@
       "title": "Needs you · plan",
       "approve": "Approve plan",
       "edit": "Edit and approve",
-      "askChanges": "Ask for changes",
+      "askChanges": "Ask for changes to the plan",
       "whatChange": "What should change in the plan?",
       "sendChanges": "Send to the agent",
       "addStep": "Add a step",
@@ -5462,9 +5461,8 @@
       "down": "Move down",
       "remove": "Remove the step",
       "edited": "edited",
-      "approvedBy": "Plan approved by {name}",
-      "driverFoot": "{agent} works from the plan once it's approved, and changes nothing before.",
-      "driverAnswers": "{name} approves the plan while driving.",
+      "driverFoot": "Nothing in the repo has changed. {agent} starts the work from the plan you approve.",
+      "driverAnswers": "{name} answers the plan.",
       "revisionAsked": "{name} asked for changes; the agent is revising the plan."
     },
     "watcher": {

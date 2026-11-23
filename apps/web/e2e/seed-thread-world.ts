@@ -12,6 +12,8 @@
 //   running its first turn's second test run; waiting on OpenCode's question; three turns later,
 //   its PR #483 open and CI running on GitHub (2 of 4 jobs done), its box idle.
 // - S3 is the AI review of PR #483 (a review task of S2's), S5-plan and S5-approved `CALC-196`.
+// - `asks-1` and `asks-1-two` are `states-asks.md`'s cell 1 (ticket 13): a run that waits on one
+//   approval, and one that waits on two, each the approval's own row as core opened it.
 
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -23,7 +25,7 @@ import { postgresChangeNotices, seedMember } from "@ostra/domain";
 import { APP_SCREENSHOT_CONTENT_TYPE, organizationIdSchema, projectIdSchema, storedEventSchema, taskIdSchema } from "@ostra/protocol";
 import type { StoredEvent } from "@ostra/protocol";
 import { eventFixtures } from "@ostra/protocol/testing";
-import { calc192, calc192Spend, review483Spend, s1, s1Working, s2, s3, s5Approved, s5Plan, sceneMembers, sceneWorld, stateCells } from "@ostra/task-view/testing";
+import { calc192, calc192Spend, review483Spend, s1, s1Working, s2, s3, s5Approved, s5Plan, sceneMembers, sceneWorld, stateCells, twoApprovalsPending } from "@ostra/task-view/testing";
 import type { Scene } from "@ostra/task-view/testing";
 import { z } from "zod";
 
@@ -104,7 +106,7 @@ type TaskShape = {
   readonly key: string | null;
   readonly kind: Scene["kind"];
   readonly state: "running" | "needs_you" | "in_review" | "done";
-  readonly needsYouReason?: "question" | "plan";
+  readonly needsYouReason?: "question" | "plan" | "approval";
   readonly subState?: "ci_running";
   readonly reviewOf?: string;
   /** Each turn's spend, as core priced it. */
@@ -181,6 +183,9 @@ const seedScene = async (scene: Scene, shape: TaskShape): Promise<string> => {
     await db.taskPullRequest.create({ data: { ...place, taskRepoId: taskRepo.id, number: shape.pr.number, url: shape.pr.url, branchName: shape.branch } });
     await db.ciRun.create({ data: { ...place, taskRepoId: taskRepo.id, headSha: shape.pr.headSha, state: "pending", checks: shape.pr.jobs.map((job, i) => ({ name: job.name, conclusion: job.conclusion, externalId: String(1000 + i) })) } });
   }
+
+  // Each approval the scene asks for is a row of this task's own (ticket 13), so its ID is the world's.
+  for (const { event } of scene.events) if (event.kind === "approval.requested") ids.set(event.approvalId, randomUUID());
 
   // Every blob a scene's event names: Sam's files and the agent's pictures, each the world's own.
   for (const { event } of scene.events) {
@@ -374,6 +379,29 @@ const seedScene = async (scene: Scene, shape: TaskShape): Promise<string> => {
     await db.needsYouItem.create({ data: { ...place, taskId: task.id, reason: "plan", audience: "driver", planTurnId: proposed.turnId } });
   }
 
+  // Each approval the scene asks for, as core opened it; the open ones wait on any member.
+  for (const stored of events) {
+    const { event } = stored;
+    if (event.kind !== "approval.requested") continue;
+    const answered = events.find((later) => later.event.kind === "approval.answered" && later.event.approvalId === event.approvalId)?.event;
+    const approval = await db.approval.create({
+      data: {
+        id: event.approvalId,
+        ...place,
+        taskId: task.id,
+        sessionId: sessionFor(stored.sessionId),
+        toolCallId: event.toolCallId,
+        options: event.options,
+        state: answered === undefined ? "open" : "answered",
+        ...(answered?.kind === "approval.answered" ? { decision: answered.decision, optionId: answered.optionId, answeredByMemberId: answered.memberId, resolvedAt: new Date(stored.at) } : {}),
+        ...(event.rule === undefined || event.rule === null ? {} : { ruleId: event.rule.ruleId, ruleSource: event.rule.source }),
+        ...(event.subject === undefined ? {} : { subjectKind: event.subject.kind, subjectValue: event.subject.value }),
+        createdAt: new Date(stored.at),
+      },
+    });
+    if (answered === undefined) await db.needsYouItem.create({ data: { ...place, taskId: task.id, reason: "approval", audience: "driver", approvalId: approval.id } });
+  }
+
   const head = events.at(-1)?.seq ?? 0;
   await db.task.update({ where: { id: task.id }, data: { eventSeq: head, spentMicroUsd: spent } });
   await db.$executeRaw`SELECT pg_notify(${notifyChannels.taskEvents}, ${JSON.stringify({ taskId: task.id, seq: head })})`;
@@ -528,6 +556,11 @@ const cell4Task = await seedScene(cell4, cellShape(4, "in_review", "idle"));
 const cell5 = stateCells.messages[5];
 const cell5Task = await seedScene(cell5, cellShape(5, "running", "running"));
 
+// ---- ticket 13: `states-asks.md` cell 1, one approval and two at once ---------------------------
+const asksOne = stateCells.asks[1];
+const asksOneTask = await seedScene(asksOne, { title: "Index the history table", branch: "ostra/calc-201-history-index-1", key: "CALC-201", kind: "code", state: "needs_you", needsYouReason: "approval", spend: new Map(), session: "waiting" });
+const asksTwoTask = await seedScene(twoApprovalsPending, { title: "Index the history table", branch: "ostra/calc-201-history-index-2", key: "CALC-201", kind: "code", state: "needs_you", needsYouReason: "approval", spend: new Map(), session: "waiting" });
+
 console.log(
   JSON.stringify({
     username,
@@ -536,6 +569,8 @@ console.log(
     now: { "s1-working": s1Working.now, s1: s1.now, s2: s2.now, s3: s3.now, "s5-plan": s5Plan.now, "s5-approved": s5Approved.now },
     cells: { "messages-1": cell1Task, "messages-2": cell2Task, "messages-3": cell3Task, "messages-4": cell4Task, "messages-5": cell5Task },
     cellNow: { "messages-1": cell1.now, "messages-2": cell2.now, "messages-3": cell3.now, "messages-4": cell4.now, "messages-5": cell5.now },
+    // Ticket 13's approvals, apart from the scenes' (a spec reading only the scenes ignores them).
+    asks: { tasks: { "asks-1": asksOneTask, "asks-1-two": asksTwoTask }, now: { "asks-1": asksOne.now, "asks-1-two": twoApprovalsPending.now } },
   }),
 );
 await db.$disconnect();

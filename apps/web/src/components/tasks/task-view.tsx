@@ -268,6 +268,8 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
     [approvals],
   );
   const logEvents = log.state.events;
+  // Milestone 10 (F-151/c5): the agent takes a member's own words for a choice, so each enum offers `Something else…`.
+  const freeText = task.data?.capabilities.questionFreeText ?? false;
   const questionCard = useCallback(
     (questionId: string): ReactNode => {
       const question = questions?.find((one) => one.questionId === questionId);
@@ -281,10 +283,11 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           onTakeOver={takeOverNow}
           takingOver={takeOver.isPending}
           repeats={questionRepeatsMessage(logEvents, questionId, question.message)}
+          freeText={freeText}
         />
       );
     },
-    [questions, taskId, agentName, isDriver, driverName, takeOverNow, takeOver.isPending, logEvents],
+    [questions, taskId, agentName, isDriver, driverName, takeOverNow, takeOver.isPending, logEvents, freeText],
   );
 
   // F-081 (ticket 13): the page, its viewer's capabilities and its open item, for the palette and the keys.

@@ -265,6 +265,20 @@ const approvalPending = cell("asks-1", "ce21", "11:38:00", (log, task) => {
   return { now: sceneTime("11:41:00") };
 });
 
+/**
+ * Cell 1's note: several approvals open at once, one asking step and block each, in order (the
+ * header's `Needs you · 2 approvals`): the migration, then the reset the agent asked for beside it.
+ */
+export const twoApprovalsPending = cell("asks-1-two", "ce27", "11:38:00", (log, task) => {
+  say(log, sam.id, 0xce27_01, "Index the history table by time, then reset the dev database.");
+  const steps = startTurn(log, task.turn(1));
+  approvalRun(log, steps);
+  askToRun(log, steps, sceneExtras.migrateApproval, "pnpm db:migrate");
+  log.wait(1_500);
+  askToRun(log, steps, sceneExtras.resetApproval, "pnpm db:reset");
+  return { now: sceneTime("11:41:00") };
+});
+
 /** Cell 2: answered: approved once by Sam, then another command denied by Alex with a reason. */
 const approvalAnswered = cell("asks-2", "ce22", "11:38:00", (log, task) => {
   say(log, sam.id, 0xce22_01, "Index the history table by time.");

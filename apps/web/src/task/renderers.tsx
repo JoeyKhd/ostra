@@ -225,7 +225,7 @@ export const ApprovalNote = ({ part, asker, className }: { readonly part: ToolLi
     const summary = approvalSummary(metadata.data.approval.id);
     const subject = approvalSubject(part);
     return (
-      <NeedsYou data-testid="approval" title={t("task.approval.title")} className="my-2.5" footer={t("task.approval.readOnly")}>
+      <NeedsYou data-testid="approval" title={t("task.approval.title")} footer={t("task.approval.readOnly")}>
         <div data-part="approval" data-state="pending">
           {asker === undefined ? null : <p data-part="asker">{subagentAsks(part, asker)}</p>}
           {summary === null ? null : <p className="whitespace-pre-wrap">{summary}</p>}
@@ -454,7 +454,7 @@ export const QuestionBlock = ({ data }: { readonly data: QuestionData }) => {
   return (
     <div data-part="question">
       {status.state === "open" ? (
-        <NeedsYou data-testid="question" title={t("task.question.title")} className="my-2.5" footer={t("task.question.readOnly")}>
+        <NeedsYou data-testid="question" title={t("task.question.title")} footer={t("task.question.readOnly")}>
           <AgentMarkdown text={data.message} />
         </NeedsYou>
       ) : (

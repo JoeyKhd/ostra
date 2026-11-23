@@ -23,6 +23,7 @@ import { SubagentsWindow } from "@/components/tasks/subagents-window";
 import type { SubagentsAt } from "@/components/tasks/subagents-window";
 import type { RememberResult } from "@/components/tasks/task-changes/diff-view";
 import { Button } from "@/components/ui/button";
+import { NeedsYouInThread } from "@/components/ui/needs-you";
 import { errorText } from "@/lib/errors";
 import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
@@ -40,6 +41,7 @@ import type { ComposerFiles, SentFiles } from "./thread/composer";
 import { showsInterrupt } from "./thread/composer-words";
 import type { ComposerWords } from "./thread/composer-words";
 import { Divider } from "./thread/divider";
+import { JumpBand } from "./thread/jump-pill";
 import { ThreadParts } from "./thread/thread-context";
 import type { ThreadPartsValue } from "./thread/thread-context";
 import { TurnItems } from "./thread/turn-items";
@@ -207,6 +209,8 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
   const focusParam = Number.parseInt(useSearchParams().get("event") ?? "", 10);
   const focusSeq = Number.isInteger(focusParam) && focusParam > 0 ? focusParam : null;
   const focused = useRef<number | null>(null);
+  // Milestone 10 (ticket 13): the thread's scroll, for the pill that brings back a block scrolled away.
+  const viewport = useRef<HTMLDivElement>(null);
 
   // F-121: how many pictures the log holds, so the thread reads the attachments again when one comes.
   const attachmentsAdded = useMemo(() => log.events.filter(({ event }) => event.kind === "attachment.added").length, [log.events]);
@@ -399,9 +403,12 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
         <AttachmentsProvider taskId={taskId} added={attachmentsAdded} filesAdded={filesAdded} agentName={agentName} messageOf={messageOf}>
         <SentDiffCommentsContext.Provider value={sentDiffComments}>
           <ThreadParts.Provider value={threadParts}>
+          <NeedsYouInThread.Provider value>
           <ThreadPrimitive.Root data-part="thread" className="flex min-h-0 flex-1 flex-col">
             {live}
-            <ThreadPrimitive.Viewport autoScroll={focusSeq === null} className="min-h-0 flex-1 overflow-y-auto">
+            {/* parts.md part 11: the pill's band lies over the thread's bottom, so the text scrolls behind it and the composer doesn't move. */}
+            <div className="relative flex min-h-0 flex-1 flex-col">
+            <ThreadPrimitive.Viewport ref={viewport} autoScroll={focusSeq === null} className="min-h-0 flex-1 overflow-y-auto">
               {/* Milestone 10 (F-151, parts.md part 1): one 720px column, left-aligned in the page's padding;
                   a member's message 24px under what came before, 8px when it opens the column. */}
               <div data-part="thread-column" className="max-w-[720px] pb-2.5 pt-1.5 [&>[data-message-id]:first-child>[data-part=bubble]]:mt-2">
@@ -417,6 +424,8 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
                 {tail}
               </div>
             </ThreadPrimitive.Viewport>
+            <JumpBand viewport={viewport} />
+            </div>
             {canSend || canReopen ? (
               // parts.md part 1: the box sits right under the thread's 10px end, the composer as wide as the column.
               <div className="max-w-[720px] shrink-0">
@@ -428,6 +437,7 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
               <div className="max-w-[720px] shrink-0 pt-3 text-sm" data-part="not-driver">{notDriver}</div>
             )}
           </ThreadPrimitive.Root>
+          </NeedsYouInThread.Provider>
           </ThreadParts.Provider>
           {subagentsAt === null ? null : (
             <SubagentsWindow

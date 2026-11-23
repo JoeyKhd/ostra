@@ -1,7 +1,5 @@
 "use client";
 
-import { CornerLeftUpIcon } from "lucide-react";
-
 import { AwaitingApprovalBanner } from "@/components/approvals/approval-block";
 import type { WaitingTask } from "@/components/approvals/approval-block";
 import { NeedsYou } from "@/components/ui/needs-you";
@@ -16,12 +14,11 @@ import type { LimitState } from "./task-ticket";
 
 // The needs-you cards at the end of the thread, just above the composer (the maintainer,
 // 2026-11-21: needs you is part of the chat, not a block above the tabs). Each is the shared
-// amber-ruled block (app-design.md, rule 3), indented to the messages' text like an approval under
-// its tool row. Approvals and questions stay where the agent asked them; the plan and the review
-// loop's round limit keep their own cards here.
-
-/** The cards' place in the chat: the messages' text column (the 28px avatar and its 12px gap). */
-const CARD = "my-2.5 ml-10";
+// amber-ruled block (app-design.md, rule 3). Approvals and questions stay where the agent asked
+// them; the plan and the review loop's round limit keep their own cards here.
+//
+// Milestone 10 (F-151, ticket 13, parts.md part 11): flush with the prose, at that part's sizes
+// (the thread's `NeedsYouInThread`); no indent, since the compact thread has no avatar column.
 
 export type NeedsYouCardsProps = {
   readonly needs: readonly Need[];
@@ -36,13 +33,10 @@ export type NeedsYouCardsProps = {
   readonly awaiting: WaitingTask | undefined;
 };
 
-/** The agent ended its turn and waits: its message is just above, so the card says so and stops there. */
+/** The agent ended its turn and waits: its message is just above, so the card points up at it and never repeats it (`states-asks.md` cell 5). */
 const ReplyCard = ({ asked, agent, how }: { readonly asked: boolean; readonly agent: string; readonly how: ReplyHow }) => (
-  <NeedsYou title={t("taskPage.needsYou")} need="reply" className={CARD}>
-    <p className="flex items-start gap-1.5">
-      <CornerLeftUpIcon aria-hidden className="mt-[3px] size-[13px] shrink-0 stroke-[1.75] text-faint" />
-      <span>{replyLine(asked, agent, how)}</span>
-    </p>
+  <NeedsYou title={t("taskPage.needsYou")} need="reply">
+    <p>{replyLine(asked, agent, how)}</p>
   </NeedsYou>
 );
 
@@ -52,19 +46,19 @@ const card = (need: Need, props: NeedsYouCardsProps) => {
       return <ReplyCard key="reply" asked={need.asked} agent={props.agent} how={props.how} />;
     case "notice":
       return (
-        <NeedsYou key="notice" title={t("taskPage.needsYou")} need="notice" className={CARD}>
+        <NeedsYou key="notice" title={t("taskPage.needsYou")} need="notice">
           <p className="whitespace-pre-wrap">{noticeLine(need.reason, need.summary)}</p>
         </NeedsYou>
       );
     case "limit":
-      return <LimitBlock key="limit" task={props.limit.task} reopen={props.limit.reopen} className={CARD} />;
+      return <LimitBlock key="limit" task={props.limit.task} reopen={props.limit.reopen} />;
     case "ticket-closed":
-      return <TicketClosedBlock key="ticket-closed" summary={need.summary} stop={props.ticketClosed.stop} keep={props.ticketClosed.keep} className={CARD} />;
+      return <TicketClosedBlock key="ticket-closed" summary={need.summary} stop={props.ticketClosed.stop} keep={props.ticketClosed.keep} />;
     case "restore-conflict":
-      return <RestoreConflict key="restore-conflict" savedWorkUrl={null} canAnswer={props.conflict.canAnswer} dismiss={props.conflict.dismiss} className={CARD} />;
+      return <RestoreConflict key="restore-conflict" savedWorkUrl={null} canAnswer={props.conflict.canAnswer} dismiss={props.conflict.dismiss} />;
     case "awaiting-approval":
       return props.awaiting === undefined ? null : (
-        <div key="awaiting-approval" className="ml-10">
+        <div key="awaiting-approval" data-waits="other">
           <AwaitingApprovalBanner task={props.awaiting} />
         </div>
       );

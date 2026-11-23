@@ -117,10 +117,10 @@ describe("what needs you, as cards in the chat", () => {
     const drawn = cards(all);
     expect(drawn.startsWith('<div data-part="needs-you-cards">')).toBe(true);
     for (const need of ["limit", "ticket-closed", "restore-conflict", "reply", "notice"]) expect(count(drawn, `data-need="${need}"`)).toBe(1);
-    // Every card is the amber block with its mark, in the messages' text column.
+    // Every card is the amber block with its mark, flush with the prose (milestone 10: no avatar column to indent to).
     expect(count(drawn, "border-l-(length:--rule-needs-you)")).toBe(5);
     expect(count(drawn, `role="group"`)).toBe(5);
-    expect(count(drawn, "ml-10")).toBe(5);
+    expect(count(drawn, "ml-10")).toBe(0);
 
     // Approvals, questions, the plan and the round limit have their own place: this list adds nothing.
     expect(cards([{ kind: "approval", count: 1 }, { kind: "question" }, { kind: "plan" }, { kind: "round-cap" }])).toBe("");
@@ -151,7 +151,7 @@ describe("what needs you, as cards in the chat", () => {
     expect(cards([{ kind: "reply", asked: false }])).toContain("OpenCode finished without changes. Its message above says what happened. Reply below.");
     expect(cards([{ kind: "reply", asked: true }], { how: "watch" })).toContain("Take over to reply.");
     expect(cards([{ kind: "reply", asked: true }], { how: "reopen" })).toContain("Reply below to reopen the task.");
-    expect(cards([{ kind: "reply", asked: true }], { how: "none" })).toContain("OpenCode asked you something in its message above.</span>");
+    expect(cards([{ kind: "reply", asked: true }], { how: "none" })).toContain("OpenCode asked you something in its message above.</p>");
     expect(asksSomething("Which one should I use?**")).toBe(true);
     expect(asksSomething("Done: nothing to change.")).toBe(false);
     expect(asksSomething(null)).toBe(false);
@@ -198,8 +198,12 @@ describe("what needs you, as cards in the chat", () => {
     };
     const drawn = html(<PlanBlock taskId={taskId} plan={plan} agent="OpenCode" isDriver driver="Alex" onTakeOver={() => undefined} takingOver={false} />);
     expect(drawn).toContain("Read the version at build time");
-    expect(drawn).toContain("OpenCode proposes this plan. Its message above explains it.");
     expect(drawn).not.toContain("Step one");
+    // Milestone 10 (s5.md): the steps alone, right in the rule; a plan with no steps points at its message above.
+    expect(drawn).not.toContain('data-part="plan-line"');
+    const prose = html(<PlanBlock taskId={taskId} plan={{ ...plan, entries: [] }} agent="OpenCode" isDriver driver="Alex" onTakeOver={() => undefined} takingOver={false} />);
+    expect(prose).toContain("OpenCode proposes this plan. Its message above explains it.");
+    expect(prose).not.toContain("Step one");
     expect(drawn).toContain('data-action="approve-plan"');
     expect(drawn).toContain('data-action="ask-plan-changes"');
   });

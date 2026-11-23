@@ -86,7 +86,7 @@ test("F-026/c3,c4: \"Approve for this task\" shows the pattern it adds, then the
   const card = page.getByTestId("approval");
   await expect(card).toContainText("Settings files");
   await expect(card.locator("[data-part='subject']")).toHaveText("config/settings.json");
-  await expect(card.locator("[data-part='for-this-task']")).toHaveText("Approve for this task also approves later requests that match: Edit config/settings.json in this task.");
+  await expect(card.locator("[data-part='for-this-task']")).toHaveText("Approve for this task also approves later edits of this file.");
   await card.locator("[data-action='approve-task']").click();
 
   const receipt = page.locator("[data-part='approval']").filter({ hasText: /^Approved for this task by / });
@@ -133,17 +133,20 @@ test("F-063/c2: the driver edits the proposed plan and approves it; the receipt 
   await plan.getByRole("button", { name: "Remove the step" }).nth(2).click();
   await plan.locator("[data-action='approve-edited-plan']").click();
 
-  const approved = page.getByTestId("plan-approved");
-  await expect(approved).toContainText(/Plan approved by \S+/, { timeout: 10_000 });
-  const steps = approved.locator("li");
+  // Milestone 10 (ticket 12): the block becomes its receipt, and `Show the plan ›` opens the plan as approved.
+  const approved = page.locator("[data-part='receipt'][data-receipt='plan-approved']");
+  await expect(approved).toContainText(/Plan approved by \S+.*, with edits/, { timeout: 10_000 });
+  await approved.locator("[data-action='show-plan']").click();
+  const steps = approved.locator("[data-part='plan-shown'] li");
   await expect(steps).toHaveCount(2);
-  await expect(steps.nth(0)).toHaveText("Read the version from package.json at build time");
+  await expect(steps.nth(0)).toContainText("Read the version from package.json at build time");
   await expect(steps.nth(1)).toContainText("Show it in Settings › About, with the build date");
-  await expect(steps.nth(1).getByText("edited", { exact: true })).toBeVisible();
-  await expect(steps.nth(0).getByText("edited", { exact: true })).toHaveCount(0);
+  await expect(steps.nth(1)).toHaveAttribute("data-edited", "true");
+  await expect(steps.nth(0)).not.toHaveAttribute("data-edited", "true");
   await expect(page.getByTestId("plan")).toHaveCount(0);
   await page.reload();
-  await expect(page.getByTestId("plan-approved").locator("li")).toHaveCount(2);
+  await page.locator("[data-part='receipt'][data-receipt='plan-approved'] [data-action='show-plan']").click();
+  await expect(page.locator("[data-part='receipt'][data-receipt='plan-approved'] [data-part='plan-shown'] li")).toHaveCount(2);
 });
 
 test("F-024/c5: a watcher has no composer, only who drives and Take over; taking over gives them the composer and the driver the watcher's bar", { tag: "@desktop-only" }, async ({ page }) => {

@@ -91,19 +91,20 @@ export const RoundsInThread = ({ taskId, rounds, limits, cap, capInput, isDriver
         <p key={key} className="text-ui text-muted" data-testid="round-outcome">{outcome}</p>
       ))}
       {cap === null ? null : (
-        <div className={cn("border-l-2 pl-3", isDriver ? "border-amber" : "border-line-2")} role="region" aria-label={capTitle(cap)} data-testid="round-cap" data-cap={cap}>
-          <p className={cn("flex items-center gap-1.5 text-sm font-semibold", isDriver ? "text-amber-text" : "text-muted")}>
+        // Milestone 10 (ticket 13, parts.md part 11, `states-asks.md` cell 6): milestone 6's copy and buttons at the thread's needs-you sizes.
+        <div className={cn("mb-2 mt-3 border-l-(length:--rule-needs-you) py-0.5 pl-[14px]", isDriver ? "border-amber" : "border-line-2")} role="region" aria-label={capTitle(cap)} data-testid="round-cap" data-cap={cap} data-waits={isDriver ? "other" : undefined}>
+          <p className={cn("flex items-center gap-2 text-ui font-semibold", isDriver ? "text-amber-text" : "text-muted")}>
             <HandIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {capTitle(cap)}
           </p>
-          <p className="mt-1 text-body text-text">{capBody(cap, { ...capInput, limits })}</p>
+          <p className="mt-[5px] text-body leading-[1.55] text-text">{capBody(cap, { ...capInput, limits })}</p>
           {isDriver ? (
             <>
               <div className="mt-2.5 flex flex-wrap gap-2">
-                <Button variant="amber" disabled={keep.pending} onClick={keep.run} data-action="keep-working">{t("review.cap.keepWorking")}</Button>
-                {cap === "ci" ? <Link href={`/tasks/${taskId}?tab=checks`} className={buttonVariants()}>{t("review.cap.openChecks")}</Link> : null}
-                {cap === "findings" ? <Link href={reviewHref} className={buttonVariants()}>{t("review.cap.openReview")}</Link> : null}
+                <Button size="sm" variant="amber" className="h-7" disabled={keep.pending} onClick={keep.run} data-action="keep-working">{t("review.cap.keepWorking")}</Button>
+                {cap === "ci" ? <Link href={`/tasks/${taskId}?tab=checks`} className={cn(buttonVariants({ size: "sm" }), "h-7")}>{t("review.cap.openChecks")}</Link> : null}
+                {cap === "findings" ? <Link href={reviewHref} className={cn(buttonVariants({ size: "sm" }), "h-7")}>{t("review.cap.openReview")}</Link> : null}
               </div>
-              <p className="mt-1.5 text-xs text-faint">{cap === "ci" ? t("review.cap.footCi", { agent: capInput.agent }) : cap === "findings" ? t("review.cap.footFindings", { agent: capInput.agent }) : t("review.cap.footTurns", { agent: capInput.agent })}</p>
+              <p className="mt-2 text-sm text-faint">{cap === "ci" ? t("review.cap.footCi", { agent: capInput.agent }) : cap === "findings" ? t("review.cap.footFindings", { agent: capInput.agent }) : t("review.cap.footTurns", { agent: capInput.agent })}</p>
               {keep.error === null ? null : <p role="alert" className="mt-1 text-sm text-red">{keep.error}</p>}
             </>
           ) : (
