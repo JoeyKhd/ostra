@@ -93,6 +93,7 @@ export const fakeJiraSuiteFixture = (input: {
     mapping: { started: status("In Progress"), inReview: status("In Review"), done: status("Done") },
     other: input.other,
     webhookSecret: fake.webhookSecret,
+    callbackUrl: "https://ostra.test/webhooks/jira/1",
     webhookMaxAgeMs: input.webhookMaxAgeMs,
     ownUserId: fake.serviceAccount.accountId,
     integrationInstalled: false,

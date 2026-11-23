@@ -2,7 +2,7 @@ import type { ExternalTicketId } from "@ostra/protocol";
 import { expect, it } from "vitest";
 
 import type { AdapterResult } from "../common/result.ts";
-import { mappedStatusId } from "../tracker/base.ts";
+import { mappedStatusId, ticketStatusCategories } from "../tracker/base.ts";
 import type { BoardRef, MoveTarget, TrackerAdapter } from "../tracker/base.ts";
 import { routeTo } from "../tracker/workflow.ts";
 import type { TrackerWorkflow, WorkflowTransition } from "../tracker/workflow.ts";
@@ -36,6 +36,8 @@ export type TrackerSecondSubject = {
   readonly adapter: TrackerAdapter;
   readonly board: BoardRef;
   readonly webhookSecret: string;
+  /** F-153: the callback URL this connection registered; a URL-signing tracker needs it to verify. */
+  readonly callbackUrl: string;
   /** Its tracker's clock, in ms since the epoch. */
   readonly now: () => number;
   readonly seedTicket: (input: SeedTicketInput) => Promise<SeededTicket>;
@@ -50,6 +52,7 @@ export const secondSubjectOf = (adapter: TrackerAdapter, fixture: TrackerSuiteFi
   adapter,
   board: fixture.board,
   webhookSecret: fixture.webhookSecret,
+  callbackUrl: fixture.callbackUrl,
   now: fixture.now,
   seedTicket: fixture.seedTicket,
   signedDelivery: fixture.signedDelivery,
@@ -156,6 +159,119 @@ export const defineTrackerWorkflowCases = (subject: Subject): void => {
   });
 };
 
+/**
+ * F-153 (spec section 5.2): a board's `keyPrefix` and `statusCategories` reach the adapter, and a
+ * board without them keeps the tracker's own key and categories. An adapter that uses neither
+ * ignores both, and the case checks that passing them changes nothing.
+ */
+export const defineTrackerBoardSettingsCases = (subject: Subject): void => {
+  it("F-153/c5: a board's keyPrefix and statusCategories report TR-12 and the admin's categories, and a board without them keeps the tracker's own", async () => {
+    const { adapter, fixture } = subject();
+    const seeded = await fixture.seedTicket({ title: "Board settings" });
+    const plainBoard: BoardRef = { externalId: fixture.board.externalId };
+    const own = must(await adapter.getTicket(plainBoard, { externalId: seeded.externalId }), "getTicket without the board's settings");
+    expect(own.key).toBe(seeded.key);
+    const ownStatuses = must(await adapter.listStatuses(plainBoard), "listStatuses without the board's settings");
+    const settings = fixture.boardSettings;
+    if (settings === undefined) {
+      // The adapter ignores what it doesn't use: the same board with settings reports the same things.
+      const ignored: BoardRef = {
+        externalId: plainBoard.externalId,
+        keyPrefix: "TR",
+        // A category the tracker's own guess can't produce, so ignoring it is visible.
+        statusCategories: { [own.status.id]: ticketStatusCategories.find((candidate) => candidate !== own.status.category) ?? "open" },
+      };
+      expect(must(await adapter.getTicket(ignored, { externalId: seeded.externalId }), "getTicket with settings"), "an adapter without board settings ignores them").toEqual(own);
+      expect(must(await adapter.listStatuses(ignored), "listStatuses with settings")).toEqual(ownStatuses);
+      return;
+    }
+    const board = settings.board;
+    const byId = must(await adapter.getTicket(board, { externalId: seeded.externalId }), "getTicket with the board's settings");
+    expect(byId.key).toBe(settings.ticketKey);
+    expect(byId.status.category).toBe(settings.category);
+    // A key lookup parses the prefix.
+    expect(must(await adapter.getTicket(board, settings.ticketKey), "getTicket by the prefixed key").externalId).toBe(seeded.externalId);
+    // The admin's category wins wherever a status is reported, and the tracker's own where it has none.
+    const statuses = must(await adapter.listStatuses(board), "listStatuses with the board's settings");
+    expect(statuses.find((status) => status.id === settings.statusId)?.category).toBe(settings.category);
+    for (const status of statuses) {
+      expect(status.category, `the category ${status.id} reports`).toBe(
+        board.statusCategories?.[status.id] ?? ownStatuses.find((one) => one.id === status.id)?.category,
+      );
+    }
+    const page = must(await adapter.listTickets({ board, updatedSince: 0, order: "updatedAt", pageSize: 100 }), "listTickets with the board's settings");
+    const listed = page.tickets.find((ticket) => ticket.externalId === seeded.externalId);
+    expect(listed?.key).toBe(settings.ticketKey);
+    expect(listed?.status.category).toBe(settings.category);
+    const context = must(await adapter.getTicketContext(board, { externalId: seeded.externalId }), "getTicketContext with the board's settings");
+    expect(context.ticket.key).toBe(settings.ticketKey);
+    expect(context.ticket.status.category).toBe(settings.category);
+    // The tracker's own key and category are what the board without the settings reports.
+    expect(own.key).not.toBe(settings.ticketKey);
+  });
+};
+
+/**
+ * F-153 (spec section 5.2, ADR 0072): the callback URL a delivery is signed over, and the two
+ * registration methods. A subject without `webhookRegistration` answers `unsupported` from both.
+ */
+export const defineTrackerWebhookRegistrationCases = (subject: Subject): void => {
+  it("F-153/c3: a delivery verifies with the callback URL it was signed over, refuses another URL or a re-serialized body, and a subject without webhookRegistration answers unsupported", async () => {
+    const { adapter, fixture } = subject();
+    if (!adapter.capabilities.webhookRegistration) {
+      expect(await adapter.ensureBoardWebhook(fixture.board, fixture.callbackUrl)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+      expect(await adapter.removeBoardWebhook(fixture.board, fixture.callbackUrl)).toMatchObject({ ok: false, error: { code: "unsupported" } });
+    }
+    if (!adapter.capabilities.webhooks) {
+      return;
+    }
+    const seeded = await fixture.seedTicket({ title: "Signed over the URL" });
+    const sentAt = fixture.now();
+    const delivery = await fixture.signedDelivery({ ticket: seeded, byOwnUser: false, sentAt });
+    const request = { rawBody: delivery.rawBody, headers: delivery.headers, callbackUrl: fixture.callbackUrl, secret: fixture.webhookSecret, now: sentAt };
+    expect(adapter.verifyWebhook(request).ok).toBe(true);
+    // The doc's rule: a tracker that needs the URL refuses a delivery without it, and a different
+    // URL is a bad signature; the others ignore it, and both are accepted.
+    const withoutUrl = adapter.verifyWebhook({ rawBody: delivery.rawBody, headers: delivery.headers, secret: fixture.webhookSecret, now: sentAt });
+    const elsewhere = adapter.verifyWebhook({ ...request, callbackUrl: "https://elsewhere.invalid/webhooks/tracker/another" });
+    if (withoutUrl.ok) {
+      expect(elsewhere.ok, "an adapter that ignores the callback URL verifies it too").toBe(true);
+    } else {
+      expect(withoutUrl).toEqual({ ok: false, reason: "bad-signature" });
+      expect(elsewhere).toEqual({ ok: false, reason: "bad-signature" });
+    }
+    const text = new TextDecoder().decode(delivery.rawBody);
+    const reserialized = new TextEncoder().encode(JSON.stringify(JSON.parse(text), undefined, 2));
+    expect(adapter.verifyWebhook({ ...request, rawBody: reserialized })).toEqual({ ok: false, reason: "bad-signature" });
+  });
+
+  it("F-153/c3: registers a board's webhook once, returns the same ID on a second call, and removes it so the next delivery is refused", async (context) => {
+    const { adapter, fixture } = subject();
+    if (!adapter.capabilities.webhookRegistration) {
+      // The case above proves the absence; the registration itself waits for an adapter that has it.
+      context.skip();
+      return;
+    }
+    const first = must(await adapter.ensureBoardWebhook(fixture.board, fixture.callbackUrl), "ensureBoardWebhook");
+    expect(first.created).toBe(true);
+    expect(first.webhookId).not.toBe("");
+    const again = must(await adapter.ensureBoardWebhook(fixture.board, fixture.callbackUrl), "ensureBoardWebhook again");
+    expect(again).toEqual({ webhookId: first.webhookId, created: false });
+
+    const seeded = await fixture.seedTicket({ title: "Before the removal" });
+    const sentAt = fixture.now();
+    const before = await fixture.signedDelivery({ ticket: seeded, byOwnUser: false, sentAt });
+    const request = { rawBody: before.rawBody, headers: before.headers, callbackUrl: fixture.callbackUrl, secret: fixture.webhookSecret, now: sentAt };
+    expect(adapter.verifyWebhook(request).ok).toBe(true);
+
+    expect((await adapter.removeBoardWebhook(fixture.board, fixture.callbackUrl)).ok).toBe(true);
+    expect(await adapter.removeBoardWebhook(fixture.board, fixture.callbackUrl)).toMatchObject({ ok: false, error: { code: "not-found" } });
+    // With its webhook gone the tracker sends nothing valid: the delivery it makes now is refused.
+    const after = await fixture.signedDelivery({ ticket: seeded, byOwnUser: false, sentAt });
+    expect(adapter.verifyWebhook({ ...request, rawBody: after.rawBody, headers: after.headers })).toEqual({ ok: false, reason: "bad-signature" });
+  });
+};
+
 /** Two connections of one adapter in one organization (F-152/c3): nothing of one reaches the other. */
 export const defineTrackerTwoSitesCases = (subject: Subject): void => {
   it("F-152/c3: two connections on two sites of one organization keep apart: a delivery signed for one is refused by the other, and neither reads the other's ticket or file", async (context) => {
@@ -173,11 +289,11 @@ export const defineTrackerTwoSitesCases = (subject: Subject): void => {
       const toFirst = await fixture.signedDelivery({ ticket: first, byOwnUser: false, sentAt: firstNow });
       const toSecond = await second.signedDelivery({ ticket: other, byOwnUser: false, sentAt: secondNow });
       // Each is accepted by its own connection under its own secret...
-      expect(adapter.verifyWebhook({ ...toFirst, secret: fixture.webhookSecret, now: firstNow }).ok).toBe(true);
-      expect(second.adapter.verifyWebhook({ ...toSecond, secret: second.webhookSecret, now: secondNow }).ok).toBe(true);
+      expect(adapter.verifyWebhook({ ...toFirst, callbackUrl: fixture.callbackUrl, secret: fixture.webhookSecret, now: firstNow }).ok).toBe(true);
+      expect(second.adapter.verifyWebhook({ ...toSecond, callbackUrl: second.callbackUrl, secret: second.webhookSecret, now: secondNow }).ok).toBe(true);
       // ...and refused by the other's.
-      expect(second.adapter.verifyWebhook({ ...toFirst, secret: second.webhookSecret, now: firstNow })).toEqual({ ok: false, reason: "bad-signature" });
-      expect(adapter.verifyWebhook({ ...toSecond, secret: fixture.webhookSecret, now: secondNow })).toEqual({ ok: false, reason: "bad-signature" });
+      expect(second.adapter.verifyWebhook({ ...toFirst, callbackUrl: fixture.callbackUrl, secret: second.webhookSecret, now: firstNow })).toEqual({ ok: false, reason: "bad-signature" });
+      expect(adapter.verifyWebhook({ ...toSecond, callbackUrl: second.callbackUrl, secret: fixture.webhookSecret, now: secondNow })).toEqual({ ok: false, reason: "bad-signature" });
     }
     // Neither reads the other's ticket, on either board.
     for (const board of [fixture.board, second.board]) {

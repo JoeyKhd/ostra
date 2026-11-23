@@ -263,6 +263,8 @@ export const LINEAR_CAPABILITIES: TrackerCapabilities = {
   statusGraph: false,
   // Signed deliveries, verified and read by `app/webhooks.ts` (ticket 08).
   webhooks: true,
+  // F-153: Linear's app webhook is made by an admin in the app's settings, not by ostra.
+  webhookRegistration: false,
   commentEdit: true,
   // Linear takes file copies as attachments (ADR 0043), used from milestone 6.
   attachments: true,

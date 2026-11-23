@@ -88,6 +88,20 @@ describe("the docs site's adapter guide", () => {
     expect(compile([without]).join("\n")).toMatch(/jqlFilter/);
   });
 
+  it("F-153/c9: the guide's tracker sample declares webhookRegistration, and the guide names the two methods", async () => {
+    const markdown = await readFile(guide, "utf8");
+    const tracker = samplesOf(markdown).find((sample) => sample.fileName === "tracker-capabilities.ts");
+    expect(tracker?.code).toContain("webhookRegistration: false");
+    for (const name of ["`webhookRegistration`", "`ensureBoardWebhook(board, callbackUrl)`", "`removeBoardWebhook(board, callbackUrl)`", "`request.callbackUrl`"]) {
+      expect(markdown).toContain(name);
+    }
+    if (tracker === undefined) return;
+    expect(compile([tracker])).toEqual([]);
+    const without = { ...tracker, code: tracker.code.replace(/^\s*webhookRegistration: false,\r?\n/m, "") };
+    expect(without.code).not.toContain("webhookRegistration");
+    expect(compile([without]).join("\n")).toMatch(/webhookRegistration/);
+  });
+
   it("F-058/c1: a sample that misuses the SDK fails to compile, so the check is real", () => {
     const broken = samplesOf(
       [

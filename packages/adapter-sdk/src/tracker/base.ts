@@ -17,8 +17,27 @@ import type { TrackerWorkflow, TransitionTaken } from "./workflow.ts";
 // A ticket's text (title, description, comments, labels) is untrusted: adapters return it as data,
 // and nothing here, or in a caller, puts it in a command or a log line.
 
-/** The board a ticket lives on, as the tracker names it: a Linear team, a Jira project. */
-export type BoardRef = { readonly externalId: string };
+/**
+ * The board a ticket lives on, as the tracker names it: a Linear team, a Jira project. `keyPrefix`
+ * and `statusCategories` are the settings ostra's admin gives a board whose tracker has none of
+ * its own; every adapter ignores what it doesn't use (`BoardRef` of section 5.2).
+ */
+export type BoardRef = {
+  readonly externalId: string;
+  /**
+   * The prefix the admin gave a board whose tracker numbers tickets per board (Trello's `TR`): the
+   * adapter reports a ticket's key as `TR-12`, and a key lookup parses the prefix. Absent: the
+   * tracker's own key.
+   */
+  readonly keyPrefix?: string;
+  /**
+   * The admin's category per status, for a tracker whose statuses carry none (Trello's lists).
+   * Absent: the adapter's own guess. An adapter applies it wherever it reports a status
+   * (`listStatuses`, `getTicket`, `listTickets`, `moveTicket` and `getTicketContext`), so every
+   * caller and the ticket cache see the admin's category, and no caller overrides it.
+   */
+  readonly statusCategories?: Readonly<Record<string, TicketStatusCategory>>;
+};
 
 /** A board the credential can see (`listBoards`). */
 export type TrackerBoard = {
@@ -408,6 +427,14 @@ export type TrackerWebhookRequest = {
   readonly rawBody: Uint8Array;
   /** Header names in lower case. */
   readonly headers: Readonly<Record<string, string | undefined>>;
+  /**
+   * The callback URL exactly as registered, which a tracker that signs it needs (Trello signs the
+   * body followed by this URL, ADR 0072). The inbox passes the URL it derives from
+   * `OSTRA_CORE_PUBLIC_URL` and the connection's kind and ID for every delivery. An adapter that
+   * needs it and doesn't get it refuses the delivery as `bad-signature`; the others ignore it.
+   * Never logged.
+   */
+  readonly callbackUrl?: string;
   /** The connection's webhook signing secret. Never logged. */
   readonly secret: string;
   /** The server's clock, in ms since the epoch. */
@@ -631,6 +658,28 @@ export abstract class TrackerAdapter {
 
   /** Reads a verified body loosely into a hint. A delivery it can't read is `invalid-response`. */
   abstract parseWebhook(input: ParseWebhookInput): AdapterResult<TrackerWebhookHint>;
+
+  /**
+   * F-153 (spec section 5.2, ADR 0072): makes sure the board has a webhook pointing at
+   * `callbackUrl`, and answers it. Idempotent: the credential's webhooks are listed, and the one
+   * whose callback URL and model match is returned (`created: false`), or one is made
+   * (`created: true`). The tracker's own creation check (Trello's `HEAD`) is the tracker's
+   * business. Needs `webhookRegistration`; without it, and on an adapter that doesn't override
+   * it, `unsupported`. The URL is never logged.
+   */
+  ensureBoardWebhook(board: BoardRef, callbackUrl: string): Promise<AdapterResult<{ readonly webhookId: string; readonly created: boolean }>> {
+    this.plumbing.logger.debug("ensureBoardWebhook is not supported", { board: board.externalId, present: callbackUrl !== "" });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't register a webhook`));
+  }
+
+  /**
+   * Deletes the board's webhook that points at `callbackUrl`; none is `not-found`. Needs
+   * `webhookRegistration`; without it, and on an adapter that doesn't override it, `unsupported`.
+   */
+  removeBoardWebhook(board: BoardRef, callbackUrl: string): Promise<AdapterResult<void>> {
+    this.plumbing.logger.debug("removeBoardWebhook is not supported", { board: board.externalId, present: callbackUrl !== "" });
+    return Promise.resolve(adapterError("unsupported", `${this.name} can't remove a webhook`));
+  }
 
   /**
    * Milestone 3 (F-036): the board's users with these emails, each with the markdown that mentions

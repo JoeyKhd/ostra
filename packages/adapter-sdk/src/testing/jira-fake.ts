@@ -593,6 +593,8 @@ export class JiraFakeAdapter extends TrackerAdapter {
     subIssues: true,
     statusGraph: true,
     webhooks: true,
+    // F-153: Jira's webhook is made by an admin on the site, not by ostra.
+    webhookRegistration: false,
     commentEdit: true,
     attachments: true,
     transitions: true,
@@ -1153,6 +1155,8 @@ export const createJiraFakeSuiteSubject = (
       mapping: { started: "10001", inReview: "10002", done: "10003" },
       other: new JiraFakeAdapter({ site: otherSite }),
       webhookSecret: site.webhookSecret,
+      // F-153: Jira's admin webhook isn't signed over the URL: the adapter ignores it.
+      callbackUrl: "https://ostra.test/webhooks/jira/1",
       ownUserId: site.appAccountId,
       integrationInstalled: site.devPanelInstalled,
       now: () => site.clock.now(),
@@ -1228,6 +1232,7 @@ const jiraFakeSecondSubject = () => {
     mapping: { started: "10001", inReview: "10002", done: "10003" },
     other: adapter,
     webhookSecret: site.webhookSecret,
+    callbackUrl: "https://ostra.test/webhooks/jira/2",
     ownUserId: site.appAccountId,
     integrationInstalled: false,
     now: () => site.clock.now(),

@@ -106,6 +106,7 @@ describe("a missing operation", () => {
         subIssues: false,
         statusGraph: false,
         webhooks: false,
+        webhookRegistration: false,
         commentEdit: false,
         attachments: false,
         transitions: false,

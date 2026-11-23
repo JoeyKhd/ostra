@@ -87,6 +87,7 @@ export const trackerCapabilities = {
   subIssues: false,
   statusGraph: true,
   webhooks: true,
+  webhookRegistration: false,
   commentEdit: true,
   attachments: false,
   transitions: true,
@@ -117,6 +118,12 @@ An adapter that declares `none` may leave the hooks out. The cases are:
 - `downloadFile` gets a file within `maxBytes`, refuses one over it with `invalid-input` having read no more, and refuses a URL off the file host with no credential sent.
 
 `defineTrackerFilesSuite` runs these cases alone, for an adapter the full suite doesn't run.
+
+## The tracker kind: webhooks ostra registers
+
+A tracker whose API makes its own webhooks declares `webhookRegistration`: ostra then creates one on each attached board with `ensureBoardWebhook(board, callbackUrl)`, which lists the credential's webhooks, returns the one whose URL and model match (`created: false`), or makes one (`created: true`), so calling it twice makes one; `removeBoardWebhook(board, callbackUrl)` deletes the board's webhook for that URL, and none is `not-found`. Without the capability, and on the base class, both answer `unsupported`. The URL is the one ostra registered, derived from `OSTRA_CORE_PUBLIC_URL`, and it never reaches a log line.
+
+A tracker that signs a delivery over that URL (Trello signs the body followed by it) reads `request.callbackUrl`, the exact string ostra registered; a delivery without it, or with another URL, is `bad-signature`. The others ignore it. A board whose tracker numbers tickets per board and carries no category per status takes the admin's `BoardRef.keyPrefix` (a ticket's key is `TR-12`) and `BoardRef.statusCategories` wherever it reports a status; a tracker without them ignores both.
 
 ## The tracker kind: workflows, and the words a tracker declares
 

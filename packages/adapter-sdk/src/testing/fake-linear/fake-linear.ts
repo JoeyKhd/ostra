@@ -1846,6 +1846,8 @@ export const fakeLinearSuiteFixture = (input: {
     mapping: { started: stateId("In Progress"), inReview: stateId("In Review"), done: stateId("Done") },
     other: input.other,
     webhookSecret: input.webhookSecret,
+    // F-153: Linear signs the body alone, and its webhook is the app's own: the adapter ignores the URL.
+    callbackUrl: "https://ostra.test/webhooks/linear/1",
     ownUserId: input.ownUserId,
     integrationInstalled: false,
     now: () => fake.clock.now(),

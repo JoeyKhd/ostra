@@ -25,6 +25,12 @@ export type TrackerCapabilities = {
   readonly statusGraph: boolean;
   /** Milestone 2: the tracker can push events (`verifyWebhook`, `parseWebhook`). Without it, ostra polls. */
   readonly webhooks: boolean;
+  /**
+   * F-153 (spec section 5.2): the adapter can create and delete its own webhooks on a board
+   * (`ensureBoardWebhook`, `removeBoardWebhook`). Trello yes; Linear and Jira are registered by an
+   * admin, so no. Without it, both methods answer `unsupported`.
+   */
+  readonly webhookRegistration: boolean;
   /** Milestone 2: ostra's own comment can be edited in place (`updateComment`, ADR 0047). */
   readonly commentEdit: boolean;
   /**

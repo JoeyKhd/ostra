@@ -293,6 +293,7 @@ describe("the Linear adapter", () => {
       subIssues: true,
       statusGraph: false,
       webhooks: true,
+      webhookRegistration: false,
       commentEdit: true,
       attachments: true,
       transitions: false,

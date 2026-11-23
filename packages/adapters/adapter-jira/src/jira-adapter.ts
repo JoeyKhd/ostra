@@ -172,6 +172,8 @@ export const JIRA_CAPABILITIES: TrackerCapabilities = {
   statusGraph: true,
   // The admin webhook, signed `X-Hub-Signature: sha256=…` with the shared secret.
   webhooks: true,
+  // F-153: the admin makes that webhook on the site; ostra only verifies its deliveries.
+  webhookRegistration: false,
   // The service account edits its own comment in place.
   commentEdit: true,
   // Files are Jira attachments; their markers live in an issue property. Links are remote links.

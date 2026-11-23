@@ -140,6 +140,8 @@ export class TinyTracker extends TrackerAdapter {
     subIssues: false,
     statusGraph: true,
     webhooks: false,
+    // F-153: no tracker here registers its own webhooks.
+    webhookRegistration: false,
     commentEdit: false,
     attachments: false,
     transitions: false,

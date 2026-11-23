@@ -7,12 +7,21 @@ import { describe, expect, it } from "vitest";
 
 import type { AdapterResult } from "../common/result.ts";
 import { agentActivityKinds, ticketStatusCategories } from "../tracker/base.ts";
-import type { AgentActivityKind, BoardRef, OwnWrites, StatusMapping, Ticket, TicketFileWhere, TrackerAdapter } from "../tracker/base.ts";
+import type {
+  AgentActivityKind,
+  BoardRef,
+  OwnWrites,
+  StatusMapping,
+  Ticket,
+  TicketFileWhere,
+  TicketStatusCategory,
+  TrackerAdapter,
+} from "../tracker/base.ts";
 import { ticketFilesCapabilities, trackerRichTexts } from "../tracker/capabilities.ts";
 import type { TicketFilesCapability } from "../tracker/capabilities.ts";
 import { defineCommonCases, useSubject } from "./common-cases.ts";
 import type { ContractSuiteOptions } from "./common-cases.ts";
-import { defineTrackerTwoSitesCases, defineTrackerWorkflowCases } from "./tracker-workflow-cases.ts";
+import { defineTrackerBoardSettingsCases, defineTrackerTwoSitesCases, defineTrackerWebhookRegistrationCases, defineTrackerWorkflowCases } from "./tracker-workflow-cases.ts";
 import type { TrackerSecondSubject, TrackerWorkflowHooks } from "./tracker-workflow-cases.ts";
 
 // The tracker contract suite (ADR 0025, spec section 5.2): every tracker adapter runs it, against
@@ -46,6 +55,17 @@ export type TrackerSuiteFixture = {
   readonly other: TrackerAdapter;
   /** The connection's webhook signing secret. */
   readonly webhookSecret: string;
+  /**
+   * F-153 (spec section 5.2): the callback URL the connection registered, which `signedDelivery`
+   * signs over where the tracker signs it (Trello signs the body followed by the URL).
+   */
+  readonly callbackUrl: string;
+  /**
+   * F-153 (spec section 5.2): a `BoardRef` of `board` carrying the admin's settings, and what the
+   * adapter reports with them. Absent: the adapter ignores board settings (Linear, Jira, the tiny
+   * tracker), and the case checks that a ref carrying them changes nothing.
+   */
+  readonly boardSettings?: TrackerBoardSettingsHooks;
   /**
    * How old a signed delivery may be before it's stale, as the tracker's adapter takes it. Default
    * 60 s (Linear's window); Jira's is longer, as its retries come minutes later (ADR 0047).
@@ -96,6 +116,20 @@ export type TrackerSuiteFixture = {
    * another site or workspace. Absent: the two-site case is skipped.
    */
   readonly second?: TrackerSecondSubject;
+};
+
+/**
+ * F-153 (spec section 5.2): a board whose tracker numbers tickets per board and whose statuses
+ * carry no category, and what the adapter reports once the admin's settings reach it.
+ */
+export type TrackerBoardSettingsHooks = {
+  /** `fixture.board`, with the admin's `keyPrefix` and `statusCategories`. */
+  readonly board: BoardRef;
+  /** The key the adapter reports for a ticket on that board, such as `TR-12`. */
+  readonly ticketKey: TicketKey;
+  /** A status the admin gave a category its own guess wouldn't: one of `listStatuses`' IDs. */
+  readonly statusId: string;
+  readonly category: TicketStatusCategory;
 };
 
 /**
@@ -220,6 +254,7 @@ const trackerCapabilityTypes = {
   subIssues: "boolean",
   statusGraph: "boolean",
   webhooks: "boolean",
+  webhookRegistration: "boolean",
   commentEdit: "boolean",
   attachments: "boolean",
   transitions: "boolean",
@@ -715,6 +750,8 @@ export const defineTrackerContractSuite = (options: ContractSuiteOptions<Tracker
     });
     defineCommonCases(subject, "tracker", trackerCapabilityTypes);
     defineTrackerWorkflowCases(subject);
+    defineTrackerBoardSettingsCases(subject);
+    defineTrackerWebhookRegistrationCases(subject);
     defineTrackerTwoSitesCases(subject);
 
     it("declares milestone 11's words: magicWords, richText and jqlFilter", () => {
@@ -905,7 +942,13 @@ export const defineTrackerContractSuite = (options: ContractSuiteOptions<Tracker
       const seeded = await fixture.seedTicket({ title: "Webhook" });
       const sentAt = fixture.now();
       const delivery = await fixture.signedDelivery({ ticket: seeded, byOwnUser: false, sentAt });
-      const request = { rawBody: delivery.rawBody, headers: delivery.headers, secret: fixture.webhookSecret, now: sentAt + 2000 };
+      const request = {
+        rawBody: delivery.rawBody,
+        headers: delivery.headers,
+        callbackUrl: fixture.callbackUrl,
+        secret: fixture.webhookSecret,
+        now: sentAt + 2000,
+      };
       if (!adapter.capabilities.webhooks) {
         expect(adapter.verifyWebhook(request).ok).toBe(false);
         return;
@@ -931,7 +974,7 @@ export const defineTrackerContractSuite = (options: ContractSuiteOptions<Tracker
       const seeded = await fixture.seedTicket({ title: "Echo" });
       const sentAt = fixture.now();
       const delivery = await fixture.signedDelivery({ ticket: seeded, byOwnUser: true, sentAt });
-      const verified = adapter.verifyWebhook({ rawBody: delivery.rawBody, headers: delivery.headers, secret: fixture.webhookSecret, now: sentAt });
+      const verified = adapter.verifyWebhook({ rawBody: delivery.rawBody, headers: delivery.headers, callbackUrl: fixture.callbackUrl, secret: fixture.webhookSecret, now: sentAt });
       if (!verified.ok) throw new Error(`the delivery was refused: ${verified.reason}`);
       expect(must(adapter.parseWebhook({ body: verified.body, ownUserId: fixture.ownUserId }), "parseWebhook").byOwnUser).toBe(true);
       expect(must(adapter.parseWebhook({ body: verified.body, ownUserId: null }), "parseWebhook").byOwnUser).toBe(false);
