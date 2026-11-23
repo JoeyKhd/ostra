@@ -22,6 +22,7 @@ import { hashPassword } from "better-auth/crypto";
 
 import { createDb, effortLevelToDb, notifyChannels } from "@ostra/db";
 import { postgresChangeNotices, seedMember } from "@ostra/domain";
+import { seedAuditEntry } from "@ostra/domain/testing";
 import { APP_SCREENSHOT_CONTENT_TYPE, organizationIdSchema, projectIdSchema, storedEventSchema, taskIdSchema } from "@ostra/protocol";
 import type { StoredEvent } from "@ostra/protocol";
 import { eventFixtures } from "@ostra/protocol/testing";
@@ -606,7 +607,16 @@ const cell2Task = await seedScene(cell2, cellShape(2, "running", "running"));
   await db.taskRound.create({ data: { ...place, taskId: cell2Task, kind: "findings", number: 1, automatic: true, causeRef: randomUUID(), state: "started", createdAt: new Date(at) } });
   const budget = await db.budget.create({ data: { ...place, monthlyMicroUsd: 200_000_000n } });
   await db.heldTurn.create({ data: { ...place, taskId: cell2Task, origin: "automatic_round", budgetId: budget.id, heldAt: new Date(at), releasedAt: new Date(at + 9 * 60_000) } });
-  await db.auditEntry.create({ data: { organizationId, projectId: project.id, actorKind: "member", actorId: priya, action: "budget.set", entity: "budget", entityId: budget.id, createdAt: new Date(at + 9 * 60_000 - 10_000) } });
+  await seedAuditEntry(db, {
+    organizationId,
+    projectId: project.id,
+    actorKind: "member",
+    actorId: priya,
+    action: "budget.set",
+    entity: "budget",
+    entityId: budget.id,
+    createdAt: new Date(at + 9 * 60_000 - 10_000),
+  });
 }
 
 // Cell 3: an @ostra comment on the PR; cell 4: two comments on the diff, sent; cell 5: between turns.

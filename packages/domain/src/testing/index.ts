@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Db } from "@ostra/db";
+import type { Db, Prisma } from "@ostra/db";
 import { organizationIdSchema, poolIdSchema, runnerIdSchema, taskIdSchema } from "@ostra/protocol";
 import type { ExecutorKind, MemberId, OrganizationId, PoolId, ProjectId, RunnerCapabilities, RunnerId, TaskId } from "@ostra/protocol";
 
@@ -184,3 +184,8 @@ export * from "./m6.ts";
 export { createFakeJiraConnectKit, fakeJiraReadBack, FAKE_JIRA_PROJECTS } from "./jira-connect.ts";
 export type { FakeJiraConnectCall, FakeJiraConnectKit, FakeJiraSite, FakeJiraTokenProfile } from "./jira-connect.ts";
 export { FakeSecretStore } from "./fake-adapters.ts";
+
+/** An audit entry whose time a fixture controls: the e2e thread seed's `budget.set` has its own date. */
+export const seedAuditEntry = async (db: Db, entry: Prisma.AuditEntryUncheckedCreateInput): Promise<void> => {
+  await db.auditEntry.create({ data: entry });
+};
