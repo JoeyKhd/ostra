@@ -836,13 +836,13 @@ describe("the App tab's and the thread's writes, by each role (F-140, F-121)", (
   });
 });
 
-// ---------- a new repo's draft beside the saved setup (F-112/c1, Q345 option (b)) ----------
+// ---------- a new repo's draft beside the saved setup (F-112/c2, Q345 option (b)) ----------
 
 describe("a new repo's draft's writes, by each role (F-112)", () => {
   type Role = "organization admin" | "project admin" | "project member" | "outsider" | "another organization";
   const roles: readonly Role[] = ["organization admin", "project admin", "project member", "outsider", "another organization"];
 
-  it("F-112/c1: Apply, Dismiss and its Undo are a project admin's; a project member is refused, and outside the project it's NOT_FOUND", async () => {
+  it("F-112/c2: Apply, Dismiss and its Undo are a project admin's; a project member is refused, and outside the project it's NOT_FOUND", async () => {
     const { projectId, projectAdmin, driver } = await restrictedProject("draft-writes");
     const organizationId = harness.fixture.a.organization.id;
     const outsider = await seedMember();
