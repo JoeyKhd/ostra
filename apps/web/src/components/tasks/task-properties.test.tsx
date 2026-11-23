@@ -82,6 +82,7 @@ const taskOf = (over: { readonly usage: NonNullable<Task["usage"]>; readonly spe
     questionFreeText: false,
     stop: false,
     reopen: false,
+    reopenInBox: false,
     reopenBlocked: null,
     reopenWithoutText: false,
     retrySync: false,

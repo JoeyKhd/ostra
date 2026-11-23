@@ -346,17 +346,24 @@ export const RestoreConflict = ({ savedWorkUrl, canAnswer, dismiss, className }:
 /** Which call the composer makes and what it says (task-reopen.md, "The composer: send or reopen"). */
 export type ComposerMode =
   | { readonly kind: "send"; readonly hint: string | null }
-  | { readonly kind: "reopen"; readonly hint: string }
+  /** `inBox`: it carries on in the task's idle box (`capabilities.reopenInBox`), so it reads as a send (milestone 10, `s2.md`). */
+  | { readonly kind: "reopen"; readonly hint: string; readonly inBox: boolean }
   | { readonly kind: "merged"; readonly hint: string }
   | { readonly kind: "none" };
 
-export type ComposerInput = Pick<TaskDetail, "state"> & { readonly send: boolean; readonly reopen: boolean; readonly boxState: Box["state"] | null };
+export type ComposerInput = Pick<TaskDetail, "state"> & { readonly send: boolean; readonly reopen: boolean; readonly reopenInBox?: boolean; readonly boxState: Box["state"] | null };
 
-export const composerInputOf = (task: TaskDetail): ComposerInput => ({ state: task.state, send: task.capabilities.send, reopen: task.capabilities.reopen, boxState: task.box?.state ?? null });
+export const composerInputOf = (task: TaskDetail): ComposerInput => ({
+  state: task.state,
+  send: task.capabilities.send,
+  reopen: task.capabilities.reopen,
+  reopenInBox: task.capabilities.reopenInBox,
+  boxState: task.box?.state ?? null,
+});
 
 export const composerMode = (task: ComposerInput): ComposerMode => {
   if (task.send) return { kind: "send", hint: task.boxState === "idle" ? t("taskPage.composer.idleHint") : null };
-  if (task.reopen) return { kind: "reopen", hint: t("taskPage.composer.reopenHint") };
+  if (task.reopen) return task.reopenInBox === true ? { kind: "reopen", hint: t("taskPage.composer.idleHint"), inBox: true } : { kind: "reopen", hint: t("taskPage.composer.reopenHint"), inBox: false };
   if (task.state === "merged") return { kind: "merged", hint: t("taskPage.composer.mergedHint") };
   return { kind: "none" };
 };

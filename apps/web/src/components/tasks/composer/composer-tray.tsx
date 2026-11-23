@@ -102,17 +102,14 @@ export const TrayNoteLine = ({ note, onDismiss, className }: { readonly note: Tr
   );
 };
 
-/** The controls row's hint: the tray's own (a failed upload, full, heavy) over the composer's words. */
+/** The hint under the box: the tray's own (a failed upload, full, heavy) over the composer's words. */
 export const TrayHintLine = ({ hint, own, className }: { readonly hint: TrayHint; readonly own: string; readonly className?: string }) => (
   <span className={cn("flex min-w-0 flex-1 items-center gap-1.5 text-sm text-faint", className)} data-testid="composer-hint" data-hint={hint.kind}>
     {(() => {
       switch (hint.kind) {
         case "own":
-          return (
-            <>
-              <InfoIcon aria-hidden className="size-[13px] shrink-0 stroke-[1.75]" /> <span className="truncate">{own}</span>
-            </>
-          );
+          // Milestone 10 (parts.md part 14): the composer's own words stand alone under the box.
+          return <span className="truncate">{own}</span>;
         case "failed":
           return (
             <>

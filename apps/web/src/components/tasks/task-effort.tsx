@@ -103,6 +103,62 @@ export const TaskEffortRow = ({ effort, viewer, onChange, onTakeOver, pending, e
   );
 };
 
+/**
+ * Milestone 10 (F-137, F-151; parts.md part 14): under the composer at its right, the next turn's
+ * model and level in `--muted` with a 13px chevron, the same menu as the panel's row for the
+ * driver. A model with no levels to choose, or a member who can't change it, reads the words alone.
+ */
+export const NextTurnMenu = ({ model, effort, canChange, onChange, pending }: {
+  /** The model the next message goes to, by name; `null` while nobody knows it. */
+  readonly model: string | null;
+  /** `null` while it loads. */
+  readonly effort: TaskEffort | null;
+  /** The driver of a live task (`capabilities.setEffort`). */
+  readonly canChange: boolean;
+  readonly onChange: (level: EffortLevel) => void;
+  readonly pending: boolean;
+}) => {
+  if (effort === null) return null;
+  const choice = offersChoice(effort.levels);
+  const words = (
+    <>
+      {model === null ? null : <span className="truncate">{model}</span>}
+      {/* The spaces are the text's (a flex row draws the gaps); the dot is only drawn. */}
+      {model === null || !choice ? null : <>{" "}<span aria-hidden className="mx-0.5">·</span>{" "}</>}
+      {choice ? <span className="shrink-0">{effortLabel(effort.level)}</span> : null}
+    </>
+  );
+  if (!choice || !canChange) {
+    return <span className="flex min-w-0 items-center gap-1 text-muted" data-testid="composer-next-turn" title={t("task.composer.nextTurn")}>{words}</span>;
+  }
+  return (
+    <Select value={effort.level} disabled={pending} onValueChange={(next) => {
+      const level = effort.levels.find((candidate) => candidate === next);
+      if (level !== undefined && level !== effort.level) onChange(level);
+    }}>
+      <SelectTrigger
+        aria-label={t("task.composer.nextTurn")}
+        title={t("task.composer.nextTurn")}
+        data-testid="composer-next-turn"
+        data-level={effort.level}
+        className="-my-[3px] -mr-1 h-6 min-w-0 gap-1 max-md:-my-2 rounded-sm border-0 px-1 text-[12.5px] text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-teal [&_svg]:size-[13px] [&_svg]:text-faint"
+      >
+        <SelectValue><span className="flex min-w-0 items-center gap-1">{words}</span></SelectValue>
+      </SelectTrigger>
+      <SelectContent align="end" className="w-[280px]">
+        {effort.levels.map((level) => (
+          <SelectItem key={level} value={level} textValue={effortLabel(level)} className="h-auto min-h-[30px] py-1.5">
+            <span className="flex min-w-0 flex-col">
+              <span>{effortLabel(level)}</span>
+              <span className="text-[12.5px] text-muted">{effortHint(level, effort.levels)}</span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+};
+
 /** `Reasoning`: the task's reasoning tokens, inside `out` (ADR 0066, "Cost"); `—` when no turn reported any. */
 export const ReasoningRow = ({ tokens }: { readonly tokens: number }) => (
   <PropRow label={t("tasks.effort.reasoning")}>

@@ -59,7 +59,7 @@ const organizationId = (await db.member.findUniqueOrThrow({ where: { id: sam } }
 const provider = await db.modelProvider.create({
   data: { organizationId, name: `thread-key-${args.tag}`, baseUrl: "https://thread-key.example.test/v1", apiFormat: "anthropic_messages", authScheme: "x_api_key", tokenSecretRef: `builtin:thread-${args.tag}`, allowOnPersonalRunners: true },
 });
-const model = await db.model.create({ data: { organizationId, providerId: provider.id, endpointModelId: "claude-sonnet-5-5", catalogId: "anthropic/claude-sonnet-5-5", displayName: "Claude Sonnet 5.5", adminImageInput: true, inputPricePerMTok: 3, outputPricePerMTok: 15, priceSource: "catalog" } });
+const model = await db.model.create({ data: { organizationId, providerId: provider.id, endpointModelId: "claude-sonnet-5-5", catalogId: "anthropic/claude-sonnet-5-5", displayName: "Claude Sonnet 5.5", adminImageInput: true, inputPricePerMTok: 3, outputPricePerMTok: 15, priceSource: "catalog", catalogReasoning: { supported: true, effort: ["low", "medium", "high", "max"] }, contextWindow: 1_000_000, maxOutputTokens: 64_000 } });
 // S3's review calls GitHub's MCP server (`github_get_pull_request`): the profile names it, so the thread reads the tool by its name, its server before it.
 const mcpServers = [{ name: "github", transport: "http", url: "https://github-mcp.example.test/mcp", readOnly: true, headerSecretRefs: {} }];
 const profile = await db.agentProfile.create({ data: { organizationId, name: `Default ${args.tag}`, adapter: "opencode", modelId: model.id, modelCatalogId: "anthropic/claude-sonnet-5-5", providerId: provider.id, mcpServers } });
@@ -153,6 +153,8 @@ const seedScene = async (scene: Scene, shape: TaskShape): Promise<string> => {
       ...(shape.subState === undefined ? {} : { subState: shape.subState }),
       ...(shape.reviewOf === undefined ? {} : { reviewOfTaskId: shape.reviewOf }),
       agentProfileId: profile.id,
+      // The scenes run at High, as their turns say (the composer's next-turn menu reads it, ticket 11).
+      effort: effortLevelToDb.high,
       driverMemberId: sam,
       creatorMemberId: sam,
       runnerId: runner.id,

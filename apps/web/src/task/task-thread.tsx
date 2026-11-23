@@ -36,6 +36,8 @@ import type { TaskContextValue } from "./task-context";
 import { Bubble } from "./thread/bubble";
 import { Composer } from "./thread/composer";
 import type { ComposerFiles, SentFiles } from "./thread/composer";
+import { showsInterrupt } from "./thread/composer-words";
+import type { ComposerWords } from "./thread/composer-words";
 import { ThreadParts } from "./thread/thread-context";
 import type { ThreadPartsValue } from "./thread/thread-context";
 import { TurnItems } from "./thread/turn-items";
@@ -129,8 +131,10 @@ export type TaskThreadProps = {
   readonly notDriver?: ReactNode;
   /** The composer reopens the task (`tasks.reopen`) instead of sending (ticket 36). */
   readonly canReopen?: boolean;
-  /** The composer's hint line, when the task page has a better one than the agent's. */
-  readonly composerHint?: string | null;
+  /** Milestone 10 (ticket 11): the composer's placeholder, the hint under it and Send's name (`composerWordsOf`). */
+  readonly composerWords?: ComposerWords | null;
+  /** Milestone 10 (ticket 11, F-137): under the composer at its right, the next turn's model and level (`NextTurnMenu`). */
+  readonly composerNextTurn?: ReactNode;
   /** A line in the composer's place when neither send nor reopen applies (a merged task). */
   readonly instead?: ReactNode;
   readonly hasEarlier: boolean;
@@ -155,7 +159,7 @@ const NO_TURNS: readonly UsageTurn[] = [];
 const NO_NAMES: readonly string[] = [];
 const noCi = (): HeadCi | null => null;
 
-export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerHint = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi }: TaskThreadProps) => {
+export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, log, memberId, memberName, canSend, canInterrupt, running, agent, approvalSummary, approvalCard, approvalReceipt, approvalLostRace, questionCard, tail, live, notDriver, canReopen = false, composerWords = null, composerNextTurn = null, instead, hasEarlier, loadEarlier, onFold, composerFiles = null, usageTurns = NO_TURNS, checkoutDirs = NO_NAMES, mcpServers = NO_NAMES, capMicroUsd = null, ciOf = noCi }: TaskThreadProps) => {
   const trpc = useTRPC();
   const [optimistic, setOptimistic] = useState<readonly OptimisticMessage[]>([]);
   const previous = useRef<readonly TaskUIMessage[]>([]);
@@ -380,7 +384,7 @@ export const TaskThread = ({ taskId, taskKind, projectName, ticketKey = null, lo
             {canSend || canReopen ? (
               // parts.md part 1: the box sits right under the thread's 10px end, the composer as wide as the column.
               <div className="max-w-[720px] shrink-0">
-                <Composer interrupt={canSend && running && canInterrupt} onSend={sendText} reopen={!canSend} hint={composerHint} files={composerFiles} />
+                <Composer interrupt={showsInterrupt({ canSend, running, canInterrupt })} onSend={sendText} reopen={!canSend} words={composerWords} nextTurn={composerNextTurn} files={composerFiles} />
               </div>
             ) : instead !== undefined ? (
               <div className="max-w-[720px] shrink-0">{instead}</div>

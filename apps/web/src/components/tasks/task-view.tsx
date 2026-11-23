@@ -21,6 +21,7 @@ import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import { TaskThread } from "@/task/task-thread";
+import { composerWordsOf, showsInterrupt } from "@/task/thread/composer-words";
 import { useTaskLog } from "@/task/use-task-log";
 
 import { TaskAppSupportLine } from "./attachments/attachments-group";
@@ -41,7 +42,7 @@ import { ChangesTab } from "./task-changes/changes-tab";
 import { EventLogTab } from "./task-event-log/event-log-tab";
 import { ChecksTab, checksMarkerOf, checksPropertyOf } from "./task-checks/checks-tab";
 import { ChecksTabMarker } from "./task-checks/task-checks";
-import { TaskEffortRow } from "./task-effort";
+import { NextTurnMenu, TaskEffortRow } from "./task-effort";
 import type { TaskEffort } from "./task-effort";
 import { Properties } from "./task-properties";
 import { TaskStatusLine } from "./task-status-line";
@@ -717,7 +718,27 @@ export const TaskView = ({ taskId }: { readonly taskId: TaskId }) => {
           memberName={memberName}
           canSend={data.capabilities.send}
           canReopen={mode.kind === "reopen"}
-          composerHint={mode.kind === "send" || mode.kind === "reopen" ? (isRefine ? t("draft.composerHint") : ((mode.kind === "send" ? replyHint(needs, agentName) : null) ?? mode.hint)) : null}
+          composerWords={
+            mode.kind === "send" || mode.kind === "reopen"
+              ? composerWordsOf(mode, {
+                  agent: agentName,
+                  running,
+                  interrupt: showsInterrupt({ canSend: data.capabilities.send, running, canInterrupt: data.capabilities.interrupt }),
+                  steers: data.capabilities.steersMidTurn,
+                  waits: needs.some((need) => need.kind === "question") ? "question" : needs.some((need) => need.kind === "plan") ? "plan" : replyHint(needs, agentName) === null ? null : "reply",
+                  refine: isRefine,
+                })
+              : null
+          }
+          composerNextTurn={
+            <NextTurnMenu
+              model={data.messageFiles.model?.name ?? data.agent?.model?.name ?? null}
+              effort={effort}
+              canChange={data.capabilities.setEffort && !finished}
+              pending={setEffort.isPending}
+              onChange={(level) => { setEffort.mutate({ taskId, level }); }}
+            />
+          }
           {...(mode.kind === "merged"
             ? { instead: <MergedHint inboxHref={data.ticket === null ? null : `/projects/${data.projectId}/inbox?ticket=${encodeURIComponent(data.ticket.key)}`} /> }
             : mode.kind === "none" && data.capabilities.reopenBlocked === "spend_cap"

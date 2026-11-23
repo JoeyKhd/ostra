@@ -311,6 +311,27 @@ describe("F-033, F-068: capabilities", () => {
 });
 
 describe("F-032, F-033: reopening", () => {
+  // Milestone 10 (ticket 11, `s2.md`): the composer of a task in review whose box idles reads as a
+  // send for its driver (`Message OpenCode…`, Send): the message reopens it in that same box.
+  it("F-151/c4: the driver of a task in review whose box is idle sends into it (`reopenInBox`); anyone else, a stopped box or a running task doesn't", async () => {
+    const task = await ticketTask("ENG-60", "in_review");
+    await harness.test.db.session.updateMany({ where: { taskId: task.taskId }, data: { state: "idle" } });
+    const box = await harness.test.db.box.create({ data: { organizationId, projectId, taskId: task.taskId, executor: "host", state: "idle", idleSince: new Date() } });
+    expect((await (await member()).tasks.get({ taskId: task.taskId })).capabilities).toMatchObject({ send: false, reopen: true, reopenInBox: true });
+    // Anyone else's message makes them the driver: theirs stays a reopen.
+    expect((await (await admin()).tasks.get({ taskId: task.taskId })).capabilities).toMatchObject({ reopen: true, reopenInBox: false });
+    // The box stopped: a reopen finds a box again, so it says so.
+    await harness.test.db.box.update({ where: { id: box.id }, data: { state: "stopped" } });
+    expect((await (await member()).tasks.get({ taskId: task.taskId })).capabilities).toMatchObject({ reopen: true, reopenInBox: false });
+    // A running task's message is a send.
+    const running = await ticketTask("ENG-61", "running");
+    expect((await (await member()).tasks.get({ taskId: running.taskId })).capabilities).toMatchObject({ send: true, reopenInBox: false });
+    // And the message itself reopens the task in review, as its Send says.
+    await harness.test.db.box.update({ where: { id: box.id }, data: { state: "idle" } });
+    await (await member()).tasks.reopen({ taskId: task.taskId, clientMessageId: messageId(), text: "Set the expressions in the mono font." });
+    expect((await harness.test.db.task.findUniqueOrThrow({ where: { id: task.taskId } })).state).toBe("queued");
+  });
+
   it("reopens a stopped task with the member's message, once per message ID, and makes the member the driver", async () => {
     const task = await ticketTask("ENG-50", "stopped");
     const clientMessageId = messageId();

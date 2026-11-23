@@ -2576,6 +2576,15 @@
       "hint": "Send queues. Interrupt and send stops the current turn.",
       "send": "Send",
       "interruptAndSend": "Interrupt and send",
+      "placeholderAgent": "Message {agent}…",
+      "replyPlaceholder": "Reply to {agent}…",
+      "planPlaceholder": "Ask for changes to the plan…",
+      "hintSteers": "Send reaches {agent} at its next step.",
+      "hintSteersInterrupt": "Send reaches {agent} at its next step. Interrupt and send stops the turn first.",
+      "hintQueues": "Send queues.",
+      "hintAfterAnswer": "Send reaches {agent} after your answer.",
+      "hintPlan": "Send asks {agent} for another plan. To start the work, approve the plan.",
+      "nextTurn": "The next turn's model and effort",
       "attach": {
         "label": "Attach files",
         "tip": "Attach files · or paste or drop them",
@@ -3547,7 +3556,7 @@
       "footnote": "The saved work stays until the box is released at the end of the task."
     },
     "composer": {
-      "idleHint": "The session is idle in the same box. Send starts the next turn.",
+      "idleHint": "The box is idle. Send starts the next turn in it.",
       "reopenHint": "Reopening picks a runner, restores the session and keeps the same branches and PRs.",
       "reopenPlaceholder": "Reopen with a message…",
       "reopen": "Reopen",

@@ -1,6 +1,5 @@
 "use client";
 
-import { PauseIcon } from "lucide-react";
 import { Fragment, useMemo } from "react";
 import type { ReactNode } from "react";
 
@@ -8,22 +7,19 @@ import { liveStepOf, turnItemsOf } from "@ostra/task-view";
 import type { LiveStep, RunStep, TaskUIMessage, TaskUIPart, TurnItem } from "@ostra/task-view";
 
 import { subagentLabel } from "@/components/tasks/subagent-words";
-import { t } from "@/lib/messages";
 
 import { ApprovalNote, DataRow, QuestionBlock } from "../renderers";
 import { useSubagentOwner, useToolPart } from "../task-context";
 import { Captures } from "./captures";
 import { Divider } from "./divider";
 import { FailureLine, NoticeLine } from "./failure-line";
-import { LiveStepLine } from "./live-step";
+import { AskingStepLine, LiveStepLine } from "./live-step";
 import { PrCard } from "./pr-card";
 import { Prose } from "./prose";
 import { Receipt } from "./receipt";
 import { ResultLine } from "./result-line";
 import { RunLine } from "./run-line";
-import { Segments } from "./segments";
 import { useThreadParts } from "./thread-context";
-import { askingStepWords } from "./words";
 
 // Owner: ticket 09 (milestone 10, F-151: the rule of the column, parts.md). One message's items,
 // in its order, each through its part's component (`turnItemsOf`, ticket 03): the panel draws
@@ -36,11 +32,7 @@ const AskingStep = ({ step }: { readonly step: RunStep }) => {
   const owner = useSubagentOwner(step.toolCallId ?? "");
   return (
     <div data-part="asking-step">
-      <div className="my-1.5 -ml-1.5 flex min-h-7 w-fit max-w-full items-center gap-2 whitespace-nowrap px-1.5 text-ui text-text-2">
-        <PauseIcon aria-hidden className="size-[14px] shrink-0 stroke-[1.75] text-muted" />
-        <span className="min-w-0 truncate"><Segments segments={askingStepWords(step, t)} mono="font-mono text-[13.5px]" /></span>
-        <span className="shrink-0 text-sm font-medium text-amber-text">{t("task.doing.needsApproval")}</span>
-      </div>
+      <AskingStepLine step={step} />
       {part === undefined ? null : owner === undefined ? <ApprovalNote part={part} /> : <ApprovalNote part={part} asker={subagentLabel(owner.node)} />}
     </div>
   );
@@ -62,7 +54,7 @@ const Item = ({ item, message, live, retried }: { readonly item: TurnItem; reado
   switch (item.kind) {
     case "run":
       // The turn is in this run: the live step stands in its line's place until the run closes.
-      return item.open && live !== null && live.waiting === null ? <LiveStepLine live={live} /> : <RunLine run={item} message={message} />;
+      return item.open && live !== null && live.waiting === null ? <LiveStepLine live={live} steps={{ run: item, message }} /> : <RunLine run={item} message={message} />;
     case "prose":
       return <Prose part={item.part} />;
     case "captures":

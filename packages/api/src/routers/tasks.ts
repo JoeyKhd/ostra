@@ -599,6 +599,12 @@ export const tasksRouter = router({
         stop: state !== "stopped" && state !== "merged" && state !== "done" && state !== "in_review" && !endedByLimitOrCrash,
         /** Any member who can read the project may reopen: stopped, in review, done, or needing a reopen. */
         reopen: reopenState && reopenBlocked === null,
+        /**
+         * Milestone 10 (F-032, ticket 11; `s2.md`): the driver's message starts the next turn in the
+         * task's idle box. It's still a reopen (the dispatch resumes the box it finds warm, ADR 0039),
+         * so the composer reads as a send there: `Message OpenCode…`, Send, `The box is idle.`
+         */
+        reopenInBox: isDriver && reopenState && reopenBlocked === null && sessionGoing && extras.box?.state === "idle",
         /** Why a task that looks reopenable can't be: a merged task (F-066), another active task on its ticket, or its spend cap. */
         reopenBlocked: reopenState || state === "merged" ? reopenBlocked : null,
         /** The one-click reopen from a limit or a crash needs no message. A spend cap needs its cap raised first. */
