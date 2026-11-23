@@ -166,20 +166,32 @@ test("F-006/c4: an App made without a webhook says its events are off, names the
   await expect(row.getByTestId("events-line")).toHaveText("GitHub can't reach this server. Set OSTRA_CORE_PUBLIC_URL to a public address and restart core, then turn them on here.");
   await expect(row.getByRole("button")).toHaveCount(0);
 
-  // With a public address the page offers Turn on; core, whose address is loopback here, refuses it.
+  // With a public address the page offers Turn on. Core, whose address is loopback here, refuses it,
+  // as one restarted without a public address would, and `appRequest`, asked again, says so too.
+  let possible = true;
   await page.unrouteAll({ behavior: "wait" });
-  await rewrite(page, { "github.connections": withoutWebhook(github.slug), "github.appRequest": publicAddress(true) });
+  await rewrite(page, { "github.connections": withoutWebhook(github.slug), "github.appRequest": (data) => publicAddress(possible)(data) });
   await page.reload();
   await expect(note.getByRole("button", { name: "Turn them on" })).toBeVisible();
   await section.getByRole("button", { name: new RegExp(slug) }).first().click();
   await expect(row).toHaveAttribute("data-state", "off");
   await expect(row.getByTestId("events-line")).toHaveText("Without them, ostra learns of PR changes only on its periodic check, and never sees @ostra in a PR comment.");
+  possible = false;
   await row.getByRole("button", { name: "Turn on" }).click();
   await expect(row.getByRole("alert")).toHaveText(REFUSED);
   await expect(row).toHaveAttribute("data-state", "no-public");
   await expect(note.getByRole("button")).toHaveCount(0);
   await expect(page.getByTestId("shown-once")).toHaveCount(0);
   await expectNoHorizontalScroll(page);
+
+  // The address made public later: the next time `appRequest` answers (here on the window's focus,
+  // its answer 15s old), Turn on is back, without a reload, and the refusal is gone.
+  possible = true;
+  await page.clock.setFixedTime(Date.now() + 60_000);
+  await page.evaluate(() => { window.dispatchEvent(new Event("visibilitychange")); });
+  await expect(row).toHaveAttribute("data-state", "off");
+  await expect(row.getByRole("alert")).toHaveCount(0);
+  await expect(note.getByRole("button", { name: "Turn them on" })).toBeVisible();
 });
 
 test("F-006/c4: Turn on's result shows the App's webhook address, the secret once and the ten events, and leaving it before Done asks first", { tag: "@desktop-only" }, async ({ page }) => {

@@ -394,7 +394,12 @@ export const GitHubView = () => {
   const [status, setStatus] = useStatusLine();
 
   // ---- F-006/c4: Turn on, its result shown once, and leaving it ----
-  const [refusedPublic, setRefusedPublic] = useState(false);
+  /**
+   * Core refused Turn on because the address isn't public: when `github.appRequest` last answered
+   * then (its `dataUpdatedAt`). The refusal stands until it answers again, and then its new answer
+   * rules, so an address made public later brings Turn on back without a reload.
+   */
+  const [refusedAt, setRefusedAt] = useState<number | null>(null);
   const [replacing, setReplacing] = useState<string | null>(null);
   const [leaving, setLeaving] = useState<Leaving | null>(null);
   const turnOn = useMutation(
@@ -405,9 +410,10 @@ export const GitHubView = () => {
         void queryClient.invalidateQueries({ queryKey: trpc.github.connections.queryKey() });
       },
       onError: (error) => {
-        // The address stopped being public: the row goes back to `Off · no public address`.
+        // The address stopped being public: the row goes back to `Off · no public address`, and
+        // `appRequest` is asked again.
         if (error.data?.code === "PRECONDITION_FAILED") {
-          setRefusedPublic(true);
+          setRefusedAt(queryClient.getQueryState(trpc.github.appRequest.queryKey())?.dataUpdatedAt ?? 0);
           void queryClient.invalidateQueries({ queryKey: trpc.github.appRequest.queryKey() });
         }
       },
@@ -422,7 +428,7 @@ export const GitHubView = () => {
   const choosePanel = (next: Panel | null) => { leaveThen(() => { setPanel(next); }); };
   // Every other way out of the page (a link, the shell's keys and palette, Back) asks first too.
   useLeaveGuard(holdingSecret, useCallback((go: () => void) => { setLeaving({ run: go }); }, []));
-  const webhookPossible = request.data === undefined ? undefined : request.data.webhookPossible && !refusedPublic;
+  const webhookPossible = request.data === undefined ? undefined : request.data.webhookPossible && refusedAt !== request.dataUpdatedAt;
   const startTurnOn = (connectionId: GitHubApp["connectionId"]) => {
     turnOn.reset();
     turnOn.mutate({ connectionId });
@@ -433,7 +439,8 @@ export const GitHubView = () => {
       webhookPossible={webhookPossible}
       eventCount={request.data?.events.length}
       turningOn={turnOn.isPending && turnOn.variables.connectionId === app.connectionId}
-      error={turnOn.error !== null && turnOn.variables.connectionId === app.connectionId ? errorText(turnOn.error) : null}
+      // Core's refusal for the address goes once `appRequest` answers that it's public after all.
+      error={turnOn.error !== null && turnOn.variables.connectionId === app.connectionId && !(webhookPossible === true && turnOn.error.data?.code === "PRECONDITION_FAILED") ? errorText(turnOn.error) : null}
       checking={connections.isFetching}
       onTurnOn={() => { startTurnOn(app.connectionId); }}
       onWhichOnes={() => { setPanel({ kind: "once", shown: { kind: "which-ones", connectionId: app.connectionId } }); }}
