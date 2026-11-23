@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- A project's Boards with boards from two trackers (boards-mixed.md). The live boards-view.tsx in the
+     double-sidebar shell, as ../../m10-gaps/prompt-tickets drew it; what's new is each board's mark and
+     connection, the attach picker grouped by connection, and a Jira board's mapping through transitions.
+       ?view=mixed    boards-mixed: Calculator (Linear) and Globex Calculator (Jira); the Jira board selected.
+       ?view=attach   boards-attach: the Linear board selected, the attach picker open on every connection.
+       ?theme=light   the light theme of either.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m11 · Boards with mixed trackers</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="tr.css">
+<style>
+  .page .section { margin-top: 22px; }
+  .page .section.first { margin-top: 18px; }
+  .shead { margin-bottom: 4px; }
+</style>
+</head>
+<body data-space="projects" data-panel="project" data-active="boards">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>calculator</span><i data-lucide="chevron-right" class="chev"></i><b>Boards</b>
+      <div class="right"><span class="btn primary" style="opacity:.45">Save mapping</span></div>
+    </div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page" style="position:relative"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="tr.js"></script>
+<script>
+(() => {
+  const view = new URLSearchParams(location.search).get("view") ?? "mixed";
+  const jira = view === "mixed";
+  document.getElementById("page").innerHTML = `
+    <h1>Boards</h1>
+    <p class="lede">Teams and projects from the organization's trackers whose tickets reach this project's Inbox. Each board maps ostra's steps to its own statuses.</p>
+    <div class="section first">
+      <div class="shead"><h3>Attached</h3><span class="n">2</span></div>
+      ${T.boardRows({ selected: jira ? "PROJ" : "CALC" })}
+      ${T.attachLine({ open: !jira })}
+    </div>
+    <div class="section">
+      <div class="shead"><h3>Prompt tasks</h3></div>
+      ${T.promptOff()}
+    </div>
+    <div class="section">
+      <div class="shead"><h3>Status mapping</h3><span class="sec-note" style="color:var(--faint)">${jira ? 'Globex Calculator · <span class="mono">PROJ</span>' : 'Calculator · <span class="mono">CALC</span>'}</span></div>
+      <p class="sec-note" style="margin-bottom:10px">${jira
+        ? "Drafted from PROJ's workflow. ostra moves a ticket with the workflow's own transitions, never by writing its status."
+        : "Drafted from Linear's status types. Every status of the team is in each picker."}</p>
+      ${jira ? T.jiraMapping() : T.linearMapping()}
+    </div>`;
+  if (!jira) document.getElementById("page").insertAdjacentHTML("beforeend", T.attachMenu("left:52px;top:280px"));
+  document.getElementById("props").innerHTML = jira ? T.jiraBoardPanel() : T.linearBoardPanel();
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+</body>
+</html>

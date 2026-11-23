@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- A tracker connection's page (jira-connect.md, connection-settings.md): /organization/trackers/<id>.
+     While it's pending, the numbered steps; once connected, its settings.
+       ?kind=jira&view=token       jira-connect: step 2, the service account's token, checked and read back.
+       ?kind=jira&view=webhook     jira-connect-webhook: step 3, the admin webhook, waiting for the first delivery.
+       ?kind=jira&view=polling     jira-connect-polling: no public address, so no webhook: polling.
+       ?kind=jira&view=connected   connection-jira: Globex Jira's settings.
+       ?kind=linear&view=connected connection-linear: Acme Linear's settings, today's Linear page re-homed.
+       ?theme=light                the light theme of any of them.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m11 · a tracker connection</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="tr.css">
+<style>
+  .page .section { margin-top: 24px; }
+  .page .section.first { margin-top: 20px; }
+  .page .lede { max-width: 700px; }
+</style>
+</head>
+<body data-space="org" data-panel="org" data-active="trackers">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar" id="bar"></div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="tr.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const kind = q.get("kind") ?? "jira";
+  const view = q.get("view") ?? "token";
+  const { ic, logo } = T;
+  const name = kind === "jira" ? "Globex Jira" : "Acme Linear";
+  const connected = view === "connected";
+  const openIn = kind === "jira" ? "Open in Jira" : "Open in Linear";
+  document.getElementById("bar").innerHTML = `
+    <span>Acme Corp</span><i data-lucide="chevron-right" class="chev"></i><span>Trackers</span><i data-lucide="chevron-right" class="chev"></i><b>${name}</b>
+    <div class="right">${connected ? `<span class="btn">${ic("external-link")}${openIn}</span>` : ""}</div>`;
+  const eyebrow = kind === "jira"
+    ? (connected ? "Jira Cloud · globex.atlassian.net" : "Jira Cloud · connecting")
+    : "Linear · workspace acme";
+  const head = `
+    <div class="cpage-head">${logo(kind, 36)}<div><div class="eyebrow">${eyebrow}</div><h1>${name}${connected ? `<span class="ren" title="Rename">${ic("pencil")}</span>` : ""}</h1></div></div>
+    <p class="lede" style="margin-top:10px">${kind === "jira"
+      ? "ostra signs in as a service account the client owns, with a scoped API token. It hears of changes through one admin webhook, or by polling when this server isn't public. The token never reaches an agent."
+      : "Acme's own Linear app reads tickets and writes back status, one comment and links. Its tokens stay on this server, in the secret store, and never reach an agent."}</p>`;
+  let body = "";
+  let panel = "";
+  if (kind === "jira" && !connected) {
+    const started = `<p class="help" style="margin-top:12px">Started 14:02 by Alex Kim · <span class="teal">Start again</span></p>`;
+    const steps = {
+      token: [T.stepSite("done"), T.stepToken("cur"), T.stepWebhook("later")],
+      webhook: [T.stepSite("done"), T.stepToken("done"), T.stepWebhook("cur")],
+      polling: [T.stepSite("done"), T.stepToken("done"), T.stepWebhook("cur", { polling: true })],
+    }[view];
+    body = `${started}<div class="section first" style="margin-top:14px"><div class="shead"><h3>Connect Jira</h3><span class="n">${view === "token" ? "1" : "2"} of 3</span></div><div class="steps">${steps.join("")}</div></div>`;
+    panel = T.jiraNewPanel({ polling: view === "polling" });
+  } else if (kind === "jira") {
+    body = T.jiraSettings();
+    panel = T.jiraSettingsPanel();
+  } else {
+    body = T.linearSettings();
+    panel = T.linearSettingsPanel();
+  }
+  document.getElementById("page").innerHTML = head + body;
+  document.getElementById("props").innerHTML = panel;
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+<script>T.orgNav();</script>
+</body>
+</html>

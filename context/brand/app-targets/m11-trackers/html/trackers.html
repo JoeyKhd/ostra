@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- Organization › Trackers (trackers.md): the organization's tracker connections, of any kind.
+       (default)      trackers: four connections, Globex Jira selected, its detail in the panel.
+       ?view=picker   trackers-picker: "Connect a tracker", the kinds, Jira picked.
+       ?view=empty    trackers-empty: no connection yet; the kinds on the page itself.
+       ?theme=light   the light theme of any of them.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m11 · Trackers</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="tr.css">
+</head>
+<body data-space="org" data-panel="org" data-active="trackers">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Acme Corp</span><i data-lucide="chevron-right" class="chev"></i><b>Trackers</b>
+      <div class="right" id="bar-right"></div>
+    </div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="tr.js"></script>
+<script>
+(() => {
+  const view = new URLSearchParams(location.search).get("view") ?? "list";
+  const { ic, logo } = T;
+  if (view === "empty") document.body.dataset.conns = "0";
+  document.getElementById("bar-right").innerHTML = view === "empty" ? "" : `<span class="btn primary">${ic("plus")}Connect a tracker</span>`;
+  const head = `
+    <h1>Trackers</h1>
+    <p class="lede">Where the organization's tickets live. Each client can bring its own Linear workspace or Jira site; a project's Boards then attach teams and projects from any of them.</p>`;
+  if (view === "empty") {
+    document.getElementById("page").innerHTML = `${head}
+      <div class="empty-lead">
+        <h3>Connect a tracker</h3>
+        <p>Tickets then become tasks, and ostra keeps their status in step. Until then, tasks start from prompts, and nothing else waits on it.</p>
+        ${T.kinds({ selected: "none" })}
+        <div class="acts-row" style="margin-top:18px"><span class="btn primary" style="opacity:.45">Continue</span><span class="help">Pick one. You can connect more, of either kind, later.</span></div>
+      </div>`;
+    document.getElementById("props").innerHTML = `
+      <div class="group">
+        <h5>How it works</h5>
+        <div class="howto">
+          <div class="hs"><span class="num">1</span><span><b>Connect</b> a Linear workspace or a Jira site, here, once per client.</span></div>
+          <div class="hs"><span class="num">2</span><span><b>Attach</b> its teams or projects on a project's Boards, and map ostra's steps to their statuses.</span></div>
+          <div class="hs"><span class="num">3</span><span><b>Start</b> tasks from the Inbox's tickets. ostra moves each ticket, comments once and links the PR.</span></div>
+        </div>
+      </div>
+      <div class="group">
+        <h5>Kept apart</h5>
+        <p class="help" style="line-height:1.5">Each connection has its own token and webhook, in the secret store. A client's tickets only ever move through its own connection.</p>
+      </div>`;
+  } else {
+    document.getElementById("page").innerHTML = `${head}
+      <div class="section first" style="margin-top:22px">
+        <div class="shead"><h3>Connections</h3><span class="n">4</span></div>
+        ${T.connTable({ selected: view === "picker" ? "" : "globex-jira" })}
+        <div class="foot-note">${ic("lock")}<span>Each connection keeps its own token and webhook. A client's tickets only ever move through its own connection: Globex's never pass through Acme's.</span></div>
+      </div>`;
+    document.getElementById("props").innerHTML = T.connPanel("globex-jira");
+  }
+  if (view === "picker") {
+    document.querySelector(".app").insertAdjacentHTML("beforeend", `<div class="scrim"></div>${T.pickerDialog({ style: "left:50%;top:150px;transform:translateX(-50%)" })}`);
+  }
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+<script>T.orgNav();</script>
+</body>
+</html>

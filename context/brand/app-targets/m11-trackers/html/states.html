@@ -1,0 +1,171 @@
+<!doctype html>
+<!-- Boards of states for milestone 11's tracker targets.
+       ?sheet=trackers  trackers-states: every status a connection row shows, Disconnect, Home's step, a member.
+       ?sheet=jira      jira-connect-states: the Jira steps' failures and checks, the connected rows, Rotate.
+       ?sheet=boards    boards-states: a disconnected connection's board, the status picker, Done by Jira,
+                        prompt tasks on a Jira board.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m11 · states</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="tr.css">
+<style>
+  .board-sheet { align-content: start; gap: 18px 36px; }
+  .colw { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .bframe.p { padding: 4px 16px 0; }
+  .bframe.p .steps { margin-top: 0; border-top: 0; }
+  .bframe.p .stp:last-child { border-bottom: 0; }
+  .bframe .dlg.static { width: auto; border: 0; border-radius: 0; background: var(--raise); }
+  .chk li { list-style: none; display: flex; align-items: center; gap: 14px; min-height: 52px; padding: 6px 14px; border-bottom: 1px solid var(--line); }
+  .chk li:last-child { border-bottom: 0; }
+  .chk .tx { flex: 1; min-width: 0; }
+  .chk .tt { font-weight: 500; }
+  .chk .bd { font-size: 13px; color: var(--muted); }
+  .chk .bd .kd { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); vertical-align: -2px; }
+  .chk .btn svg.lucide { width: 12px; height: 12px; }
+  .mini td { height: 42px !important; }
+</style>
+</head>
+<body>
+<div class="board-sheet" id="sheet"></div>
+<script src="tr.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const sheet = q.get("sheet") ?? "trackers";
+  const { ic, logo, m } = T;
+  const cell = (title, note, body, cls = "") => `<div class="bcell"><h4>${title} <span class="w">${note}</span></h4><div class="bframe ${cls}">${body}</div></div>`;
+  const go = (label, primary = false) => `<span class="btn${primary ? " primary" : ""}">${label}${ic("arrow-right")}</span>`;
+  const chk = (look, n, title, body, acts = "") => `<li>${T.tick(look, n)}<div class="tx"><div class="tt"${look === "done" ? ' style="color:var(--muted)"' : ""}>${title}</div><div class="bd">${body}</div></div>${acts}</li>`;
+  let html = "";
+
+  if (sheet === "trackers") {
+    const list = [
+      { id: "a", kind: "linear", name: "Acme Linear", site: "acme", mode: "webhooks", last: "2m ago", status: "ok" },
+      { id: "b", kind: "jira", name: "Globex Jira", site: "globex.atlassian.net", mode: "polling", last: "40s ago", status: "ok" },
+      { id: "c", kind: "jira", name: "Acme Ops Jira", site: "acme-ops.atlassian.net", mode: "webhooks", last: "–", status: "pending" },
+      { id: "d", kind: "linear", name: "Northwind Linear", site: "northwind", mode: "polling", last: "3h ago", status: "failed" },
+      { id: "e", kind: "jira", name: "Globex Jira", site: "globex.atlassian.net", mode: "webhooks", last: "52m ago", status: "silent" },
+      { id: "f", kind: "jira", name: "Globex Jira", site: "globex.atlassian.net", mode: "webhooks", last: "6m ago", status: "expiring" },
+    ];
+    html = `
+      <div class="sheet-title"><h2>Trackers: states</h2><span>trackers.md. Red marks an error or a deadline; no amber here, since the needs-you item for an admin carries it.</span></div>
+      <div class="colw">
+        ${cell("Every status a row shows", "connected by webhooks and by polling, pending, failed, webhooks silent, a token near its date", T.connTable({ selected: "", list }).replace('class="t conns"', 'class="t conns mini"'))}
+        <p class="help" style="margin-top:-8px;line-height:1.5">Silent: no delivery for 30 min while polling still finds changes; the panel says <i>Silent since 14:02 · polling still finds changes</i>. Token expires: 14 days before the date the admin gave, then Failed on the day.</p>
+        ${cell("Home's step, by state", "pending, failed, done, skipped", `<ol class="chk">
+          ${chk("cur", 4, "Connect a tracker", "Started Globex Jira: add the webhook in Jira to finish.", go("Continue", true))}
+          ${chk("fail", 4, "Connect a tracker", `<span class="red" style="display:inline-flex;vertical-align:-2px">${ic("triangle-alert", "i13")}</span> Jira refused Globex Jira's token. Replace it to finish.`, go("Replace the token"))}
+          ${chk("done", 4, "Connect a tracker", `Connected <span class="kd">${logo("jira", 14)}Globex Jira</span>.`)}
+          ${chk("later", 4, "Connect a tracker", "Skipped. Tasks start from prompts until you connect one.", '<span class="teal" style="font-size:14px">Connect a tracker</span>')}
+        </ol>`)}
+      </div>
+      <div class="colw">
+        ${cell("Disconnect", "from the connection's page; its boards stay attached, paused", `<div class="dlg static" role="alertdialog">
+          <h4>Disconnect Globex Jira?</h4>
+          <p>ostra stops the webhook and polling for <b style="font-weight:500;color:var(--text)">globex.atlassian.net</b> and deletes its token from the secret store. Its 2 boards, on calculator and globex-shop, stay attached but paused: their tickets and tasks stay, read-only, and no ticket moves.</p>
+          <p>Connecting the same site again resumes them. Delete the webhook in Jira yourself: ostra can't.</p>
+          <div class="acts"><span class="btn">Cancel</span><span class="btn danger">Disconnect</span></div>
+        </div>`)}
+        ${cell("A member", "the same list, no controls", `<div style="padding:12px 16px">
+          <div class="infol">${ic("info")}<span>Only the organization's admins connect, change or disconnect trackers.</span></div>
+          <p class="help" style="margin-top:8px">No <b style="font-weight:500">Connect a tracker</b> in the top bar; a connection's page shows its rows without Copy, Replace, Rotate or Disconnect, and never its webhook URL or secret.</p>
+        </div>`)}
+        ${cell("The site is already connected", "step 1, on Find the site", `<div style="padding:12px 16px">
+          <div class="fl"><span class="lb">Site</span><span class="inp err"><span class="pre">https://</span>globex<span class="pre">.atlassian.net</span></span></div>
+          <div class="alertl red" style="margin-top:8px" role="alert">${ic("triangle-alert")}<span>globex.atlassian.net is already connected, as <b style="font-weight:500">Globex Jira</b>. <span class="teal">Open it →</span></span></div>
+        </div>`)}
+      </div>`;
+  }
+
+  if (sheet === "jira") {
+    const site1 = `<div class="steps"><div class="stp">${T.tick("cur", 1)}<div>
+        <div class="st1">The site</div>
+        <div class="form">
+          <div class="fl"><span class="lb">Site</span><span class="inp err"><span class="pre">https://</span>globex-shop<span class="pre">.atlassian.net</span></span></div>
+          <div class="alertl red" role="alert">${ic("triangle-alert")}<span>No Jira Cloud site answers at globex-shop.atlassian.net. Check the name in the browser's address bar when you're in Jira.</span></div>
+          <div class="acts-row"><span class="btn primary">Find the site</span></div>
+        </div></div></div></div>`;
+    const tokenStep = (opts, acts) => `<div class="steps"><div class="stp">${T.tick("cur", 2)}<div>
+        <div class="st1">The service account and its token</div>
+        ${T.readback(opts)}
+        <div class="acts-row" style="margin-top:12px">${acts}</div>
+      </div></div></div>`;
+    html = `
+      <div class="sheet-title"><h2>Connecting Jira: states</h2><span>jira-connect.md. Each step's failure says what Jira answered and what to change.</span></div>
+      <div class="colw">
+        ${cell("Step 1: no site there", "Find the site reads the site's tenant info; nothing answered", site1, "p")}
+        ${cell("Step 2: the token is refused", "Check the token, after a 401", tokenStep({ failed: true }, '<span class="btn primary">Check the token</span><span class="help">Nothing is saved until it passes.</span>'), "p")}
+        ${cell("Step 2: it signs in, but can't do everything", "warnings, not errors: it can be saved", tokenStep({ partial: true }, '<span class="btn primary">Save anyway</span><span class="btn">Check again</span><span class="help">OPS can be attached once it can transition.</span>'), "p")}
+      </div>
+      <div class="colw">
+        ${cell("Step 3: a delivery with the wrong secret", "ostra refused it; the step stays open", `<div style="padding:4px 16px 14px">${T.stepWebhook("cur", { badSig: true, compact: true })}</div>`)}
+        ${cell("Connected", "the first delivery arrived: the connection's page, its top rows", `<div style="padding:6px 16px 8px">
+          <div class="conn-row" style="border-top:0"><span class="dot green"></span><span class="green" style="font-weight:500">Connected</span><span class="mono">globex.atlassian.net</span><span class="e" style="display:inline-flex;align-items:center;gap:5px;font-family:var(--sans)"><span class="green" style="display:inline-flex">${ic("check", "i14")}</span>Just connected</span></div>
+          <div class="kv" style="border-top:0">
+            <div class="r"><span class="k">Token</span><span class="v">${'<span class="redi">' + ic("triangle-alert") + '</span>'}Expires in 9 days, on 2 Dec<span class="muted">· paste a new one</span></span><span class="e"><span class="teal">Replace</span></span></div>
+            <div class="r"><span class="k">Token, expired</span><span class="v">${'<span class="redi">' + ic("triangle-alert") + '</span>'}Jira refused the token on 2 Dec. Polling and writes have stopped.</span><span class="e"></span></div>
+            <div class="r" style="border-bottom:0"><span class="k">Mode</span><span class="v">${'<span class="redi">' + ic("triangle-alert") + '</span>'}Webhooks: silent since 14:02<span class="muted">· polling still finds changes</span></span><span class="e"></span></div>
+          </div></div>`)}
+        ${cell("Rotate the secret", "from Events; the new one shows once, as on step 3", `<div class="dlg static" role="alertdialog">
+          <h4>Rotate the webhook secret?</h4>
+          <p>Jira keeps signing with the old secret until you paste the new one in the webhook's settings. Until then ostra refuses every delivery, and tickets arrive only by the 5-minute backstop.</p>
+          <div class="acts"><span class="btn">Cancel</span><span class="btn danger">Rotate the secret</span></div>
+        </div>`)}
+      </div>`;
+  }
+
+  if (sheet === "boards") {
+    const paused = [
+      T.boards[0],
+      { kind: "jira", name: "Globex Calculator", via: "Globex Jira · disconnected", key: "PROJ", open: 9, paused: true, act: `<span class="dot grey"></span>Paused` },
+    ];
+    html = `
+      <div class="sheet-title"><h2>Boards with mixed trackers: states</h2><span>boards-mixed.md.</span></div>
+      <div class="colw">
+        ${cell("A board whose connection was disconnected", "it stays attached, paused and read-only; connecting the site again resumes it", `<div style="padding:0 0 10px">${T.boardRows({ selected: "", list: paused })}
+          <div class="infol" style="padding:10px 12px 0">${ic("pause")}<span>Globex Jira was disconnected on 20 Nov, so PROJ's tickets stay as they were and nothing moves on Jira. <span class="teal">Trackers →</span></span></div></div>`)}
+        ${cell("A target status, picked", "the picker lists the workflow's statuses by category, and says which can't be reached", `<div style="position:relative;height:342px;padding:12px 14px">
+          <div class="mrow tr" style="border:0;padding:0"><div><div class="n">In review</div><div class="h">At the task's first PR</div></div><div>${`<div class="ctl open" style="max-width:300px;outline:2px solid var(--teal);outline-offset:1px"><span class="stcat ind"></span>In Review${ic("chevron-down", "chev")}</div>`}</div></div>
+          <div class="menu" style="left:230px;top:50px;width:330px">
+            <div class="ml">To Do</div>
+            <div class="mi"><span class="stcat new"></span>To Do<span class="r">reached from 3 of 5</span></div>
+            <div class="mi"><span class="stcat new"></span>Backlog<span class="r">reached from 1 of 5</span></div>
+            <div class="ml">In progress</div>
+            <div class="mi"><span class="stcat ind"></span>In Progress<span class="r">reached from 4 of 5</span></div>
+            <div class="mi"><span class="stcat ind"></span>Blocked<span class="r">reached from 1 of 5</span></div>
+            <div class="mi on"><span class="stcat ind"></span>In Review<span class="r">not from Blocked</span><span class="ck" style="margin-left:8px">${ic("check", "i14")}</span></div>
+            <div class="ml">Done</div>
+            <div class="mi"><span class="stcat done"></span>Done<span class="r">from any status</span></div>
+          </div></div>`)}
+      </div>
+      <div class="colw">
+        ${cell("Done is moved by Jira automation", "ostra leaves Done alone; it can't see Jira's rules, so it says so", `<div style="padding:12px 14px">
+          <div class="mrow" style="border:0;padding:0;min-height:0"><div><div class="n">Done is moved by</div></div><div style="display:flex;align-items:center;gap:14px"><span class="seg"><span class="on">Jira automation</span><span>ostra</span></span></div></div>
+          <div class="infol" style="margin-top:10px">${ic("info")}<span>ostra won't move PROJ tickets to Done. Make sure a Jira automation rule does it when a pull request merges: Jira's GitHub integration alone only links the PR.</span></div>
+          <p class="sec-note" style="margin:12px 0 4px">What the next task does on the ticket</p>
+          ${[["When the task starts, ostra moves it to ", "In Progress", " by Start progress, and comments once with a link to the task."], ["At the first PR, ostra moves it to ", "In Review", " by Ready for review, and links the PR."], ["When the last PR merges, your Jira automation moves it to ", "Done", ". ostra doesn't."]]
+            .map(([a, b, c], i) => `<div style="display:grid;grid-template-columns:24px 1fr;font-size:13.5px;color:var(--muted);line-height:22px"><span class="mono faint">${i + 1}</span><span>${a}<b style="font-weight:500;color:var(--text)">${b}</b>${c}</span></div>`).join("")}
+        </div>`)}
+        ${cell("Prompt tasks on, two kinds attached", "the board picker shows each board's mark", `<div style="padding:4px 14px 12px;position:relative;height:250px">
+          <div class="pset" style="border:0"><span class="sw on" role="switch" aria-checked="true"></span>
+            <div><div class="lb">Make a ticket for every prompt task</div><div class="ex">Each task a member starts from a prompt gets a ticket on <b>Globex Calculator</b> as it starts. Refine tasks make theirs from their draft.</div>
+            <div class="pick"><span class="pl">Board</span><span class="select open" style="width:260px">${logo("jira", 15)}Globex Calculator <span class="mono">· PROJ</span>${ic("chevron-down", "chev")}</span></div></div></div>
+          <div class="menu" style="left:104px;top:136px;width:260px">
+            <div class="mi">${logo("linear", 15)}Calculator <span class="mono">· CALC</span></div>
+            <div class="mi on">${logo("jira", 15)}Globex Calculator <span class="mono">· PROJ</span><span class="ck">${ic("check", "i14")}</span></div>
+          </div></div>`)}
+      </div>`;
+  }
+
+  document.getElementById("sheet").innerHTML = html;
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>

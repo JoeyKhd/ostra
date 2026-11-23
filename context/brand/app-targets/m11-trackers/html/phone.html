@@ -1,0 +1,101 @@
+<!doctype html>
+<!-- Milestone 11's tracker screens on a phone (390×844), where the layout changes.
+       ?scene=list     trackers-phone: Organization › Trackers, each connection a two-line card.
+       ?scene=jira     jira-connect-phone: step 3 of connecting Jira, the fields stacked.
+       ?scene=boards   boards-phone: a project's Boards, a Linear team and a Jira project, the mapping stacked.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m11 · phone</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="tr.css">
+<style>
+  .ph .pbody .eyebrow { font-size: 12.5px; }
+  .ph .stp { padding: 12px 0; }
+  .ph .stp .st1 { font-size: 15px; }
+  .ph .stp .st1 .r { display: none; }
+  .ph .sb { font-size: 14px; }
+  .ph .cfield .k { font-size: 13px; }
+  .ph .evt .chip { height: 26px; font-size: 13px; }
+  .ph .wait { flex-wrap: wrap; }
+  .ph .wait .r { margin-left: 22px; }
+  .ph .cfield > * { min-width: 0; }
+  .mstack { border-top: 1px solid var(--line); }
+  .mstack .it { padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .mstack .n { font: 500 15px var(--sans); }
+  .mstack .h { font-size: 12.5px; color: var(--faint); margin-bottom: 7px; }
+  .mstack .ctl { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); font-size: 15px; }
+  .mstack .ctl .chev { margin-left: auto; color: var(--faint); width: 16px; height: 16px; }
+  .ph .brow.k { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 12px; align-items: start; min-height: 0; padding: 11px 4px; }
+  .ph .brow.k .meta3 { grid-column: 2; display: flex; gap: 10px; font-size: 13px; color: var(--muted); margin-top: 4px; align-items: center; }
+</style>
+</head>
+<body class="phone">
+<div class="ph" id="ph" style="position:relative"></div>
+<script src="tr.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const scene = q.get("scene") ?? "list";
+  const { ic, logo, m } = T;
+  const bar = (left, title, right = "") => `<div class="pbar"><span class="ib">${ic(left)}</span><span class="tt">${title}</span><span class="r">${right}</span></div>`;
+  let html = "";
+  if (scene === "list") {
+    const card = (c, line3) => `<div class="pcard">${logo(c.kind, 20)}<div><div class="l1">${c.name}</div><div class="l2">${c.site}</div><div class="l3">${line3}</div></div><span class="chev2">${ic("chevron-right")}</span></div>`;
+    const [a, b, c, d] = T.conns;
+    html = `${bar("menu", "Trackers", `<span class="ib">${ic("plus")}</span>`)}
+      <div class="pbody">
+        <h1>Trackers</h1>
+        <p class="lede">Each client's Linear workspace or Jira site. A project's Boards attach teams and projects from any of them.</p>
+        <div style="margin-top:18px">
+          ${card(a, `<span class="cst ok"><span class="dot green"></span>Connected</span><span>Webhooks</span><span class="mono">2m ago</span>`)}
+          ${card(b, `<span class="cst ok"><span class="dot green"></span>Connected</span><span>Webhooks</span><span class="mono">6m ago</span>`)}
+          ${card(c, `<span class="cst pend"><span class="ring"></span>Pending</span><span>No delivery yet</span>`)}
+          ${card(d, `<span class="cst bad"><span class="dot red"></span>Failed</span><span>Token refused</span>`)}
+        </div>
+        <div class="foot-note" style="margin-top:14px">${ic("lock")}<span>Each connection keeps its own token and webhook.</span></div>
+      </div>`;
+  }
+  if (scene === "jira") {
+    html = `${bar("arrow-left", "Globex Jira")}
+      <div class="pbody" style="padding-top:14px">
+        <div style="display:flex;align-items:center;gap:12px">${logo("jira", 30)}<div><div class="eyebrow">Jira Cloud · connecting</div><h1 style="margin:0;font-size:22px">Globex Jira</h1></div></div>
+        <div class="steps" style="margin-top:14px">
+          <div class="stp settled">${T.tick("done")}<div><div class="st1">The site</div><div class="sb mono" style="font-size:13px">globex.atlassian.net</div></div></div>
+          <div class="stp settled">${T.tick("done")}<div><div class="st1">The service account</div><div class="sb"><span class="mono">ostra-bot</span> sees 3 projects</div></div></div>
+          <div class="stp">${T.tick("cur", 3)}<div>
+            <div class="st1">The admin webhook</div>
+            <div class="sb">In Jira, <b>Settings › System › WebHooks</b>, then <b>Create a WebHook</b>:</div>
+            <div class="cfield"><span class="k">URL</span><div class="copyf"><span class="fv">https://ostra.acme.dev/webhooks/jira/cn_4r8tz2</span><span class="cb">${ic("copy")}</span></div></div>
+            <div class="cfield"><span class="k">Secret</span><div class="copyf"><span class="fv">b81f6c2e94d0a7f35e1c8b29d64a0f17</span><span class="cb done">${ic("check")}</span></div></div>
+            <div class="cfield"><span class="k">Events</span><div class="evt">${T.jiraEvents.map((e) => `<span class="chip">${ic("check")}${e}</span>`).join("")}</div></div>
+            <div class="wait"><span class="spin"></span><span>Waiting for the first delivery…</span><span class="r">Use polling instead</span></div>
+          </div></div>
+        </div>
+      </div>`;
+  }
+  if (scene === "boards") {
+    const row = (b) => `<div class="brow k${b.key === "PROJ" ? " on" : ""}">${logo(b.kind, 20)}<div><div class="nm" style="font-weight:500;font-size:15px">${b.name} <span class="mono faint" style="font-size:13px;font-weight:400">${b.key}</span></div><div class="meta3"><span>${b.via}</span></div><div class="meta3"><span>${m(b.open)} open</span><span class="dot green"></span>${b.key === "PROJ" ? "6m ago" : "2m ago"}</div></div><span class="chev2" style="color:var(--faint)">${ic("chevron-right")}</span></div>`;
+    html = `${bar("menu", "Boards", `<span class="ib">${ic("plus")}</span>`)}
+      <div class="pbody">
+        <h1>Boards</h1>
+        <div class="shead" style="margin-top:12px"><h3>Attached</h3><span class="n">2</span></div>
+        <div class="brows">${T.boards.map(row).join("")}</div>
+        <div class="shead" style="margin-top:16px"><h3>Status mapping</h3><span class="sec-note" style="color:var(--faint)"><span class="mono">PROJ</span></span></div>
+        <div class="mstack">
+          <div class="it"><div class="n">Started</div><div class="h">When the task starts</div><div class="ctl"><span class="stcat ind"></span>In Progress${ic("chevron-down", "chev")}</div><div class="via-line">${ic("corner-down-right")}<span>by <b>Start progress</b>, from To Do or Backlog</span></div></div>
+          <div class="it"><div class="n">In review</div><div class="h">At the task's first PR</div><div class="ctl"><span class="stcat ind"></span>In Review${ic("chevron-down", "chev")}</div>
+            <div class="warnl" style="display:flex;gap:6px;margin-top:7px;font-size:13px;line-height:1.45;color:var(--text-2)"><span class="redi" style="margin-top:2px">${ic("triangle-alert")}</span><span>No transition reaches In Review from <b style="font-weight:500">Blocked</b>.</span></div></div>
+        </div>
+      </div>`;
+  }
+  document.getElementById("ph").innerHTML = html;
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>

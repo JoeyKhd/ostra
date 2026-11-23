@@ -1,0 +1,96 @@
+<!doctype html>
+<!-- Home for a new organization (setup-checklist.md): the first-run checklist, its fourth step now
+     "Connect a tracker", Linear or Jira, skippable as today. The rest is ../../m2/home-first-run, in
+     milestone 8's shell.
+       (default)      setup-checklist: three steps done, "Connect a tracker" the next one.
+       ?theme=light   setup-checklist-light.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m11 · Set up ostra</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="tr.css">
+<style>
+  .chk { border-top: 1px solid var(--line); }
+  .chk li { list-style: none; display: flex; align-items: center; gap: 14px; min-height: 54px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .chk .tx { flex: 1; min-width: 0; }
+  .chk .tt { font-weight: 500; }
+  .chk .settled .tt { color: var(--muted); }
+  .chk .bd { font-size: 13.5px; color: var(--muted); }
+  .chk .bd .kd { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); vertical-align: -2px; }
+  .chk .bd .kd .tl { margin-top: -1px; }
+  .chk .docs { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); margin-left: 4px; }
+  .chk .docs svg.lucide { width: 12px; height: 12px; }
+  .chk .acts { display: flex; align-items: center; gap: 16px; flex: none; }
+  .chk .btn svg.lucide { width: 12px; height: 12px; }
+  .chk .tick.done svg.lucide { width: 13px; height: 13px; }
+  .stat .big { font: 600 28px/1.2 var(--mono); }
+</style>
+</head>
+<body data-space="home" data-panel="home" data-active="overview">
+<div class="app">
+  <nav class="rail" aria-label="Spaces"></nav>
+  <aside class="ctx"></aside>
+  <section class="main">
+    <div class="bar">
+      <span>Acme Corp</span><i data-lucide="chevron-right" class="chev"></i><b>Home</b>
+    </div>
+    <div class="content">
+      <div class="page"><div class="inner" id="page"></div></div>
+      <aside class="props" id="props"></aside>
+    </div>
+  </section>
+</div>
+<script src="tr.js"></script>
+<script>
+(() => {
+  const { ic, logo } = T;
+  const docs = `<span class="docs">${ic("book-open")}Docs</span>`;
+  const row = (look, n, title, body, acts = "") => `
+    <li class="${look === "done" ? "settled" : ""}">${T.tick(look, n)}
+      <div class="tx"><div class="tt">${title}</div><div class="bd">${body} ${docs}</div></div>
+      ${acts ? `<div class="acts">${acts}</div>` : ""}
+    </li>`;
+  const go = (label, primary = false) => `<span class="btn${primary ? " primary" : ""}">${label}${ic("arrow-right")}</span>`;
+  document.getElementById("page").innerHTML = `
+    <div class="eyebrow">Monday 23 November</div>
+    <h1>Acme Corp</h1>
+    <p class="lede">Your organization's projects and what waits on you.</p>
+    <div class="section">
+      <div class="shead"><h3>Set up ostra</h3><span class="more mono" style="color:var(--faint)">3 of 7</span></div>
+      <ol class="chk">
+        ${row("done", 1, "Create the first admin", "You're signed in as the admin.")}
+        ${row("done", 2, "Add a model provider", "A base URL and a token. ostra lists the models and tests the connection.")}
+        ${row("done", 3, "Connect GitHub", "A GitHub App opens every pull request. Use an existing App or create one.")}
+        ${row("cur", 4, "Connect a tracker", `<span class="kd">${logo("linear", 14)}Linear</span> or <span class="kd">${logo("jira", 14)}Jira</span>: tickets become tasks, and ostra keeps their status in step. Skip it to run on prompts alone.`, `<span class="teal" style="font-size:14px">Skip for now</span>${go("Connect a tracker", true)}`)}
+        ${row("later", 5, "Create a project", "Pick a repo. ostra drafts its environment from the repo's files.", go("Create a project"))}
+        ${row("later", 6, "Connect a runner", "Run one command on a machine. Tasks run there.", go("Connect a runner"))}
+        ${row("later", 7, "Start the first task", "Type a prompt and watch the agent work, then review its pull request.", go("New task"))}
+      </ol>
+    </div>
+    <div class="section">
+      <div class="shead"><h3>Projects</h3><span class="n">0</span></div>
+      <div class="rows"><div class="r muted">No projects yet. Create one from the checklist.</div></div>
+    </div>`;
+  document.getElementById("props").innerHTML = `
+    <div class="group stat">
+      <h5>Pull requests opened, last 7 days</h5>
+      <div class="big">0</div>
+      <div class="muted" style="font-size:14px">0 opened today</div>
+    </div>
+    <div class="group">
+      <h5>Spend, November <span class="faint">–</span></h5>
+    </div>
+    <div class="group">
+      <h5>Runners <span class="mono">0 busy · 0 queued</span></h5>
+      <div class="muted" style="font-size:14px">No runner yet.</div>
+    </div>`;
+})();
+</script>
+<script src="../../m8/html/shell.js"></script>
+<script>T.homeNav();</script>
+</body>
+</html>

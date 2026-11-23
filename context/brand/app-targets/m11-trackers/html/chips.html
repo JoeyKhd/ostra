@@ -1,0 +1,131 @@
+<!doctype html>
+<!-- Ticket chips (ticket-chips.md): one board of every place a ticket shows, with its tracker's mark,
+     for a project whose boards come from Linear and Jira. Not whole pages: each cell is the part of
+     the live page that changes.
+       (default)      ticket-chips.
+       ?theme=light   ticket-chips-light.
+     Demo data. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ostra · m11 · ticket chips</title>
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="../../m8/html/m8.css">
+<link rel="stylesheet" href="../../m10-gaps/html/gaps.css">
+<link rel="stylesheet" href="tr.css">
+<style>
+  .board-sheet { align-content: start; gap: 20px 40px; }
+  .span2 { grid-column: 1 / -1; }
+  .prio { display: flex; color: var(--muted); }
+  .prio svg { width: 14px; height: 14px; }
+  .hdr { padding: 14px 18px 16px; }
+  .hdr + .hdr { border-top: 1px solid var(--line); }
+  .hdr .eyebrow { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+  .hdr h1 { font-size: 21px; margin: 3px 0 8px; }
+  .panelc { padding: 14px 18px; }
+  .panelc .group + .group { margin-top: 12px; padding-top: 12px; }
+  .msgh { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 14.5px; }
+  .msgh + .msgh { border-top: 1px solid var(--line); }
+  .msgh .ava { width: 26px; height: 26px; margin: 0; }
+  .msgh .meta { display: inline-flex; align-items: center; gap: 6px; }
+  .else .r { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 14px; white-space: nowrap; }
+  .else .r:last-child { border-bottom: 0; }
+  .else .r .w { width: 82px; flex: none; font-size: 12.5px; color: var(--faint); }
+  .else .live2 { display: flex; flex-direction: column; line-height: 1.3; }
+  .else .live2 .d { font: 400 12px var(--mono); color: var(--faint); display: inline-flex; align-items: center; gap: 5px; }
+  .colw { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .cap2 { font: 500 12px var(--sans); color: var(--faint); padding: 8px 10px 2px; }
+</style>
+</head>
+<body>
+<div class="board-sheet" id="sheet"></div>
+<script src="tr.js"></script>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+  const { ic, logo, tkey } = T;
+  const prio = (n) => `<span class="prio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">${[0, 1, 2].map((i) => `<path d="M${6 + i * 6} 19V${14 - i * 4}" stroke="${i < n ? "currentColor" : "var(--line-2)"}"/>`).join("")}</svg></span>`;
+  const st = (icon, name) => `<span class="ss">${ic(icon, "i14")}${name}</span>`;
+  const irow = (kind, key, title, extra, status, age, { mono = true, on = false, p = 2 } = {}) => `
+    <div class="irow${on ? " on" : ""}">${prio(p)}${tkey(kind, key, { mono })}<span class="tt">${title}${extra}</span>${status}<span class="ag">${age}</span></div>`;
+  const rows = (mono) => [
+    irow("linear", "CALC-170", "Fix rounding in percent mode", '<span class="chip">bug</span>', st("contrast", "In Progress"), "4m", { mono, on: true, p: 3 }),
+    irow("jira", "PROJ-12", "Checkout total ignores the coupon", '<span class="chip">bug</span>', st("circle", "To Do"), "18m", { mono, p: 3 }),
+    irow("jira", "PROJ-14", "Split the payment form", `<span class="chip" title="2 sub-tasks">${ic("list-tree")}2</span>`, st("circle", "Backlog"), "1h", { mono, p: 2 }),
+    irow("linear", "CALC-177", "Add a CONTRIBUTING.md", "", st("circle", "Todo"), "2h", { mono, p: 1 }),
+  ];
+  document.getElementById("sheet").innerHTML = `
+    <div class="sheet-title"><h2>Ticket chips</h2><span>calculator, with a Linear team (CALC, Acme Linear) and a Jira project (PROJ, Globex Jira). The mark is in its brand colour where it names the tracker once, and in the key's colour where it repeats.</span></div>
+
+    <div class="bcell span2">
+      <h4>Inbox <span class="w">the mark before each key, in the key's colour; the tracker's name in its tooltip</span></h4>
+      <div class="bframe">${rows(true).join("")}</div>
+    </div>
+
+    <div class="colw">
+      <div class="bcell">
+        <h4>A task's header <span class="w">brand colour: it names the tracker once</span></h4>
+        <div class="bframe">
+          <div class="hdr">
+            <div class="eyebrow">${logo("jira", 14)}<span class="mono" style="color:var(--faint)">PROJ-12 · from Jira</span></div>
+            <h1>Checkout total ignores the coupon</h1>
+            <div class="chips-row"><span class="chip"><span class="stcat ind"></span>In Progress</span><span class="chip">bug</span><span>· High priority</span><span class="link">Open in Jira ${ic("arrow-up-right")}</span></div>
+          </div>
+          <div class="hdr" style="padding-top:11px;padding-bottom:12px">
+            <div class="eyebrow">${logo("linear", 14)}<span class="mono" style="color:var(--faint)">CALC-170 · from Linear</span><span class="faint" style="margin-left:auto;font-size:12.5px">a Linear task, the same line</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="bcell">
+        <h4>What the agent got <span class="w">a meta line in the thread: the key's colour. Jira's ADF arrives as the same markdown</span></h4>
+        <div class="bframe">
+          <div class="msgh"><span class="ava">${ic("ticket")}</span><b>What the agent got</b><span class="meta">14:02 · ${logo("jira", 13, true)}PROJ-12 from Jira</span></div>
+          <div class="msgh"><span class="ava">${ic("ticket")}</span><b>What the agent got</b><span class="meta">09:41 · ${logo("linear", 13, true)}CALC-170 from Linear</span></div>
+        </div>
+      </div>
+      <div class="bcell">
+        <h4>Elsewhere <span class="w">repeated rows: the key's colour</span></h4>
+        <div class="bframe else">
+          <div class="r"><span class="w">Sidebar, live</span><span class="dot green"></span><span class="live2"><span>Checkout total ignores the coupon</span><span class="d">${logo("jira", 12, true)}PROJ-12 · Editing cart.ts</span></span></div>
+          <div class="r"><span class="w">Search</span>${tkey("jira", "PROJ-12")}<span>Checkout total ignores the coupon</span><span class="faint" style="margin-left:auto;font-size:12.5px">Globex Jira</span></div>
+          <div class="r"><span class="w">New task</span><span class="muted">It gets a ticket on</span><span style="display:inline-flex;align-items:center;gap:6px">${logo("jira", 15)}<b style="font-weight:500">Globex Calculator</b></span><span class="muted">as it starts.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="colw">
+      <div class="bcell">
+        <h4>The task's Ticket group <span class="w">the properties panel; Tracker and Sub-tasks rows are new</span></h4>
+        <div class="bframe panelc">
+          <div class="group">
+            <h5>Ticket</h5>
+            <div class="prop"><span class="k">Key</span><span class="v mono teal">PROJ-12</span></div>
+            <div class="prop"><span class="k">Tracker</span><span class="v">${logo("jira", 16)}Jira<span class="faint">· Globex Jira</span></span></div>
+            <div class="prop"><span class="k">Status</span><span class="v"><span class="stcat ind"></span>In Progress</span></div>
+            <div class="prop"><span class="k">Board</span><span class="v">Globex Calculator</span></div>
+            <div class="prop"><span class="k">Sub-tasks</span><span class="v"><span class="mono">2</span><span class="faint">· 1 done</span></span></div>
+            <div class="prop"><span class="k">Synced</span><span class="v mono">40 s ago</span></div>
+          </div>
+          <div class="group">
+            <h5>On Jira</h5>
+            <div class="sync"><span>Moved to In Progress</span><span class="f">by Start progress</span><span class="s green">done</span></div>
+            <div class="sync"><span>Progress comment</span><span class="s muted">posted</span></div>
+            <div class="sync"><span>Linked the task</span><span class="f">remote link</span><span class="s green">done</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="bcell">
+        <h4>Not taken: the brand colour in the Inbox too <span class="lbl-nt">for comparison</span></h4>
+        <div class="bframe">
+          <div class="cap2">Taken · the key's colour</div>${rows(true).slice(1, 3).join("")}
+          <div class="cap2" style="border-top:1px solid var(--line)">Not taken · brand colour on every row</div>${rows(false).slice(1, 3).join("")}
+        </div>
+      </div>
+    </div>
+    </div>`;
+  window.addEventListener("load", () => { lucide.createIcons(); document.body.dataset.ready = "1"; });
+})();
+</script>
+</body>
+</html>
