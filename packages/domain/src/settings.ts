@@ -43,6 +43,8 @@ export const settingNames = [
   "OSTRA_GITHUB_API_URL",
   "OSTRA_GITHUB_LFS_HOSTS",
   "OSTRA_LINEAR_API_URL",
+  // Milestone 11 (spec section 5.5): Jira Cloud's gateway and sites, or the fake Jira in tests.
+  "OSTRA_JIRA_API_URL",
   "OSTRA_DATA_DIR",
   "OSTRA_SECRETS_KEY",
   "OSTRA_RUNNER_TOKEN_KEY",
@@ -184,6 +186,11 @@ export const settingFields = {
   OSTRA_LINEAR_API_URL: {
     default: "https://api.linear.app/graphql",
     description: "Linear's GraphQL API the panel and core read and write tickets through: a fake Linear in tests, whose origin then serves Connect Linear's new-app form, consent and token endpoints too.",
+  },
+  OSTRA_JIRA_API_URL: {
+    default: "unset: Jira's own (https://api.atlassian.com, and each site's https://<site>.atlassian.net)",
+    description:
+      "Where the panel and core reach Jira Cloud: unset, Atlassian's gateway for every call and each site's own address for step 1's lookup. Set it only to a fake Jira in tests: the gateway and the site lookup then both go to it.",
   },
   OSTRA_GITHUB_LFS_HOSTS: {
     default: GITHUB_COM_LFS_HOSTS.join(","),
@@ -670,6 +677,7 @@ const rawSettingsSchema = z.strictObject({
   OSTRA_CORE_INTERNAL_URL: url.optional().describe(describe("OSTRA_CORE_INTERNAL_URL")),
   OSTRA_GITHUB_API_URL: url.default("https://api.github.com").describe(describe("OSTRA_GITHUB_API_URL")),
   OSTRA_LINEAR_API_URL: url.default("https://api.linear.app/graphql").describe(describe("OSTRA_LINEAR_API_URL")),
+  OSTRA_JIRA_API_URL: url.optional().describe(describe("OSTRA_JIRA_API_URL")),
   OSTRA_GITHUB_LFS_HOSTS: z
     .string()
     .transform((text) => text.split(",").map((host) => host.trim().toLowerCase()).filter((host) => host !== ""))
@@ -821,6 +829,11 @@ export type ServerSettings = {
   readonly githubApiUrl: string;
   /** OSTRA_LINEAR_API_URL: Linear's GraphQL endpoint the trackers use (ticket 34: the e2e stack's fake Linear). */
   readonly linearApiUrl: string;
+  /**
+   * OSTRA_JIRA_API_URL: the fake Jira in tests, without a trailing slash, standing for Atlassian's
+   * gateway and every site; `null` (the default): Jira's own.
+   */
+  readonly jiraApiUrl: string | null;
   /** OSTRA_RESEND_API_URL: Resend's API, without a trailing slash (ticket 45: the e2e stack's fake Resend). */
   readonly resendApiUrl: string;
   /** OSTRA_GITHUB_LFS_HOSTS: where a task's git proxy may send LFS transfers, besides the code host itself. */
@@ -1171,6 +1184,7 @@ export const parseServerSettings = (env: Readonly<Record<string, string | undefi
       coreInternalUrl: (value.OSTRA_CORE_INTERNAL_URL ?? `http://127.0.0.1:${String(value.OSTRA_CORE_PORT)}`).replace(/\/+$/, ""),
       githubApiUrl: value.OSTRA_GITHUB_API_URL.replace(/\/+$/, ""),
       linearApiUrl: value.OSTRA_LINEAR_API_URL,
+      jiraApiUrl: value.OSTRA_JIRA_API_URL === undefined ? null : value.OSTRA_JIRA_API_URL.replace(/\/+$/, ""),
       resendApiUrl: value.OSTRA_RESEND_API_URL.replace(/\/+$/, ""),
       githubLfsHosts: value.OSTRA_GITHUB_LFS_HOSTS,
       dataDir: value.OSTRA_DATA_DIR ?? (production ? "/var/lib/ostra" : path.join(devDataDir, "server")),

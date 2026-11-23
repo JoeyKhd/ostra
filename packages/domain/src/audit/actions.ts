@@ -147,6 +147,12 @@ export const auditActions = {
   "tracker.token-replaced": "connection",
   "tracker.disconnected": "connection",
   "tracker.resumed": "connection",
+  /** Ticket 06: step 3 made a pending Jira connection's webhook secret, once (never the secret). */
+  "tracker.secret-made": "connection",
+  /** Ticket 06: "Check again" read the saved token back, and kept what it read (IDs and outcomes only). */
+  "tracker.token-checked": "connection",
+  /** Ticket 06: a connection failed on its own (`token-expired`, `token-refused`); its boards pause. */
+  "tracker.failed": "connection",
   "board.attached": "project",
   "board.mapping-saved": "project",
   "board.detached": "project",

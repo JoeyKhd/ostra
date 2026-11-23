@@ -178,3 +178,9 @@ export const seedTaskStartedByNobody = async (
 
 // Milestone 6 (spec section 8).
 export * from "./m6.ts";
+
+// ---------- milestone 11: connecting Jira (spec section 9, "The connect kit") ----------
+
+export { createFakeJiraConnectKit, fakeJiraReadBack, FAKE_JIRA_PROJECTS } from "./jira-connect.ts";
+export type { FakeJiraConnectCall, FakeJiraConnectKit, FakeJiraSite, FakeJiraTokenProfile } from "./jira-connect.ts";
+export { FakeSecretStore } from "./fake-adapters.ts";

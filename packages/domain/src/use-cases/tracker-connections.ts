@@ -1,11 +1,16 @@
 import type { TrackerAdapter, TrackerCapabilities } from "@ostra/adapter-sdk";
-import type { DbEnum, Tx } from "@ostra/db";
-import { boardIdSchema, connectionIdSchema, projectIdSchema } from "@ostra/protocol";
+import type { Db, DbEnum, Tx } from "@ostra/db";
+import { agentSessionIdSchema, boardIdSchema, connectionIdSchema, projectIdSchema } from "@ostra/protocol";
 import type { BoardId, ConnectionId, OrganizationId, ProjectId } from "@ostra/protocol";
 import { z } from "zod";
 
+import { requireOrganizationAdmin } from "../access.ts";
+import type { MemberScope } from "../access.ts";
+import { trackerConnectionLifecycleOf, transitionTrackerConnection } from "../lifecycles/m11-trackers.ts";
 import type { BoardPauseReason } from "../lifecycles/m11-trackers.ts";
 import type { AuditInput, Ports } from "../ports.ts";
+import { endAgentSessionInTx } from "./agent-sessions.ts";
+import type { UseCaseResult } from "./common.ts";
 
 // Milestone 11 (F-152, ADR 0071; spec section 5.4, ticket 05): an organization holds several tracker
 // connections, of any kind and any mix, each named, one per site or workspace. Every path names its
@@ -131,16 +136,32 @@ export const siteTakenBy = async (
   return row === null ? null : holderOf(row);
 };
 
-/** `base`, or `base 2`, `base 3`… : the first name no connection of the organization holds. */
-export const freeConnectionName = async (db: ConnectionReader, organizationId: OrganizationId, base: string): Promise<string> => {
+/**
+ * `base`, or `base 2`, `base 3`… : the first name no connection of the organization holds (names
+ * are deduped, never refused, when ostra picks them). `besides` is the connection being named.
+ */
+export const freeConnectionName = async (db: ConnectionReader, organizationId: OrganizationId, base: string, besides: ConnectionId | null = null): Promise<string> => {
   const trimmed = base.trim().slice(0, CONNECTION_NAME_MAX);
   for (let n = 1; ; n += 1) {
     const suffix = n === 1 ? "" : ` ${String(n)}`;
     const candidate = `${trimmed.slice(0, CONNECTION_NAME_MAX - suffix.length).trim()}${suffix}`;
-    if ((await nameTakenBy(db, organizationId, candidate)) === null) {
+    if ((await nameTakenBy(db, organizationId, candidate, besides)) === null) {
       return candidate;
     }
   }
+};
+
+/**
+ * Whether a name is the kind's own placeholder (`Jira`, `Linear 2`): what a connection is called
+ * before its site is known. Once the site is, such a name becomes the site's (`Globex Jira`); a
+ * name an admin chose is kept.
+ */
+export const isPlaceholderConnectionName = (kind: TrackerKind, name: string | null): boolean => {
+  if (name === null) {
+    return true;
+  }
+  const word = trackerKindNames[kind];
+  return name === word || new RegExp(`^${word} [0-9]+$`).test(name);
 };
 
 // ---------- Jira's last read-back ----------
@@ -159,7 +180,7 @@ export const trackerAccessCheckSchema = z.strictObject({
     .array(
       z.strictObject({
         id: z.string().min(1).max(64),
-        key: z.string().min(1).max(64),
+        key: z.string().min(1).max(255),
         name: z.string().max(256),
         permissions: z.array(z.enum(jiraProjectPermissions)).max(jiraProjectPermissions.length),
       }),
@@ -446,4 +467,172 @@ export const pausedBoardLine = (input: { readonly connectionName: string; readon
   const tickets = input.key === null ? "the board's tickets" : `${input.key}'s tickets`;
   const why = input.pausedBy === "failed" ? `${input.connectionName} can't connect` : `${input.connectionName} was disconnected`;
   return `${why}, so ${tickets} stay as they were and nothing moves on ${trackerKindNames[input.kind]}.`;
+};
+
+// ---------- a connection's changes (ticket 06) ----------
+
+/** A failure an admin-only change answers to a member who isn't an organization admin. */
+export const trackerAdminOnly = (scope: MemberScope): { readonly ok: false; readonly error: "forbidden"; readonly message: string } | null =>
+  requireOrganizationAdmin(scope, scope.organizationId).ok ? null : { ok: false, error: "forbidden", message: "Only an organization admin changes tracker connections" };
+
+/** The projects whose boards a connection holds, for their change notices (Boards draws its name and pause). */
+const projectsOfConnection = async (tx: Pick<Tx, "board">, organizationId: OrganizationId, connectionId: ConnectionId): Promise<readonly ProjectId[]> =>
+  [...new Set((await tx.board.findMany({ where: { organizationId, connectionId, detachedAt: null }, select: { projectId: true } })).map((board) => board.projectId))].map((id) =>
+    projectIdSchema.parse(id),
+  );
+
+/** Tells the panel a connection changed: its page, and the Boards of every project holding one of its boards. */
+export const emitConnectionChangedInTx = async (deps: { readonly tx: Tx } & Pick<Ports, "notices">, organizationId: OrganizationId, connectionId: ConnectionId): Promise<void> => {
+  for (const projectId of await projectsOfConnection(deps.tx, organizationId, connectionId)) {
+    await deps.notices.emitInTx(deps.tx, { organizationId, projectId, entity: "project", entityId: projectId });
+  }
+  await deps.notices.emitInTx(deps.tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
+};
+
+export const renameConnectionInputSchema = z.strictObject({ connectionId: connectionIdSchema, name: connectionNameSchema });
+export type RenameConnectionInput = z.infer<typeof renameConnectionInputSchema>;
+
+export type RenameConnectionResult = UseCaseResult<{ readonly connectionId: ConnectionId; readonly name: string }, "forbidden" | "no-connection" | "invalid-name" | "name-taken">;
+
+/**
+ * Renames a tracker connection of any kind (F-152/c1, choice 2): what boards, tickets and the panel
+ * call it. A name another connection of the organization holds (without case) is `name-taken`.
+ * Audited with IDs only.
+ */
+export const renameConnection = async (
+  deps: { readonly db: Db; readonly scope: MemberScope } & Pick<Ports, "audit" | "notices">,
+  input: RenameConnectionInput,
+): Promise<RenameConnectionResult> => {
+  const denied = trackerAdminOnly(deps.scope);
+  if (denied !== null) return denied;
+  const organizationId = deps.scope.organizationId;
+  const named = connectionNameSchema.safeParse(input.name);
+  if (!named.success) {
+    return { ok: false, error: "invalid-name", message: "A connection's name is 1 to 60 characters" };
+  }
+  const name = named.data;
+  return deps.db.$transaction(async (tx): Promise<RenameConnectionResult> => {
+    const row = await tx.connection.findFirst({ where: { id: input.connectionId, organizationId, state: { not: "revoked" } }, select: { id: true, kind: true, name: true } });
+    if (row === null || !isTrackerKind(row.kind)) {
+      return { ok: false, error: "no-connection", message: "No such tracker connection" };
+    }
+    const holder = await nameTakenBy(tx, organizationId, name, input.connectionId);
+    if (holder !== null) {
+      return { ok: false, error: "name-taken", message: `Another connection is already called ${holder.name}. Pick another name` };
+    }
+    if (row.name === name) {
+      return { ok: true, connectionId: input.connectionId, name };
+    }
+    await tx.connection.update({ where: { id: row.id }, data: { name } });
+    await deps.audit.recordInTx(tx, {
+      organizationId,
+      projectId: null,
+      actor: { kind: "member", id: deps.scope.memberId },
+      action: "tracker.renamed",
+      entity: "connection",
+      entityId: input.connectionId,
+      data: { kind: row.kind },
+    });
+    await emitConnectionChangedInTx({ tx, notices: deps.notices }, organizationId, input.connectionId);
+    return { ok: true, connectionId: input.connectionId, name };
+  });
+};
+
+/** Why a connection failed on its own: its token's date passed, or the tracker refused its token. */
+export const connectionFailureReasons = ["token-expired", "token-refused"] as const;
+export type ConnectionFailureReason = (typeof connectionFailureReasons)[number];
+
+/**
+ * Fails an active tracker connection, in the caller's transaction (spec section 4, "The token's
+ * date"): core's expiry job on the day (`token-expired`), or a tracker answering 401 to the saved
+ * token (`token-refused`). `failedReason` holds the reason's code; its boards pause by derivation.
+ * Only an active connection fails (`pending → active ⇄ failed`): `false` when it didn't move.
+ */
+export const failConnection = async (
+  deps: { readonly tx: Tx } & Pick<Ports, "audit" | "notices">,
+  input: { readonly organizationId: OrganizationId; readonly connectionId: ConnectionId; readonly reason: ConnectionFailureReason; readonly actor?: AuditInput["actor"] },
+): Promise<boolean> => {
+  const { tx } = deps;
+  const row = await tx.connection.findFirst({
+    where: { id: input.connectionId, organizationId: input.organizationId },
+    select: { id: true, kind: true, state: true, activatedAt: true, failedReason: true, resumedIntoId: true },
+  });
+  if (row === null || !isTrackerKind(row.kind)) {
+    return false;
+  }
+  const moved = transitionTrackerConnection(trackerConnectionLifecycleOf(row), { type: "fail", reason: input.reason });
+  if (!moved.ok) {
+    return false;
+  }
+  const updated = await tx.connection.updateMany({ where: { id: row.id, organizationId: input.organizationId, state: row.state }, data: { state: "failed", failedReason: input.reason } });
+  if (updated.count !== 1) {
+    return false;
+  }
+  await deps.audit.recordInTx(tx, {
+    organizationId: input.organizationId,
+    projectId: null,
+    actor: input.actor ?? { kind: "system", id: null },
+    action: "tracker.failed",
+    entity: "connection",
+    entityId: input.connectionId,
+    data: { kind: row.kind, reason: input.reason },
+  });
+  await emitConnectionChangedInTx({ tx, notices: deps.notices }, input.organizationId, input.connectionId);
+  return true;
+};
+
+/**
+ * The last step of a disconnect, for every kind, in the caller's transaction (ADR 0071): its open
+ * agent sessions end, its pending OAuth states go, and it becomes `revoked` with its `appId` given
+ * back (`revoked:<id>`) and every secret reference cleared. The caller deletes the secrets
+ * themselves first (and revokes what the tracker can revoke). Its boards stay attached and pause by
+ * derivation; a later connection of the same site resumes them (`resumeBoardsInTx`). Audited
+ * `tracker.disconnected` with IDs, counts and flags only.
+ */
+export const revokeConnectionInTx = async (
+  deps: { readonly tx: Tx } & Pick<Ports, "audit" | "notices" | "clock">,
+  input: {
+    readonly organizationId: OrganizationId;
+    readonly connectionId: ConnectionId;
+    readonly kind: TrackerKind;
+    readonly actor: AuditInput["actor"];
+    readonly data?: Readonly<Record<string, string | number | boolean | null>>;
+  },
+): Promise<{ readonly endedSessions: number; readonly pausedBoards: number }> => {
+  const { tx } = deps;
+  const now = deps.clock.now();
+  const open = await tx.agentSession.findMany({ where: { organizationId: input.organizationId, connectionId: input.connectionId, state: { not: "ended" } }, select: { id: true } });
+  let endedSessions = 0;
+  for (const session of open) {
+    // No final response is posted: the connection's token goes with it.
+    if (await endAgentSessionInTx(tx, agentSessionIdSchema.parse(session.id), "stopped-in-ostra", now)) {
+      endedSessions += 1;
+    }
+  }
+  await tx.oAuthState.deleteMany({ where: { connectionId: input.connectionId, organizationId: input.organizationId } });
+  await tx.connection.update({
+    where: { id: input.connectionId },
+    data: {
+      state: "revoked",
+      // The (organization, kind, app) triple is unique; a revoked row gives its app ID back.
+      appId: `revoked:${input.connectionId}`,
+      accessTokenSecretRef: null,
+      refreshTokenSecretRef: null,
+      clientSecretSecretRef: null,
+      webhookSecretSecretRef: null,
+      accessTokenExpiresAt: null,
+    },
+  });
+  const pausedBoards = await tx.board.count({ where: { organizationId: input.organizationId, connectionId: input.connectionId, detachedAt: null } });
+  await deps.audit.recordInTx(tx, {
+    organizationId: input.organizationId,
+    projectId: null,
+    actor: input.actor,
+    action: "tracker.disconnected",
+    entity: "connection",
+    entityId: input.connectionId,
+    data: { kind: input.kind, boards: pausedBoards, sessions: endedSessions, ...input.data },
+  });
+  await emitConnectionChangedInTx({ tx, notices: deps.notices }, input.organizationId, input.connectionId);
+  return { endedSessions, pausedBoards };
 };

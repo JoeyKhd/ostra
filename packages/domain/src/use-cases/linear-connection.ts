@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { secretRefSchema } from "@ostra/adapter-sdk";
 import type { SecretRef, TrackerCapabilities } from "@ostra/adapter-sdk";
+import { Prisma } from "@ostra/db";
 import type { Db, Tx } from "@ostra/db";
 import { connectionIdSchema, organizationIdSchema } from "@ostra/protocol";
 import type { ConnectionId, OrganizationId } from "@ostra/protocol";
@@ -12,7 +13,17 @@ import type { MemberScope } from "../access.ts";
 import type { Ports } from "../ports.ts";
 import { isPendingAppId, linearAppIdPlaceholders, pendingAppIdOf } from "../tickets/contracts.ts";
 import type { UseCaseResult } from "./common.ts";
-import { connectionNameSchema, defaultConnectionName, freeConnectionName, nameTakenBy } from "./tracker-connections.ts";
+import {
+  connectionNameSchema,
+  defaultConnectionName,
+  freeConnectionName,
+  isPlaceholderConnectionName,
+  nameTakenBy,
+  resumeBoardsInTx,
+  revokeConnectionInTx,
+  siteTakenBy,
+} from "./tracker-connections.ts";
+import type { ConnectionHolder } from "./tracker-connections.ts";
 
 // F-005: an organization connects its own Linear app (spec section 3, step 1; section 11, items 2
 // and 3). Three steps, each a use case:
@@ -441,23 +452,31 @@ export const authorizeLinearInputSchema = z.strictObject({
 });
 export type AuthorizeLinearInput = z.infer<typeof authorizeLinearInputSchema>;
 
-export type AuthorizeLinearResult = UseCaseResult<
-  {
-    readonly connectionId: ConnectionId;
-    readonly workspaceName: string;
-    readonly appUserName: string;
-    readonly mode: "webhooks" | "polling";
-  },
-  /** The state is unknown, expired, used, or from another panel session. */
-  | "bad-state"
-  /** Linear refused the code or the client. */
-  | "exchange-failed"
-  /** The token isn't the app's own user: Linear ignored `actor=app`. */
-  | "not-app-user"
-  | "forbidden"
-  /** Milestone 6 (F-012): "Turn on agent mode" came back without agent mode's scopes. */
-  | "missing-scopes"
->;
+export type AuthorizeLinearResult =
+  | UseCaseResult<
+      {
+        readonly connectionId: ConnectionId;
+        readonly workspaceName: string;
+        readonly appUserName: string;
+        readonly mode: "webhooks" | "polling";
+        /** Milestone 11: the paused boards a revoked connection of the same workspace gave it. */
+        readonly resumedBoards: number;
+      },
+      /** The state is unknown, expired, used, or from another panel session. */
+      | "bad-state"
+      /** Linear refused the code or the client. */
+      | "exchange-failed"
+      /** The token isn't the app's own user: Linear ignored `actor=app`. */
+      | "not-app-user"
+      | "forbidden"
+      /** Milestone 6 (F-012): "Turn on agent mode" came back without agent mode's scopes. */
+      | "missing-scopes"
+    >
+  /**
+   * Milestone 11 (F-152/c2, ADR 0071): another connection of the organization, not revoked, holds
+   * the workspace. The pending row's secrets are deleted; the panel names the holder, with `Open it →`.
+   */
+  | { readonly ok: false; readonly error: "workspace-taken"; readonly message: string; readonly holder: ConnectionHolder };
 
 export type AuthorizeLinearDeps = Pick<Ports, "notices" | "audit" | "clock" | "jobs"> & {
   readonly db: Db;
@@ -471,7 +490,13 @@ export type AuthorizeLinearDeps = Pick<Ports, "notices" | "audit" | "clock" | "j
 
 export type AuthorizeLinear = (deps: AuthorizeLinearDeps, input: AuthorizeLinearInput) => Promise<AuthorizeLinearResult>;
 
-const refuseAuthorize = (error: Exclude<AuthorizeLinearResult, { readonly ok: true }>["error"], message: string): AuthorizeLinearResult => ({ ok: false, error, message });
+const refuseAuthorize = (error: Exclude<Exclude<AuthorizeLinearResult, { readonly ok: true }>["error"], "workspace-taken">, message: string): AuthorizeLinearResult => ({
+  ok: false,
+  error,
+  message,
+});
+
+const isUniqueViolation = (error: unknown): boolean => error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 
 const BAD_STATE = "This sign-in with Linear is not valid any more: start again";
 
@@ -529,6 +554,35 @@ export const authorizeLinear: AuthorizeLinear = async (deps, input) => {
       : refuseAuthorize("exchange-failed", `Linear did not confirm the token: ${identity.error.message}`);
   }
 
+  // Milestone 11 (F-152/c2, ADR 0071): one connection per workspace. A workspace another connection
+  // of the organization holds is refused, naming it; the token is given back, and a pending row's
+  // values go, so nothing of this app lingers.
+  const connectionId = connectionIdSchema.parse(connection.id);
+  const refuseTaken = async (holder: ConnectionHolder): Promise<AuthorizeLinearResult> => {
+    await deps.linear.revokeToken(exchanged.value.accessToken);
+    if (connection.state === "pending") {
+      await dropSecrets(deps, organizationId, [connection.clientSecretSecretRef, connection.webhookSecretSecretRef]);
+      await db.$transaction(async (tx) => {
+        await tx.oAuthState.deleteMany({ where: { connectionId: connection.id, organizationId } });
+        await tx.connection.updateMany({
+          where: { id: connection.id, organizationId, state: "pending" },
+          data: { appId: pendingAppIdOf(connection.id), clientSecretSecretRef: null, webhookSecretSecretRef: null },
+        });
+        await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
+      });
+    }
+    return {
+      ok: false,
+      error: "workspace-taken",
+      message: `The Linear workspace ${identity.value.workspaceName} is already connected, as ${holder.name}.`,
+      holder,
+    };
+  };
+  const holder = await siteTakenBy(db, organizationId, "linear", identity.value.workspaceId, connectionId);
+  if (holder !== null) {
+    return refuseTaken(holder);
+  }
+
   // Milestone 6 (F-012): a consent for agent mode must grant its scopes; without them the new token
   // isn't kept, and the connection stays as it was.
   const agentMode = input.state.startsWith(AGENT_MODE_STATE_PREFIX);
@@ -551,59 +605,78 @@ export const authorizeLinear: AuthorizeLinear = async (deps, input) => {
   }
   const now = deps.clock.now();
   const expiresAt = exchanged.value.expiresAt;
-  const connectionId = connectionIdSchema.parse(connection.id);
+  const actor = { kind: "member", id: scope.memberId } as const;
 
-  await db.$transaction(async (tx) => {
-    await tx.connection.update({
-      where: { id: connection.id },
-      data: {
-        state: "active",
-        failedReason: null,
-        credentialKind: "app_oauth",
-        accessTokenSecretRef: access.value,
-        refreshTokenSecretRef: refreshRef,
-        accessTokenExpiresAt: new Date(expiresAt),
-        externalWorkspaceId: identity.value.workspaceId,
-        externalWorkspaceKey: identity.value.workspaceKey,
-        externalWorkspaceName: identity.value.workspaceName,
-        appUserId: identity.value.appUserId,
-        appUserName: identity.value.appUserName,
-        activatedAt: new Date(now),
-        ...(granted === null ? {} : { scopes: [...granted] }),
-        ...(agentMode ? { agentModeAt: new Date(now) } : {}),
-      },
-    });
-    if (agentMode) {
+  let resumedBoards: number;
+  try {
+    resumedBoards = await db.$transaction(async (tx) => {
+      // A name that was only the kind's placeholder (`Linear`, `Linear 2`) becomes the workspace's.
+      const name = isPlaceholderConnectionName("linear", connection.name)
+        ? await freeConnectionName(tx, organizationId, defaultConnectionName("linear", identity.value.workspaceName), connectionId)
+        : connection.name;
+      await tx.connection.update({
+        where: { id: connection.id },
+        data: {
+          ...(name === null ? {} : { name }),
+          state: "active",
+          failedReason: null,
+          credentialKind: "app_oauth",
+          accessTokenSecretRef: access.value,
+          refreshTokenSecretRef: refreshRef,
+          accessTokenExpiresAt: new Date(expiresAt),
+          externalWorkspaceId: identity.value.workspaceId,
+          externalWorkspaceKey: identity.value.workspaceKey,
+          externalWorkspaceName: identity.value.workspaceName,
+          appUserId: identity.value.appUserId,
+          appUserName: identity.value.appUserName,
+          activatedAt: new Date(now),
+          ...(granted === null ? {} : { scopes: [...granted] }),
+          ...(agentMode ? { agentModeAt: new Date(now) } : {}),
+        },
+      });
+      if (agentMode) {
+        await deps.audit.recordInTx(tx, {
+          organizationId,
+          projectId: null,
+          actor: { kind: "member", id: scope.memberId },
+          action: "linear.agent-mode-enabled",
+          entity: "connection",
+          entityId: connectionIdSchema.parse(connection.id),
+        });
+      }
+      // The token is refreshed before it expires: one delayed job per connection (ADR 0037).
+      await deps.jobs.enqueueInTx(
+        tx,
+        "linear.refresh-token",
+        { organizationId: organizationIdSchema.parse(organizationId), connectionId },
+        { startAfterMs: Math.max(60_000, expiresAt - now - LINEAR_REFRESH_MARGIN_MS) },
+      );
+      // Milestone 11 (ADR 0071, choice 12): the workspace connected again takes the paused boards of
+      // the revoked connection that held it, in the transaction that makes it active.
+      const resumed = await resumeBoardsInTx({ tx, audit: deps.audit, notices: deps.notices }, { organizationId, connectionId, actor });
       await deps.audit.recordInTx(tx, {
         organizationId,
         projectId: null,
-        actor: { kind: "member", id: scope.memberId },
-        action: "linear.agent-mode-enabled",
+        actor,
+        action: "tracker.connected",
         entity: "connection",
-        entityId: connectionIdSchema.parse(connection.id),
+        entityId: connectionId,
+        data: { kind: "linear", mode: connection.webhookMode, resumedBoards: resumed.boards },
       });
-    }
-    // The token is refreshed before it expires: one delayed job per connection (ADR 0037).
-    await deps.jobs.enqueueInTx(
-      tx,
-      "linear.refresh-token",
-      { organizationId: organizationIdSchema.parse(organizationId), connectionId },
-      { startAfterMs: Math.max(60_000, expiresAt - now - LINEAR_REFRESH_MARGIN_MS) },
-    );
-    await deps.audit.recordInTx(tx, {
-      organizationId,
-      projectId: null,
-      actor: { kind: "member", id: scope.memberId },
-      action: "linear.connected",
-      entity: "connection",
-      entityId: connectionId,
-      data: { workspace: identity.value.workspaceKey, mode: connection.webhookMode },
+      await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
+      return resumed.boards;
     });
-    await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
-  });
+  } catch (error) {
+    // Another connection took the workspace between the check and the write: the index refused it.
+    if (!isUniqueViolation(error)) throw error;
+    const taken = await siteTakenBy(db, organizationId, "linear", identity.value.workspaceId, connectionId);
+    if (taken === null) throw error;
+    await dropSecrets(deps, organizationId, [access.value, refreshRef]);
+    return refuseTaken(taken);
+  }
   // The previous token's secrets (a re-authorized connection) are dropped once the new ones stand.
   await dropSecrets(deps, organizationId, [connection.accessTokenSecretRef, connection.refreshTokenSecretRef]);
-  return { ok: true, connectionId, workspaceName: identity.value.workspaceName, appUserName: identity.value.appUserName, mode: connection.webhookMode };
+  return { ok: true, connectionId, workspaceName: identity.value.workspaceName, appUserName: identity.value.appUserName, mode: connection.webhookMode, resumedBoards };
 };
 
 // ---------- disconnect ----------
@@ -622,8 +695,10 @@ export type DisconnectLinearDeps = Pick<Ports, "notices" | "audit" | "clock"> & 
 
 /**
  * Revokes the token at Linear (best effort: a Linear that does not answer does not keep the admin
- * connected), deletes every secret of the connection, and sets it `revoked`. Its boards and
- * tickets stay, read-only; core stops polling boards whose connection is not active.
+ * connected), deletes every secret of the connection, ends its open agent sessions, and sets it
+ * `revoked` with its `appId` given back (`revokeConnectionInTx`, audited `tracker.disconnected`).
+ * Its boards stay attached and pause by derivation (ADR 0071): nothing moves on Linear, and their
+ * tickets and tasks stay readable; the same workspace connected again resumes them.
  */
 export const disconnectLinear = async (deps: DisconnectLinearDeps, input: DisconnectLinearInput): Promise<DisconnectLinearResult> => {
   const { db, scope } = deps;
@@ -658,32 +733,11 @@ export const disconnectLinear = async (deps: DisconnectLinearDeps, input: Discon
   await dropSecrets(deps, organizationId, pending.map((state) => state.codeVerifierSecretRef));
 
   const connectionId = connectionIdSchema.parse(connection.id);
-  await db.$transaction(async (tx) => {
-    await tx.oAuthState.deleteMany({ where: { connectionId: connection.id } });
-    await tx.connection.update({
-      where: { id: connection.id },
-      data: {
-        state: "revoked",
-        // The (organization, kind, app) triple is unique; a revoked row gives its app ID back, so a new
-        // connection can start with the placeholder again, or with the same app.
-        appId: `revoked:${connectionId}`,
-        accessTokenSecretRef: null,
-        refreshTokenSecretRef: null,
-        clientSecretSecretRef: null,
-        webhookSecretSecretRef: null,
-        accessTokenExpiresAt: null,
-      },
-    });
-    await deps.audit.recordInTx(tx, {
-      organizationId,
-      projectId: null,
-      actor: { kind: "member", id: scope.memberId },
-      action: "linear.disconnected",
-      entity: "connection",
-      entityId: connectionId,
-      data: { revokedAtLinear: revoked },
-    });
-    await deps.notices.emitInTx(tx, { organizationId, projectId: null, entity: "connection", entityId: connectionId });
-  });
+  await db.$transaction((tx) =>
+    revokeConnectionInTx(
+      { tx, audit: deps.audit, notices: deps.notices, clock: deps.clock },
+      { organizationId, connectionId, kind: "linear", actor: { kind: "member", id: scope.memberId }, data: { revokedAtTracker: revoked } },
+    ),
+  );
   return { ok: true, connectionId, revokedAtLinear: revoked };
 };

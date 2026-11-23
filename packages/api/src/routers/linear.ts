@@ -406,6 +406,8 @@ export const linearRouter = router({
         "not-app-user": "BAD_REQUEST",
         forbidden: "FORBIDDEN",
         "missing-scopes": "PRECONDITION_FAILED",
+        // Milestone 11 (F-152/c2): another connection holds the workspace; the message names it.
+        "workspace-taken": "CONFLICT",
       });
       return { connectionId: connected.connectionId, workspaceName: connected.workspaceName, appUserName: connected.appUserName, mode: connected.mode };
     }),

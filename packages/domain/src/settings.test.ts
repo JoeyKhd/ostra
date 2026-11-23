@@ -74,6 +74,16 @@ describe("the server's settings", () => {
     expect(parseServerSettings({ OSTRA_LINEAR_API_URL: "ftp://linear.example" }).ok).toBe(false);
   });
 
+  it("F-008: points Jira at OSTRA_JIRA_API_URL only when set, without a trailing slash; unset or empty is Jira's own", () => {
+    const fallback = parseServerSettings({});
+    expect(fallback.ok && fallback.settings.jiraApiUrl).toBeNull();
+    const empty = parseServerSettings({ OSTRA_JIRA_API_URL: "" });
+    expect(empty.ok && empty.settings.jiraApiUrl).toBeNull();
+    const fake = parseServerSettings({ OSTRA_JIRA_API_URL: "http://127.0.0.1:4300/" });
+    expect(fake.ok && fake.settings.jiraApiUrl).toBe("http://127.0.0.1:4300");
+    expect(parseServerSettings({ OSTRA_JIRA_API_URL: "ftp://jira.example" }).ok).toBe(false);
+  });
+
   it("F-115: points Resend at OSTRA_RESEND_API_URL, Resend's own by default, and refuses a URL that isn't http(s)", () => {
     const fallback = parseServerSettings({});
     expect(fallback.ok && fallback.settings.resendApiUrl).toBe("https://api.resend.com");

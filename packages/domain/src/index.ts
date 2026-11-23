@@ -287,4 +287,6 @@ export * from "./tickets/read-ticket.ts";
 // lifecycles, and the setup step "Connect a tracker".
 export * from "./lifecycles/m11-trackers.ts";
 export * from "./use-cases/tracker-connections.ts";
+export * from "./use-cases/jira-connection.ts";
+export * from "./use-cases/tracker-connection-changes.ts";
 export * from "./setup/tracker-step.ts";
