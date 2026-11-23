@@ -67,12 +67,16 @@ test("F-026/c4,c5: two members answer one approval at once; one wins, and both r
     [page, sam].map(async (tab) => {
       await expect(tab.getByTestId("approval")).toHaveCount(0, { timeout: 10_000 });
       await tab.locator("[data-part='live-line']").click();
-      const row = tab.locator("[data-part='run-steps'] li[data-step='command']").filter({ hasText: "pnpm db:migrate" });
-      await expect(row).toContainText(/approved once by /);
-      return row.innerText();
+      const receipt = tab.locator("[data-part='run-steps'] li[data-step='command']").filter({ hasText: "pnpm db:migrate" }).locator("[data-part='step-receipt']");
+      await expect(receipt).toHaveText(/^Approved once by /);
+      return receipt.innerText();
     }),
   );
   expect(receipts[0]).toBe(receipts[1]);
+  // Only the member whose answer lost the race has the line under the winner's receipt.
+  await expect.poll(async () => (await page.locator("[data-part='lost-race']").count()) + (await sam.locator("[data-part='lost-race']").count())).toBe(1);
+  const loser = (await page.locator("[data-part='lost-race']").count()) === 1 ? page : sam;
+  await expect(loser.locator("[data-part='lost-race']")).toHaveText("Someone answered this first.");
   await sam.context().close();
 });
 
@@ -91,7 +95,7 @@ test("F-026/c3,c4: \"Approve for this task\" shows the pattern it adds, then the
   await expect(page.getByTestId("approval")).toHaveCount(0, { timeout: 10_000 });
   await page.locator("[data-part='live-line']").click();
   const row = page.locator("[data-part='run-steps'] li[data-step='edit']").filter({ hasText: "config/settings.json" });
-  await expect(row).toContainText(/approved for this task by /);
+  await expect(row.locator("[data-part='step-receipt']")).toHaveText(/^Approved for this task by .+ · config\/settings\.json$/);
   const rule = page.getByTestId("task-rule");
   await expect(rule).toHaveCount(1);
   await expect(rule).toContainText("edit config/settings.json");
@@ -101,7 +105,7 @@ test("F-026/c3,c4: \"Approve for this task\" shows the pattern it adds, then the
   // Stored, not only shown.
   await page.reload();
   await page.locator("[data-part='live-line']").click();
-  await expect(page.locator("[data-part='run-steps'] li[data-step='edit']").filter({ hasText: "config/settings.json" })).toContainText(/approved for this task by /);
+  await expect(page.locator("[data-part='run-steps'] li[data-step='edit']").filter({ hasText: "config/settings.json" }).locator("[data-part='step-receipt']")).toHaveText(/^Approved for this task by .+ · config\/settings\.json$/);
   await expect(page.getByTestId("task-rule")).toContainText("edit config/settings.json");
 });
 
@@ -122,7 +126,8 @@ test("F-026/c4: a deny takes a reason, every member reads the receipt, and the r
   await page.locator("[data-part='live-line']").click();
   await expect(row).toContainText("denied");
   await expect(row.locator(".text-red")).toContainText("denied");
-  await expect(row).toContainText(/denied by /);
+  const why = new RegExp(`^Denied by .+: ${reason.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  await expect(row.locator("[data-part='step-receipt']")).toHaveText(why);
   expect(await approvalOf(page, tasks.deny)).toMatchObject({ state: "answered", decision: "deny", denyReason: reason });
 
   // Another member who opens the task reads the same answer.
@@ -130,7 +135,7 @@ test("F-026/c4: a deny takes a reason, every member reads the receipt, and the r
   await sam.goto(`/tasks/${tasks.deny}`);
   await expect(sam.getByTestId("approval")).toHaveCount(0);
   await sam.locator("[data-part='live-line']").click();
-  await expect(sam.locator("[data-part='run-steps'] li[data-step='command']").filter({ hasText: "pnpm add moment" })).toContainText(/denied by /);
+  await expect(sam.locator("[data-part='run-steps'] li[data-step='command']").filter({ hasText: "pnpm add moment" }).locator("[data-part='step-receipt']")).toHaveText(why);
   const theirs = await approvalOf(sam, tasks.deny);
   expect(theirs).toMatchObject({ decision: "deny", denyReason: reason });
   await sam.context().close();

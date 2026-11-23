@@ -19,12 +19,13 @@ import {
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
+import { approvalMetadataSchema } from "@ostra/task-view";
 import type { RunItem, RunStep, TaskUIMessage } from "@ostra/task-view";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/messages";
 
-import { useTaskContext } from "../task-context";
+import { useTaskContext, useToolPart } from "../task-context";
 import { holdsStep, useRunOpen } from "./run-open";
 import { Segments, toneClass } from "./segments";
 import { StepOutput } from "./step-output";
@@ -129,8 +130,13 @@ const Result = ({ segments, tight }: { readonly segments: readonly Segment[]; re
 const Spinner = () => <span aria-hidden className="size-[11px] shrink-0 animate-spin rounded-full border-[1.75px] border-line-2 border-t-teal motion-reduce:animate-none" />;
 
 const StepRow = ({ step, message }: { readonly step: RunStep; readonly message: TaskUIMessage }) => {
-  const { memberName, openSubagents } = useTaskContext();
+  const { memberName, openSubagents, approvalReceipt, approvalLostRace } = useTaskContext();
   const { state, store } = useRunOpen();
+  // Milestone 3's receipt words, with a deny's reason and the rule's pattern: `tasks.get` holds them
+  // by the approval's id, which the call's own part names; the fold keeps only that a reason existed.
+  const part = useToolPart(step.toolCallId ?? "");
+  const metadata = part === undefined ? null : approvalMetadataSchema.safeParse(part.toolMetadata);
+  const approvalId = metadata?.success === true ? metadata.data.approval.id : null;
   const link = useRef<HTMLButtonElement>(null);
   const row = useRef<HTMLLIElement>(null);
   const shown = [...state.shown].some((id) => holdsStep(step, id));
@@ -142,6 +148,8 @@ const StepRow = ({ step, message }: { readonly step: RunStep; readonly message: 
     store.focused();
   }, [focus, store]);
   const words = stepWords(step, t, memberName, { open: shown, now: Date.now() });
+  const receipt = approvalId !== null && step.approval?.state === "answered" ? (approvalReceipt?.(approvalId) ?? words.receipt) : words.receipt;
+  const lostRace = approvalId !== null && approvalLostRace?.(approvalId) === true;
   const style = subjectStyle(step);
   // A subagent that's done ends on a green check (parts.md part 6), its word left for a screen reader.
   const done = step.kind === "subagent" && step.node.state === "done";
@@ -160,7 +168,7 @@ const StepRow = ({ step, message }: { readonly step: RunStep; readonly message: 
           <span className="sr-only">{t("task.step.subagentState.done")}</span>
         </span>
       ) : null}
-      {words.receipt === null ? null : <span className="shrink-0 text-sm text-muted">{words.receipt}</span>}
+      {receipt === null ? null : <span data-part="step-receipt" className="shrink-0 text-sm text-muted">{receipt}</span>}
       {words.link === null ? null : words.link.opens === "subagent" ? (
         step.kind !== "subagent" || openSubagents === undefined ? null : (
           <button type="button" aria-haspopup="dialog" aria-label={words.link.name} onClick={() => { openSubagents(message.id, step.node.id); }} className="inline-flex shrink-0 items-center gap-px text-[12.5px] text-teal hover:underline">
@@ -208,6 +216,7 @@ const StepRow = ({ step, message }: { readonly step: RunStep; readonly message: 
           </>
         )}
       </div>
+      {lostRace ? <p data-part="lost-race" className="mt-0.5 text-xs text-muted">{t("taskAnswers.answeredFirst")}</p> : null}
       {shown && words.link !== null && words.link.opens !== "subagent" ? <StepOutput step={step} opens={words.link.opens} /> : null}
     </li>
   );
