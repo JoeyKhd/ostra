@@ -6,16 +6,31 @@
 
 import { writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import path from "node:path";
 
 import { createFakeGitHub } from "@ostra/adapter-github/testing";
 import type { FakeGitHub } from "@ostra/adapter-github/testing";
 import { createFakeLinear, createFakeRepoTrees, createScenarioBrain, movedSkillTree, startAnthropicStub, startFakeResendApi, startOpenAiStub } from "@ostra/adapter-sdk/testing";
 import { repoFullNameSchema } from "@ostra/protocol";
+import { z } from "zod";
 import type { FakeLinear, FakeResendApi } from "@ostra/adapter-sdk/testing";
 
 import { e2eChangesHeads, e2eFakeControlPort, e2eGitHubMember, e2eGitHubOrgB, e2eModelToken, e2eOpenAiStubPort, e2eRepo, e2eSkillsRepo, e2eStubModels, e2eStubPort } from "./settings.ts";
+
+/** `POST /github/app-events`'s body: the events the fake App subscribes to. */
+const appEventsSchema = z.strictObject({ events: z.array(z.string().min(1).max(64)).max(64) });
+
+/** A control request's JSON body; `null` when it isn't JSON. */
+const readJson = async (request: IncomingMessage): Promise<unknown> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.from(z.instanceof(Uint8Array).parse(chunk)));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return null;
+  }
+};
 
 export type E2eFakes = {
   readonly github: FakeGitHub;
@@ -109,11 +124,24 @@ export const startFakes = async (): Promise<E2eFakes> => {
 
   // F-145 (ticket 31): the fakes' control, on loopback: `POST /skills/push` moves the skills repo's
   // `main` on (`movedSkillTree`: the PDF skill changed and a file added), as a push upstream would,
-  // so core's update check finds it.
+  // so core's update check finds it. F-006/c4: `POST /github/app-events` sets the events the App
+  // subscribes to, as an admin ticks them in its settings on GitHub (`GET /app` then lists them).
   const control: Server = createServer((request, response) => {
     if (request.method === "POST" && request.url === "/skills/push") {
       const sha = trees.commit(repoFullNameSchema.parse(`${e2eSkillsRepo.owner}/${e2eSkillsRepo.name}`), "main", movedSkillTree);
       response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ sha }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/github/app-events") {
+      void readJson(request).then((body) => {
+        const parsed = appEventsSchema.safeParse(body);
+        if (!parsed.success) {
+          response.writeHead(400).end();
+          return;
+        }
+        github.setAppEvents(parsed.data.events);
+        response.writeHead(204).end();
+      });
       return;
     }
     response.writeHead(404).end();

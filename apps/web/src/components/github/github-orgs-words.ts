@@ -57,3 +57,61 @@ export const dayMonth = (at: number): string => new Date(at).toLocaleDateString(
  */
 export const appVisibility = (app: { readonly public: boolean | null; readonly ownerLogin: string | null }): "public" | "private" | "unknown" =>
   app.public === true ? "public" : app.ownerLogin === null ? "unknown" : "private";
+
+// ---- F-006/c4: an App made while ostra had no public address, and its events turned on later ----
+
+/** What an App's webhook and events are, as `github.connections` says. */
+type EventsOf = {
+  readonly webhook: { readonly kind: "none" | "receiving" | "failing" };
+  /** The events ostra uses that the App doesn't take; `null` when GitHub didn't say. */
+  readonly missingEvents: readonly string[] | null;
+};
+
+/**
+ * The App's section line (github-events.md): `Events off` with no webhook, `Waiting for events` while
+ * the App takes a secret but not every event, `Webhook receiving` once it takes them all, and
+ * `Webhook failing` whenever its last delivery failed.
+ */
+export type SectionState = "off" | "waiting" | "receiving" | "failing";
+
+export const sectionState = (app: EventsOf): SectionState => {
+  switch (app.webhook.kind) {
+    case "none":
+      return "off";
+    case "failing":
+      return "failing";
+    case "receiving":
+      return app.missingEvents !== null && app.missingEvents.length > 0 ? "waiting" : "receiving";
+    default:
+      return app.webhook.kind satisfies never;
+  }
+};
+
+/**
+ * The App panel's Events row (github-events.md, "The Events row"): no webhook and no public address,
+ * no webhook (`Turn on`), a secret but events missing, all of them taken, or GitHub didn't say.
+ */
+export type EventsState = "no-public" | "off" | "waiting" | "on" | "unknown";
+
+export const eventsState = (app: EventsOf, webhookPossible: boolean): EventsState => {
+  if (app.webhook.kind === "none") return webhookPossible ? "off" : "no-public";
+  if (app.missingEvents === null) return "unknown";
+  return app.missingEvents.length > 0 ? "waiting" : "on";
+};
+
+/**
+ * The events Turn on's result lists, in ostra's order: only the missing ones when GitHub said which,
+ * every one for a first Turn on when it didn't, and none for a new secret it didn't say about.
+ */
+export const eventsToTick = (events: readonly string[], missing: readonly string[] | null, replaced: boolean): readonly string[] =>
+  missing === null ? (replaced ? [] : events) : events.filter((event) => missing.includes(event));
+
+/** The App's "Permissions and events" page on GitHub, where `Subscribe to events` is. */
+export const appPermissionsUrl = (slug: string, owner: { readonly login: string; readonly kind: "organization" | "user" }): string => `${appGeneralSettingsUrl(slug, owner)}/permissions`;
+
+/** The two settings pages the result links to; `null` while the App's slug or owner isn't known (the steps name them in words). */
+export const appSettingsLinks = (app: { readonly slug: string | null; readonly ownerLogin: string | null; readonly ownerKind: "organization" | "user" | null }): { readonly general: string; readonly permissions: string } | null => {
+  if (app.slug === null || app.ownerLogin === null) return null;
+  const owner = { login: app.ownerLogin, kind: app.ownerKind ?? "organization" };
+  return { general: appGeneralSettingsUrl(app.slug, owner), permissions: appPermissionsUrl(app.slug, owner) };
+};

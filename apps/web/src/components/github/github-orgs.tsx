@@ -33,7 +33,7 @@ import type { RouterOutputs } from "@/lib/trpc";
 
 import { GitHubMark } from "./github-mark";
 import { orderPermissions } from "./permission-order";
-import { appSettingsUrl, appVisibility, dayMonth, installUrl, orderInstallations, reposText } from "./github-orgs-words";
+import { appSettingsUrl, appVisibility, dayMonth, installUrl, orderInstallations, reposText, sectionState } from "./github-orgs-words";
 
 // Organization › GitHub with several GitHub organizations (F-136, app-targets/m4/github-organizations.md):
 // each App with its installations, linked, waiting to be linked or removed. ostra acts only through
@@ -56,28 +56,36 @@ const OutLink = ({ href, children }: { readonly href: string; readonly children:
   </a>
 );
 
+/** The section line's state (github-events.md): `Events off`, `Waiting for events`, receiving or failing. */
 const WebhookState = ({ app }: { readonly app: GitHubApp }) => {
-  switch (app.webhook.kind) {
+  const state = sectionState(app);
+  switch (state) {
     case "receiving":
       return (
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-sm text-muted">
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-[13.5px] text-muted" data-testid="webhook-state" data-state={state}>
           <Dot tone="green" /> {t("githubOrgs.webhook.receiving")}
         </span>
       );
-    case "none":
+    case "off":
       return (
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-sm text-muted">
-          <Dot tone="grey" /> {t("githubOrgs.webhook.none")}
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-[13.5px] text-muted" data-testid="webhook-state" data-state={state}>
+          <Dot tone="grey" /> {t("githubOrgs.webhook.off")}
+        </span>
+      );
+    case "waiting":
+      return (
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-[13.5px] text-muted" data-testid="webhook-state" data-state={state}>
+          <ClockIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {t("githubOrgs.webhook.waiting")}
         </span>
       );
     case "failing":
-      return (
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-sm text-text" title={app.webhook.lastError}>
-          <TriangleAlertIcon aria-hidden className="size-[13px] stroke-[1.75]" /> {t("githubOrgs.webhook.failing")}
+      return app.webhook.kind === "failing" ? (
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-[13.5px] text-text" title={app.webhook.lastError} data-testid="webhook-state" data-state={state}>
+          <TriangleAlertIcon aria-hidden className="size-[14px] stroke-[1.75]" /> {t("githubOrgs.webhook.failing")}
         </span>
-      );
+      ) : null;
     default:
-      return app.webhook satisfies never;
+      return state satisfies never;
   }
 };
 
@@ -143,12 +151,14 @@ const StateAndActions = ({ installation, busy, onLink, onUnlink, onRemove }: {
 };
 
 /** One App: its section line, then its installations in one grid. */
-export const AppSection = ({ app, selected, onSelectApp, onSelectInstallation, onStatus }: {
+export const AppSection = ({ app, selected, onSelectApp, onSelectInstallation, onStatus, note }: {
   readonly app: GitHubApp;
   readonly selected: { readonly kind: "app"; readonly connectionId: string } | { readonly kind: "installation"; readonly installationId: string } | null;
   readonly onSelectApp: () => void;
   readonly onSelectInstallation: (installationId: string) => void;
   readonly onStatus: (text: string) => void;
+  /** F-006/c4: the note under the installations while the App's events are off. */
+  readonly note?: ReactNode;
 }) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -161,14 +171,15 @@ export const AppSection = ({ app, selected, onSelectApp, onSelectInstallation, o
   const error = [link, unlink, remove].map((mutation) => mutation.error).find((value) => value !== null) ?? null;
   const target = { connectionId: app.connectionId };
   const installations = orderInstallations(app.installations);
+  const appSelected = selected?.kind === "app" && selected.connectionId === app.connectionId;
 
   return (
-    <section className="mt-7" data-testid="github-app" data-slug={app.slug ?? app.appId}>
+    <section className="mt-[26px] first-of-type:mt-[22px]" data-testid="github-app" data-slug={app.slug ?? app.appId}>
       <button
         type="button"
         onClick={onSelectApp}
-        aria-pressed={selected?.kind === "app" && selected.connectionId === app.connectionId}
-        className="flex h-10 w-full items-center gap-2.5 border-b border-line text-left"
+        aria-pressed={appSelected}
+        className={cn("flex h-10 w-full items-center gap-2.5 border-b border-line px-2 text-left", appSelected && "rounded-[6px] bg-sel")}
       >
         <GitHubMark className="text-text" />
         <span className="truncate font-mono text-[15px] font-semibold text-text">{app.slug ?? app.appId}</span>
@@ -190,14 +201,14 @@ export const AppSection = ({ app, selected, onSelectApp, onSelectInstallation, o
               data-account={installation.accountLogin}
               data-state={installation.state}
               className={cn(
-                "relative grid min-h-[42px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line px-2 py-1 sm:grid-cols-[200px_120px_minmax(0,1fr)_170px_auto]",
+                "relative grid min-h-[42px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-line px-2 py-1 sm:grid-cols-[200px_120px_minmax(0,1fr)_170px_auto] sm:gap-x-0",
                 "rounded-[6px] hover:bg-hover",
                 on && "bg-sel hover:bg-sel",
                 removed && "text-faint",
               )}
             >
               <button type="button" className="absolute inset-0" aria-label={installation.accountLogin} aria-pressed={on} onClick={() => { onSelectInstallation(installation.installationId); }} />
-              <span className="flex min-w-0 items-center gap-2.5">
+              <span className="flex min-w-0 items-center gap-2.5 sm:pr-3">
                 {installation.accountKind === "organization" ? (
                   <Building2Icon aria-hidden className="size-[15px] shrink-0 stroke-[1.75] text-faint" />
                 ) : (
@@ -206,7 +217,7 @@ export const AppSection = ({ app, selected, onSelectApp, onSelectInstallation, o
                 <span className={cn("truncate font-mono text-[14px]", removed ? "text-faint" : "text-text")}>{installation.accountLogin}</span>
               </span>
               <span className="hidden text-sm text-faint sm:inline">{installation.accountKind === "organization" ? t("githubOrgs.organization") : t("githubOrgs.user")}</span>
-              <span className={cn("hidden truncate sm:inline", removed ? "text-faint" : "text-muted")}>{removed ? "–" : reposText(installation)}</span>
+              <span className={cn("hidden truncate sm:inline sm:pr-3", removed ? "text-faint" : "text-muted")}>{removed ? "–" : reposText(installation)}</span>
               <span className="col-span-2 flex items-center justify-between gap-3 sm:contents">
                 <StateAndActions
                   installation={installation}
@@ -225,6 +236,7 @@ export const AppSection = ({ app, selected, onSelectApp, onSelectInstallation, o
           );
         })}
       </ul>
+      {note}
       <AlertDialog open={confirm !== null} onOpenChange={(open) => { if (!open) setConfirm(null); }}>
         {confirm === null ? null : confirm.kind === "unlink" ? (
           <AlertDialogContent
@@ -379,7 +391,13 @@ export const InstallationPanel = ({ app, installation }: { readonly app: GitHubA
  * An App's properties. For the organization's own App, its bot, its permissions and whether members
  * can link through it: Q295's client secret, added or replaced through `onClientSecret`.
  */
-export const AppPanel = ({ app, own, onClientSecret }: { readonly app: GitHubApp; readonly own: OwnConnection | null; readonly onClientSecret?: () => void }) => (
+export const AppPanel = ({ app, own, onClientSecret, events }: {
+  readonly app: GitHubApp;
+  readonly own: OwnConnection | null;
+  readonly onClientSecret?: () => void;
+  /** F-006/c4: the Events row after Webhook (`EventsRow`). */
+  readonly events?: ReactNode;
+}) => (
   <div data-testid="app-panel">
     <PanelLabel>{t("github.app")}</PanelLabel>
     <PropRow labelWidth={112} label={t("github.slug")}><span className="truncate font-mono">{app.slug ?? "–"}</span></PropRow>
@@ -387,7 +405,8 @@ export const AppPanel = ({ app, own, onClientSecret }: { readonly app: GitHubApp
     <PropRow labelWidth={112} label={t("githubOrgs.app.owner")}><span className="truncate font-mono">{app.ownerLogin ?? "–"}</span></PropRow>
     {app.public === null ? null : <PropRow labelWidth={112} label={t("githubOrgs.app.visibility")}>{app.public ? t("githubOrgs.public") : t("githubOrgs.private")}</PropRow>}
     {own === null ? null : <PropRow labelWidth={112} label={t("github.bot")}><span className="truncate font-mono">{own.botName ?? "–"}</span></PropRow>}
-    <PropRow labelWidth={112} label={t("githubOrgs.app.webhook")}><span className="truncate font-mono text-xs" title={app.webhookUrl}>{app.webhookUrl}</span></PropRow>
+    <PropRow labelWidth={112} label={t("githubOrgs.app.webhook")}><span className="truncate font-mono text-xs text-text-2" title={app.webhookUrl}>{app.webhookUrl}</span></PropRow>
+    {events}
     <PropRow labelWidth={112} label={t("github.secrets")}>
       <LockIcon aria-hidden className="stroke-[1.75]" />
       <span className="text-muted">{t("github.secretsStored")}</span>

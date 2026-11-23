@@ -9,11 +9,12 @@ import {
   PlusIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useRef, useState } from "react";
 import type { ReactNode, SubmitEvent } from "react";
 
 import { PageFrame, PageHeading, Section } from "@/components/shell/page-frame";
+import { usePhone } from "@/components/tasks/take-it-local";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
@@ -25,6 +26,8 @@ import { errorText } from "@/lib/errors";
 import { t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 
+import { EventsRow, LeaveDialog, MadeWithoutNote, ReplaceDialog, ShownOnceSheet, ShownOnceView, useLeaveGuard } from "./github-events";
+import type { ShownOnce } from "./github-events";
 import {
   AddOrganizationGroup,
   AppPanel,
@@ -37,7 +40,11 @@ import {
   StrangersLine,
   useStatusLine,
 } from "./github-orgs";
-import { appGeneralSettingsUrl, appVisibility } from "./github-orgs-words";
+import type { GitHubApp } from "./github-orgs";
+import { appGeneralSettingsUrl, appVisibility, sectionState } from "./github-orgs-words";
+
+/** While an App waits for its events, the page asks GitHub again this often (github-events.md, "Done"). */
+const WAITING_REFETCH_MS = 15_000;
 
 
 /** Posts the App manifest to GitHub as a form, the way GitHub's manifest flow asks (F-006). */
@@ -347,7 +354,12 @@ type Panel =
   | { readonly kind: "installation"; readonly installationId: string }
   | { readonly kind: "add-org" }
   | { readonly kind: "add-app" }
-  | { readonly kind: "client-secret" };
+  | { readonly kind: "client-secret" }
+  /** F-006/c4: Turn on's result in the App's panel, never in the URL. */
+  | { readonly kind: "once"; readonly shown: ShownOnce };
+
+/** What a leave the result asked about does once `Leave` is chosen. */
+type Leaving = { readonly run: () => void };
 
 /**
  * Organization › GitHub (F-006, F-136): "Use an existing App" or "Create a new App" (the manifest
@@ -356,17 +368,101 @@ type Panel =
  */
 export const GitHubView = () => {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const router = useRouter();
   const params = useSearchParams();
+  const phone = usePhone();
   const me = useQuery(trpc.me.get.queryOptions());
-  const connections = useQuery(trpc.github.connections.queryOptions());
+  // F-006/c4: while an App waits for GitHub to list its events, ask again every 15s.
+  const connections = useQuery({
+    ...trpc.github.connections.queryOptions(),
+    refetchInterval: (query) => ((query.state.data ?? []).some((app) => sectionState(app) === "waiting") ? WAITING_REFETCH_MS : false),
+  });
   // The organization's own App, as milestone 1 reads it: its bot and permissions for its panel.
   const own = useQuery(trpc.github.connection.queryOptions());
+  // Whether GitHub can reach this server (F-006/c4), and the events ostra uses.
+  const request = useQuery(trpc.github.appRequest.queryOptions());
   const ownOf = (app: { readonly own: boolean }) => (app.own ? (own.data ?? null) : null);
   const callbackError = params.get("error");
   const apps = connections.data ?? [];
   const connected = apps.length > 0;
-  const [panel, setPanel] = useState<Panel | null>(null);
+  // The selection may come as `?app=<connectionId>` (github-events.md, "Route").
+  const [panel, setPanel] = useState<Panel | null>(() => {
+    const app = params.get("app");
+    return app === null ? null : { kind: "app", connectionId: app };
+  });
   const [status, setStatus] = useStatusLine();
+
+  // ---- F-006/c4: Turn on, its result shown once, and leaving it ----
+  const [refusedPublic, setRefusedPublic] = useState(false);
+  const [replacing, setReplacing] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState<Leaving | null>(null);
+  const turnOn = useMutation(
+    trpc.github.turnOnWebhook.mutationOptions({
+      onSuccess: (result) => {
+        setPanel({ kind: "once", shown: { kind: "secret", connectionId: result.connectionId, replaced: result.replaced, webhookUrl: result.webhookUrl, webhookSecret: result.webhookSecret, events: result.events } });
+        // Not awaited: Turn on is done once the result shows, while the App's state refetches.
+        void queryClient.invalidateQueries({ queryKey: trpc.github.connections.queryKey() });
+      },
+      onError: (error) => {
+        // The address stopped being public: the row goes back to `Off · no public address`.
+        if (error.data?.code === "PRECONDITION_FAILED") {
+          setRefusedPublic(true);
+          void queryClient.invalidateQueries({ queryKey: trpc.github.appRequest.queryKey() });
+        }
+      },
+    }),
+  );
+  const holdingSecret = panel?.kind === "once" && panel.shown.kind === "secret";
+  /** Runs `next` at once, or, while the result holds a secret, once `Leave` is chosen. */
+  const leaveThen = useCallback((next: () => void) => {
+    if (holdingSecret) setLeaving({ run: next });
+    else next();
+  }, [holdingSecret]);
+  const choosePanel = (next: Panel | null) => { leaveThen(() => { setPanel(next); }); };
+  useLeaveGuard(holdingSecret, useCallback((href: string) => { setLeaving({ run: () => { router.push(href); } }); }, [router]));
+  const webhookPossible = request.data === undefined ? undefined : request.data.webhookPossible && !refusedPublic;
+  const startTurnOn = (connectionId: GitHubApp["connectionId"]) => {
+    turnOn.reset();
+    turnOn.mutate({ connectionId });
+  };
+  const eventsRowOf = (app: GitHubApp) => (
+    <EventsRow
+      app={app}
+      webhookPossible={webhookPossible}
+      eventCount={request.data?.events.length}
+      turningOn={turnOn.isPending && turnOn.variables.connectionId === app.connectionId}
+      error={turnOn.error !== null && turnOn.variables.connectionId === app.connectionId ? errorText(turnOn.error) : null}
+      checking={connections.isFetching}
+      onTurnOn={() => { startTurnOn(app.connectionId); }}
+      onWhichOnes={() => { setPanel({ kind: "once", shown: { kind: "which-ones", connectionId: app.connectionId } }); }}
+      onNewSecret={() => { setReplacing(app.connectionId); }}
+      onCheckAgain={() => { void connections.refetch(); }}
+    />
+  );
+  const shownApp = panel?.kind === "once" ? apps.find((app) => app.connectionId === panel.shown.connectionId) : undefined;
+  /** Back to the App's panel: `Done`, or a leave that was asked about. */
+  const backToApp = (connectionId: string) => {
+    setPanel({ kind: "app", connectionId });
+    void queryClient.invalidateQueries({ queryKey: trpc.github.connections.queryKey() });
+  };
+  const closeShown = () => {
+    if (panel?.kind !== "once") return;
+    const connectionId = panel.shown.connectionId;
+    leaveThen(() => { backToApp(connectionId); });
+  };
+  const shownView =
+    panel?.kind === "once" && shownApp !== undefined ? (
+      <ShownOnceView
+        key={panel.shown.kind === "secret" ? panel.shown.webhookSecret : panel.shown.kind}
+        app={shownApp}
+        shown={panel.shown}
+        events={request.data?.events ?? []}
+        phone={phone}
+        onDone={() => { backToApp(shownApp.connectionId); }}
+        onEscape={closeShown}
+      />
+    ) : null;
 
   const allInstallations = apps.flatMap((app) => app.installations.map((installation) => ({ app, installation })));
   const selectedInstallation = panel?.kind === "installation" ? allInstallations.find((row) => row.installation.installationId === panel.installationId) : undefined;
@@ -384,9 +480,12 @@ export const GitHubView = () => {
   );
 
   const ownApp = apps.find((app) => app.own);
-  const onClientSecret = () => { setPanel({ kind: "client-secret" }); };
+  const onClientSecret = () => { choosePanel({ kind: "client-secret" }); };
   const properties = !connected ? (
     connections.isPending ? undefined : <RequestProperties />
+  ) : shownApp !== undefined ? (
+    // On a phone the result is a bottom sheet over the page, and the App's panel stays under it.
+    phone ? <AppPanel app={shownApp} own={ownOf(shownApp)} onClientSecret={onClientSecret} events={eventsRowOf(shownApp)} /> : shownView
   ) : panel?.kind === "add-app" ? (
     <ConnectAnotherForm onDone={() => { setPanel(null); }} />
   ) : panel?.kind === "client-secret" ? (
@@ -398,7 +497,7 @@ export const GitHubView = () => {
   ) : panel?.kind === "add-org" ? (
     orgGroups
   ) : selectedApp !== undefined ? (
-    <AppPanel app={selectedApp} own={ownOf(selectedApp)} onClientSecret={onClientSecret} />
+    <AppPanel app={selectedApp} own={ownOf(selectedApp)} onClientSecret={onClientSecret} events={eventsRowOf(selectedApp)} />
   ) : selectedInstallation !== undefined ? (
     <>
       <InstallationPanel app={selectedInstallation.app} installation={selectedInstallation.installation} />
@@ -406,7 +505,7 @@ export const GitHubView = () => {
       {orgGroups}
     </>
   ) : apps.length === 1 && apps[0] !== undefined && apps[0].installations.length <= 1 ? (
-    <AppPanel app={apps[0]} own={ownOf(apps[0])} onClientSecret={onClientSecret} />
+    <AppPanel app={apps[0]} own={ownOf(apps[0])} onClientSecret={onClientSecret} events={eventsRowOf(apps[0])} />
   ) : (
     orgGroups
   );
@@ -419,11 +518,11 @@ export const GitHubView = () => {
             actions: (
               <>
                 {/* At phone width the two buttons take short labels; their names stay the full ones. */}
-                <Button aria-label={t("githubOrgs.connectAnother.title")} onClick={() => { setPanel({ kind: "add-app" }); }}>
+                <Button aria-label={t("githubOrgs.connectAnother.title")} onClick={() => { choosePanel({ kind: "add-app" }); }}>
                   <span className="sm:hidden">{t("githubOrgs.connectAnother.short")}</span>
                   <span className="hidden sm:inline">{t("githubOrgs.connectAnother.title")}</span>
                 </Button>
-                <Button aria-label={t("githubOrgs.addOrg.label")} variant="primary" onClick={() => { setPanel({ kind: "add-org" }); }}>
+                <Button aria-label={t("githubOrgs.addOrg.label")} variant="primary" onClick={() => { choosePanel({ kind: "add-org" }); }}>
                   <PlusIcon /> <span className="sm:hidden">{t("githubOrgs.addOrg.short")}</span>
                   <span className="hidden sm:inline">{t("githubOrgs.addOrg.label")}</span>
                 </Button>
@@ -432,8 +531,11 @@ export const GitHubView = () => {
           }
         : {})}
       {...(properties === undefined ? {} : { properties })}
-      wideProperties={panel?.kind === "add-app" || panel?.kind === "client-secret"}
+      wideProperties={panel?.kind === "add-app" || panel?.kind === "client-secret" || (shownApp !== undefined && !phone)}
     >
+      {phone && shownView !== null ? (
+        <ShownOnceSheet title={t("githubOrgs.events.once.eyebrow")} onClose={closeShown}>{shownView}</ShownOnceSheet>
+      ) : null}
       <PageHeading title={t("github.title")} lede={connected ? t("githubOrgs.lede") : t("github.lede")} />
       {callbackError === null ? null : <ErrorLine className="mt-2 max-w-[720px]">{callbackError.slice(0, 300)}</ErrorLine>}
       {status === null ? null : (
@@ -450,14 +552,49 @@ export const GitHubView = () => {
             <AppSection
               key={app.connectionId}
               app={app}
-              selected={panel?.kind === "app" || panel?.kind === "installation" ? panel : null}
-              onSelectApp={() => { setPanel({ kind: "app", connectionId: app.connectionId }); }}
-              onSelectInstallation={(installationId) => { setPanel({ kind: "installation", installationId }); }}
+              selected={panel?.kind === "app" || panel?.kind === "installation" ? panel : panel?.kind === "once" ? { kind: "app", connectionId: panel.shown.connectionId } : null}
+              onSelectApp={() => { choosePanel({ kind: "app", connectionId: app.connectionId }); }}
+              onSelectInstallation={(installationId) => { choosePanel({ kind: "installation", installationId }); }}
               onStatus={setStatus}
+              note={
+                app.webhook.kind === "none" && webhookPossible !== undefined ? (
+                  <MadeWithoutNote
+                    webhookPossible={webhookPossible}
+                    busy={turnOn.isPending && turnOn.variables.connectionId === app.connectionId}
+                    onTurnOn={() => {
+                      leaveThen(() => {
+                        setPanel({ kind: "app", connectionId: app.connectionId });
+                        startTurnOn(app.connectionId);
+                      });
+                    }}
+                  />
+                ) : null
+              }
             />
           ))}
           {anyPublic ? <StrangersLine /> : null}
           {own.data === null || own.data === undefined || own.data.clientSecretSet ? null : <LinkingOffLine onAdd={onClientSecret} />}
+          <LeaveDialog
+            open={leaving !== null}
+            onStay={() => { setLeaving(null); }}
+            onLeave={() => {
+              const next = leaving;
+              setLeaving(null);
+              // The result goes first, so a leave that selects nothing shows no secret again.
+              setPanel(null);
+              next?.run();
+            }}
+          />
+          <ReplaceDialog
+            app={apps.find((app) => app.connectionId === replacing) ?? null}
+            open={replacing !== null}
+            onCancel={() => { setReplacing(null); }}
+            onReplace={() => {
+              const connectionId = apps.find((app) => app.connectionId === replacing)?.connectionId;
+              setReplacing(null);
+              if (connectionId !== undefined) startTurnOn(connectionId);
+            }}
+          />
         </>
       ) : (
         <ConnectForm />
