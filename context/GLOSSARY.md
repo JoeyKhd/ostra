@@ -317,6 +317,15 @@ _Not_: a Linear workspace, which is an account in Linear
 A project's recipe for every box: a base image, a setup script, services, checks, and variables, secrets and files such as `.env` that each belong to one repo. The panel may call it "the computer every task starts from".
 _Avoid_: machine (that's a runner), sandbox, container (a box has several), image (the image is its snapshot)
 
+**Network rule**:
+One destination an environment's boxes may reach: a host (an exact name, or `*.` and a suffix that matches at least one label) or a CIDR, each with one or more TCP ports. A project admin saves the list on the environment's Network tab, and it takes effect at the next dispatch, never on a running box. A rule narrows the egress baseline and never widens it, so a CIDR inside the baseline's ranges is refused.
+_Avoid_: allowlist (alone), firewall rule, ACL
+_Not_: the egress baseline, which is the install-wide ranges every box is kept out of
+
+**Egress proxy**:
+The filtering forward proxy in the sidecar (on `host`, the runner's own process) that checks each `CONNECT` and absolute-form HTTP request against the environment's network rules and refuses the rest with a 403 and one `egress.blocked` event per host and port. It passes TLS through untouched and holds no credential. On `docker` it is the box's only way out; on `kubernetes` a process that ignores it still reaches the pod's direct public egress; on `host` nothing enforces it.
+_Avoid_: firewall, gateway, MITM proxy
+
 **Snapshot**:
 An environment prepared ahead of time, so a box starts in seconds: an image with the repos checked out and the dependencies installed, never a secret.
 _Avoid_: cache, template
@@ -598,8 +607,21 @@ _Avoid_: CLI token, API key, runner key (a runner's credential is a different on
 ### Integrations
 
 **Tracker**:
-The tool where an organization keeps its tickets: Linear or Jira Cloud. *Changed 2026-11-23: Jira is built in milestone 11 (ADR 0071).*
+The tool where an organization keeps its tickets: Linear or Jira Cloud, and Trello after v1. *Changed 2026-11-23: Jira is built in milestone 11 (ADR 0071).*
 _Avoid_: PM tool, project management tool, issue tracker
+
+**Trello bot member**:
+A Trello member created for ostra and added to the boards ostra works, whose never-expiring token is a Trello connection's credential. It is never a person's account, and its own writes are how ostra recognises its echoes.
+_Avoid_: bot user (that's Slack's), service account (that's Jira's), user token
+_Not_: a person's Trello account, whose token would reach their private boards
+
+**Card list**:
+One of a Trello board's lists; a card's status. A list carries no category, so an admin maps each list to one of ostra's categories and to the started, in-review and done steps.
+_Avoid_: status (alone, when the list is meant), column
+
+**Trello board prefix**:
+The short uppercase prefix an admin gives an attached Trello board (`TR`), stored in the board's key, so a card's key is `TR-12` beside its stable card ID. A Trello board has no prefix of its own.
+_Avoid_: project key (that's Linear's or Jira's), board key (the field, not the concept)
 
 **Code host**:
 The service where an organization's repos live and pull requests are reviewed: GitHub, later others.
@@ -608,6 +630,14 @@ _Avoid_: VCS, forge, git provider
 **Installation**:
 A GitHub account's install of an App, which grants the App the repos that account chose. ostra works only through a linked installation: one on the App owner's own account, which is linked when ostra sees it, or one an organization admin linked. A client's GitHub organization installs the organization's App, or has its own App connected beside it.
 _Avoid_: integration, connection (that's ostra's record of the App itself)
+
+**Slack installation**:
+One organization's install of ostra's Slack app: the workspace, the bot user, the granted scopes and the token's date, with the client secret, the bot token and any refresh token held only as references in the secret store. One per organization; disconnect revokes it and deletes its secrets.
+_Avoid_: Slack connection (trackers have connections), workspace (that's the Slack side)
+
+**Slack identity**:
+The workspace user whose email is a member's ostra address, matched once and cached: the member's Slack user ID, the workspace's ID and the matched address. No row means no match, and that member's Slack delivery is skipped, never failed.
+_Avoid_: Slack account (the account is the person's; the identity is ostra's cached match), link
 
 **Adapter**:
 ostra's connection to one specific tracker, code host, agent, model provider, executor, notification channel, secret store or blob store, behind the interface all of its kind share.
