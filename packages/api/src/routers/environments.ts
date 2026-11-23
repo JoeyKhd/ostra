@@ -87,6 +87,8 @@ export const repoDraftViewSchema = z.object({
   kind: z.enum(["case", "plain", "nothing"]),
   lines: z.array(z.object({ kind: z.enum(["same", "add"]), text: z.string() })).readonly(),
   script: z.string().nullable(),
+  /** The other new repos Apply gives no branch when it makes a plain script a `case`: their own drafts wait to add one. */
+  leftOut: z.array(z.string()).readonly(),
   envFile: z.string(),
   variables: z.array(z.object({ name: z.string(), secret: z.boolean(), source: z.string() })).readonly(),
   reasons: z.array(z.object({ file: z.string(), finding: z.string() })).readonly(),
@@ -191,7 +193,7 @@ export const environmentsRouter = router({
     .query(async ({ ctx, input }) => [...(await listRepoDrafts(ctx.deps.db, ctx.scope, input.projectId))]),
 
   /**
-   * F-112/c1: "Apply" on a new repo's draft: saves the environment at once with its lines in the
+   * F-112/c2: "Apply" on a new repo's draft: saves the environment at once with its lines in the
    * setup script and its variables in its section, scanned, audited and versioned like any save;
    * the snapshot rebuilds. Answers the secrets detection named, which need a value before they're kept.
    */
@@ -214,7 +216,7 @@ export const environmentsRouter = router({
       return { environmentId: applied.environmentId, secretsWithoutValue: applied.secretsWithoutValue };
     }),
 
-  /** F-112/c1: "Dismiss" on a new repo's draft: the environment stays as it is. Audited. */
+  /** F-112/c2: "Dismiss" on a new repo's draft: the environment stays as it is. Audited. */
   dismissRepoDraft: projectProcedure("admin", repoDraftInput)
     .output(z.object({ dismissed: z.literal(true) }))
     .mutation(async ({ ctx, input }) => {
@@ -223,7 +225,7 @@ export const environmentsRouter = router({
       return { dismissed: true as const };
     }),
 
-  /** F-112/c1: "Undo" after Dismiss, while the page is open: the draft waits again. Audited. */
+  /** F-112/c2: "Undo" after Dismiss, while the page is open: the draft waits again. Audited. */
   undoDismissRepoDraft: projectProcedure("admin", repoDraftInput)
     .output(z.object({ dismissed: z.literal(false) }))
     .mutation(async ({ ctx, input }) => {

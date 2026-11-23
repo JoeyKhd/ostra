@@ -4,15 +4,16 @@ import { CheckIcon, ChevronRightIcon, ChevronsUpDownIcon, GitBranchPlusIcon, Key
 import { useState } from "react";
 import type { ReactNode, Ref } from "react";
 
+import { andList } from "@/components/effort/effort-words";
 import { PropGroup } from "@/components/shell/page-frame";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { formatElapsed } from "@/lib/format";
-import { t } from "@/lib/messages";
+import { plural, t } from "@/lib/messages";
 import type { MessageKey } from "@/lib/messages";
 import type { RouterOutputs } from "@/lib/trpc";
 
-// F-112/c1 (Q345 option (b), environment-repo-draft.md): a repo added after the environment was
+// F-112/c2 (Q345 option (b), environment-repo-draft.md): a repo added after the environment was
 // saved has its own draft, held beside the saved setup for a project admin: the band and the draft
 // above the setup script on the Setup tab (what detection found, the lines Apply adds, and Apply,
 // Edit first and Dismiss), the panel's `Found in` groups, and a one-line pointer on the other tabs.
@@ -58,6 +59,20 @@ const whyText = (draft: RepoDraft): string => {
 /** Detection's one line for a folded draft: `Python · uv`. */
 const summaryText = (draft: RepoDraft): string =>
   [draft.language === null ? null : t(languageKey[draft.language]), draft.tool].filter((part): part is string => part !== null).join(" · ");
+
+/** Names in mono, as a list: `a`, `a` and `b`, `a`, `b` and `c`. */
+const monoList = (names: readonly string[]): string => andList(names.map((name) => `\`${name}\``));
+
+/**
+ * The other new repos Apply gives no branch when it makes a plain script a `case` (their own drafts
+ * add one): until then they set up nothing, so the draft names them under its diff.
+ */
+export const leftOutText = (leftOut: readonly string[]): string | null =>
+  leftOut.length === 0 ? null : plural(leftOut.length, "environment.repoDraft.leftOutOne", "environment.repoDraft.leftOutMany", { repos: monoList(leftOut) });
+
+/** The secrets Apply couldn't keep without a value, named after the save. */
+export const appliedSecretsText = (secrets: readonly string[]): string =>
+  plural(secrets.length, "environment.repoDraft.appliedSecretsOne", "environment.repoDraft.appliedSecretsMany", { names: monoList(secrets) });
 
 const addedByText = (draft: RepoDraft, now: number): string =>
   t("environment.repoDraft.addedBy", { name: draft.createdBy ?? t("environment.repoDraft.someone"), age: formatElapsed(draft.createdAt, now) });
@@ -219,7 +234,8 @@ const DraftButtons = ({ draft, actions, phone }: { readonly draft: RepoDraft; re
 /** One new repo's draft: its head, why, the lines Apply adds and its variables, and its foot. */
 const Draft = ({ draft, actions, now, folded, onToggle, many }: { readonly draft: RepoDraft; readonly actions: DraftActions; readonly now: number; readonly folded: boolean; readonly onToggle: () => void; readonly many: boolean }) => {
   const error = actions.error?.repoId === draft.repoId ? actions.error.text : null;
-  const name = <span className="truncate font-mono text-[15px] font-semibold text-text md:text-body">{draft.fullName}</span>;
+  const leftOut = leftOutText(draft.leftOut);
+  const name =<span className="truncate font-mono text-[15px] font-semibold text-text md:text-body">{draft.fullName}</span>;
   return (
     <div className="border-b border-line px-0.5 pb-3.5 pt-2.5 md:px-3 md:pt-3" data-testid="repo-draft" data-repo={draft.fullName}>
       <div className="flex min-h-[30px] items-center gap-2.5 whitespace-nowrap">
@@ -250,6 +266,11 @@ const Draft = ({ draft, actions, now, folded, onToggle, many }: { readonly draft
                 <span className="text-[12.5px] font-normal text-faint">{t("environment.repoDraft.scriptNote")}</span>
               </div>
               <DiffBlock lines={draft.lines} />
+              {leftOut === null ? null : (
+                <p className="mt-1.5 max-w-[640px] text-[14px] leading-normal text-muted md:text-[13px]" data-testid="repo-draft-left-out">
+                  {withMono(leftOut, "font-mono text-[12.5px] text-text-2")}
+                </p>
+              )}
               {draft.variables.length === 0 ? null : (
                 <>
                   <div className="mb-[5px] mt-3 flex items-baseline gap-2 text-[13px] font-medium text-muted">
@@ -343,7 +364,7 @@ export const RepoDraftStatus = ({ said, onUndo, undoing }: { readonly said: { re
         <CheckIcon aria-hidden className="size-[14px] stroke-[2]" />
         <span>{withMono(t("environment.repoDraft.applied", { repo: `\`${said.fullName}\`` }), "font-mono text-[13.5px]")}</span>
       </p>
-      {said.secrets.length === 0 ? null : <p className="text-muted">{withMono(t("environment.repoDraft.appliedSecrets", { names: said.secrets.map((name) => `\`${name}\``).join(", ") }), "font-mono text-[13.5px] text-text")}</p>}
+      {said.secrets.length === 0 ? null : <p className="text-muted">{withMono(appliedSecretsText(said.secrets), "font-mono text-[13.5px] text-text")}</p>}
     </div>
   );
 

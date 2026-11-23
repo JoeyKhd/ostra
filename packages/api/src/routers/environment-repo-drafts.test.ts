@@ -5,11 +5,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApiHarness, trpcFailure } from "../testing/index.ts";
 import type { ApiHarness } from "../testing/index.ts";
 
-// F-112/c1, for a repo added after the environment was saved (Q345 option (b), the maintainer
-// 2026-11-22): `projects.addRepo` runs detection for the new repo, with no agent and no model, and
-// holds its draft beside the saved setup, which stays as it is until a project admin applies it,
-// edits it first or dismisses it. Against the fake code host (GitHub is the external service) and
-// Postgres. The browser's side is apps/web/e2e/28-environment-repo-draft.spec.ts.
+// F-112, for a repo added after the environment was saved (Q345 option (b), the maintainer
+// 2026-11-22): `projects.addRepo` runs detection for the new repo, with no agent and no model (c1),
+// and holds its draft beside the saved setup, which stays as it is until a project admin reviews it
+// and applies it, edits it first or dismisses it (c2). Against the fake code host (GitHub is the
+// external service) and Postgres. The browser's side is apps/web/e2e/28-environment-repo-draft.spec.ts.
 
 const APP_ID = "5821077";
 const PEM = "-----BEGIN RSA PRIVATE KEY-----\nREPO-DRAFT-KEY-0123456789\n-----END RSA PRIVATE KEY-----";
@@ -27,7 +27,7 @@ beforeAll(async () => {
     info: { appId: APP_ID, slug: "ostra-repo-drafts", name: "ostra repo drafts", permissions: { checks: "write", actions: "read" }, events: [] },
     bot: { name: "ostra-repo-drafts[bot]", email: "3+ostra-repo-drafts[bot]@users.noreply.github.com" },
     installations: [{ installationId, accountLogin: "ostra-test", accountKind: "organization", repositorySelection: "all" }],
-    repos: new Map([[installationId, [hostRepo("71", "ostra-test/web"), hostRepo("72", "ostra-test/engine"), hostRepo("73", "ostra-test/docs"), hostRepo("74", "ostra-test/site")]]]),
+    repos: new Map([[installationId, [hostRepo("71", "ostra-test/web"), hostRepo("72", "ostra-test/engine"), hostRepo("73", "ostra-test/docs"), hostRepo("74", "ostra-test/site"), hostRepo("75", "ostra-test/cli")]]]),
   });
   harness.fakes.codeHost.files.set("ostra-test/web", new Map([["package.json", '{"name":"web","packageManager":"pnpm@10.4.1"}'], ["pnpm-lock.yaml", "lockfileVersion: 9"]]));
   harness.fakes.codeHost.files.set(
@@ -42,6 +42,8 @@ beforeAll(async () => {
   harness.fakes.codeHost.files.set("ostra-test/docs", new Map([["README.md", "# docs\n"]]));
   // A second Node repo: the same lines detection drafted for web.
   harness.fakes.codeHost.files.set("ostra-test/site", new Map([["package.json", '{"name":"site","packageManager":"pnpm@10.4.1"}'], ["pnpm-lock.yaml", "lockfileVersion: 9"]]));
+  // A Rust repo: lines of its own, so its draft waits to add them.
+  harness.fakes.codeHost.files.set("ostra-test/cli", new Map([["Cargo.toml", '[package]\nname = "cli"\n'], ["Cargo.lock", "version = 3\n"]]));
   const connected = await (await harness.as(harness.fixture.a.admin)).github.connectExisting({ appId: APP_ID, privateKey: PEM, webhookSecret: "whsec-0123456789" });
   connectionId = connected.connectionId;
 });
@@ -74,7 +76,7 @@ const noAgentNoModel = async <T,>(run: () => Promise<T>): Promise<T> => {
   return result;
 };
 
-describe("a repo added after the environment was saved (F-112/c1, Q345 option (b))", () => {
+describe("a repo added after the environment was saved (F-112, Q345 option (b))", () => {
   it("F-112/c1: adding a repo to a project whose environment is saved drafts that repo's setup from its files beside the saved one, with no agent and no model, and the saved environment stays as it is", async () => {
     const projectId = await savedProject("drafts-case", CASE_SCRIPT);
     const admin = await harness.as(harness.fixture.a.admin);
@@ -109,7 +111,7 @@ describe("a repo added after the environment was saved (F-112/c1, Q345 option (b
     expect(draft?.script).toBe(CASE_SCRIPT.replace("esac\n", "  'ostra-test/engine')\n    uv sync --frozen\n    ;;\nesac\n"));
   });
 
-  it("F-112/c1: a project admin reviews the draft before it's saved: Apply saves the repo's branch and variables at once, audited and versioned, and the snapshot rebuilds; a member can't", async () => {
+  it("F-112/c2: a project admin reviews the draft before it's saved: Apply saves the repo's branch and variables at once, audited and versioned, and the snapshot rebuilds; a member can't", async () => {
     const projectId = await savedProject("drafts-apply", CASE_SCRIPT);
     const admin = await harness.as(harness.fixture.a.admin);
     const { repoId } = await admin.projects.addRepo({ projectId, fullName: "ostra-test/engine" });
@@ -135,7 +137,7 @@ describe("a repo added after the environment was saved (F-112/c1, Q345 option (b
     expect(await trpcFailure(admin.environments.applyRepoDraft({ projectId, repoId }))).toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("F-112/c1: a plain saved script becomes a case on Apply, the old lines under the repo that ran them and the new lines under the new repo", async () => {
+  it("F-112/c1,c2: a plain saved script becomes a case on Apply, the old lines under the repo that ran them and the new lines under the new repo", async () => {
     const projectId = await savedProject("drafts-plain", PLAIN_SCRIPT);
     const admin = await harness.as(harness.fixture.a.admin);
     const { repoId } = await admin.projects.addRepo({ projectId, fullName: "ostra-test/engine" });
@@ -147,7 +149,7 @@ describe("a repo added after the environment was saved (F-112/c1, Q345 option (b
     );
   });
 
-  it("F-112/c1: Edit first saves through environments.save, which takes the draft in; Dismiss leaves the environment as it is, with Undo; removing the repo drops its draft", async () => {
+  it("F-112/c2: Edit first saves through environments.save, which takes the draft in; Dismiss leaves the environment as it is, with Undo; removing the repo drops its draft", async () => {
     const projectId = await savedProject("drafts-dismiss", CASE_SCRIPT);
     const admin = await harness.as(harness.fixture.a.admin);
     const engine = await admin.projects.addRepo({ projectId, fullName: "ostra-test/engine" });
@@ -176,6 +178,34 @@ describe("a repo added after the environment was saved (F-112/c1, Q345 option (b
     await admin.projects.removeRepo({ projectId, repoId: docs.repoId });
     expect(await admin.environments.repoDrafts({ projectId })).toEqual([]);
     expect(await harness.test.db.environmentRepoDraft.count({ where: { projectId } })).toBe(0);
+  });
+
+  it("F-112/c2: under a plain saved script, Apply keeps the saved lines under every repo that ran them, a new one detection found nothing in among them, but gives none to another new repo whose own draft waits, which the draft names; that draft then adds its branch", async () => {
+    const projectId = await savedProject("drafts-waiting", PLAIN_SCRIPT);
+    const admin = await harness.as(harness.fixture.a.admin);
+    const engine = await admin.projects.addRepo({ projectId, fullName: "ostra-test/engine" });
+    await admin.projects.addRepo({ projectId, fullName: "ostra-test/docs" });
+    const cli = await admin.projects.addRepo({ projectId, fullName: "ostra-test/cli" });
+    const drafts = await (await harness.as(harness.fixture.a.member)).environments.repoDrafts({ projectId });
+    expect(drafts.map((draft) => [draft.fullName, draft.kind, draft.leftOut])).toEqual([
+      ["ostra-test/engine", "plain", ["ostra-test/cli"]],
+      ["ostra-test/docs", "nothing", []],
+      ["ostra-test/cli", "plain", ["ostra-test/engine"]],
+    ]);
+
+    await admin.environments.applyRepoDraft({ projectId, repoId: engine.repoId });
+    const branch = (repo: string, lines: readonly string[]) => [`  '${repo}')`, ...lines, "    ;;"];
+    const oldLines = ["corepack enable", "pnpm install --frozen-lockfile"];
+    expect((await stored(projectId)).setupScript).toBe(
+      ["set -euo pipefail", 'case "$OSTRA_REPO" in', ...branch("ostra-test/web", oldLines), ...branch("ostra-test/docs", oldLines), ...branch("ostra-test/engine", ["    uv sync --frozen"]), "esac", ""].join("\n"),
+    );
+    // The cli's draft waits, against the case now: its branch goes in before esac, and nobody is left out.
+    const [docs, cliDraft, ...more] = await admin.environments.repoDrafts({ projectId });
+    expect(more).toEqual([]);
+    expect(docs?.kind).toBe("nothing");
+    expect(cliDraft).toMatchObject({ repoId: cli.repoId, kind: "case", leftOut: [] });
+    await admin.environments.applyRepoDraft({ projectId, repoId: cli.repoId });
+    expect((await stored(projectId)).setupScript).toContain(["    ;;", ...branch("ostra-test/cli", ["    cargo fetch --locked"]), "esac", ""].join("\n"));
   });
 
   it("F-112/c1: nothing waits when the saved script already runs what detection found, and a project still in draft is drafted again instead", async () => {

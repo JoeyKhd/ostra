@@ -134,6 +134,11 @@ export type RepoDraftView = {
   readonly lines: readonly RepoDraftLine[];
   /** The script those lines make (`null` for `nothing`): what "Edit first" puts in the editor. */
   readonly script: string | null;
+  /**
+   * The other new repos Apply gives no branch when it makes a plain script a `case`, because their
+   * own drafts wait to add one: until then they set up nothing, and the draft says so.
+   */
+  readonly leftOut: readonly string[];
   /** Where the repo's variables and secrets are written in its checkout. */
   readonly envFile: string;
   /** Detection's variables and secrets, by name, that the repo's section doesn't have yet. */
@@ -172,26 +177,38 @@ const waitingDraftsInTx = async (db: Db | Tx, organizationId: OrganizationId, pr
     db.repo.findMany({ where: { projectId, organizationId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, fullName: true, envFile: true } }),
     db.environmentRepoDraft.findMany({ where: { projectId, organizationId, dismissedAt: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
   ]);
-  const waiting = new Set(rows.map((row) => row.repoId));
-  return rows.flatMap((row): DraftRow[] => {
+  const parsed = rows.flatMap((row) => {
     const repo = repos.find((one) => one.id === row.repoId);
     const detection = detectedEnvironmentSchema.safeParse(row.detection);
-    if (repo === undefined || !detection.success) {
-      return [];
-    }
-    // The repos that run the saved script as it is: not the new one, nor another whose own draft waits.
+    return repo === undefined || !detection.success ? [] : [{ row, repo, detection: detection.data }];
+  });
+  // The new repos whose own drafts would add lines: a plain script made a `case` leaves them to
+  // their drafts. Which kind a draft is doesn't depend on the other repos, only its lines do.
+  const adding = new Set(
+    parsed
+      .filter(({ repo, detection }) => {
+        const kind = repoDraftChange({ savedScript: environment.setupScript, fullName: repo.fullName, setupLines: detection.setupLines, otherRepos: [], waitingRepos: [] }).kind;
+        return kind === "case" || kind === "plain";
+      })
+      .map(({ repo }) => repo.id),
+  );
+  return parsed.flatMap(({ row, repo, detection }): DraftRow[] => {
+    // Every other repo keeps the lines it runs today, but one whose own draft adds its lines (named
+    // instead); when every other repo has one, they all keep them.
     const others = repos.filter((one) => one.id !== row.repoId);
-    const running = others.filter((one) => !waiting.has(one.id));
+    const running = others.filter((one) => !adding.has(one.id));
+    const keeping = running.length > 0 ? running : others;
     const change = repoDraftChange({
       savedScript: environment.setupScript,
       fullName: repo.fullName,
-      setupLines: detection.data.setupLines,
-      otherRepos: (running.length > 0 ? running : others).map((one) => one.fullName),
+      setupLines: detection.setupLines,
+      otherRepos: keeping.map((one) => one.fullName),
+      waitingRepos: others.filter((one) => !keeping.includes(one)).map((one) => one.fullName),
     });
     if (change.kind === "settled") {
       return [];
     }
-    return [{ repoId: repoIdSchema.parse(row.repoId), fullName: repo.fullName, envFile: repo.envFile, createdAt: row.createdAt, createdByMemberId: row.createdByMemberId, detection: detection.data, change }];
+    return [{ repoId: repoIdSchema.parse(row.repoId), fullName: repo.fullName, envFile: repo.envFile, createdAt: row.createdAt, createdByMemberId: row.createdByMemberId, detection, change }];
   });
 };
 
@@ -221,6 +238,7 @@ export const listRepoDrafts = async (db: Db, scope: MemberScope, projectId: Proj
       kind: change.kind,
       lines: change.kind === "nothing" ? [] : change.lines,
       script: change.kind === "nothing" ? null : change.script,
+      leftOut: change.kind === "nothing" ? [] : change.leftOut,
       envFile: draft.envFile,
       variables: draft.detection.variables.filter((variable) => !has.has(variable.name)),
       reasons: draft.detection.reasons,

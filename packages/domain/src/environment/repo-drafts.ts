@@ -81,7 +81,17 @@ export type RepoDraftLine = { readonly kind: "same" | "add"; readonly text: stri
  *   has a branch for the repo already (someone saved it since).
  */
 export type RepoDraftChange =
-  | { readonly kind: "case" | "plain"; readonly script: string; readonly lines: readonly RepoDraftLine[] }
+  | {
+      readonly kind: "case" | "plain";
+      readonly script: string;
+      readonly lines: readonly RepoDraftLine[];
+      /**
+       * The other new repos a plain script made a `case` gives no branch, because their own drafts
+       * wait to add one: they ran the saved lines until now, and set up nothing until theirs is
+       * applied. Empty for a `case`, where they ran nothing already.
+       */
+      readonly leftOut: readonly string[];
+    }
   | { readonly kind: "nothing" }
   | { readonly kind: "settled" };
 
@@ -92,11 +102,13 @@ export type RepoDraftChangeInput = {
   readonly fullName: string;
   /** Detection's setup lines for it. */
   readonly setupLines: readonly string[];
-  /**
-   * The project's other repos in order that run the saved script as it is: not the ones with a
-   * draft of their own still waiting, which get their own lines when it's applied.
-   */
+  /** The project's other repos in order that keep the lines they run today when a plain script becomes a `case`. */
   readonly otherRepos: readonly string[];
+  /**
+   * The project's other new repos whose own drafts wait to add their lines: a plain script made a
+   * `case` gives them no branch (their own draft adds it), and the change names them.
+   */
+  readonly waitingRepos: readonly string[];
 };
 
 const CASE_LINE = /^case\s+"\$OSTRA_REPO"\s+in$/u;
@@ -137,7 +149,7 @@ export const repoDraftChange = (input: RepoDraftChangeInput): RepoDraftChange =>
       ...branch.map((text) => ({ kind: "add" as const, text })),
       ...saved.slice(esacAt).map((text) => ({ kind: "same" as const, text })),
     ];
-    return { kind: "case", lines, script: `${lines.map((line) => line.text).join("\n")}\n` };
+    return { kind: "case", lines, script: `${lines.map((line) => line.text).join("\n")}\n`, leftOut: [] };
   }
   const working = workingLines(saved);
   if (working.length > 0 && working.length === input.setupLines.length && working.every((line, index) => line === input.setupLines[index]?.trim())) {
@@ -150,7 +162,8 @@ export const repoDraftChange = (input: RepoDraftChangeInput): RepoDraftChange =>
   // A script without `set -…` gets none: Apply changes where its lines run, not how they run.
   const lines: RepoDraftLine[] = hoisted.map((text) => ({ kind: "same" as const, text }));
   lines.push({ kind: "add", text: 'case "$OSTRA_REPO" in' });
-  if (workingLines(body).length > 0) {
+  const ranLines = workingLines(body).length > 0;
+  if (ranLines) {
     for (const [index, repo] of input.otherRepos.entries()) {
       lines.push({ kind: "add", text: repoPattern(repo) });
       // The old lines stay where they were for the first repo, and are added under each other one.
@@ -159,7 +172,8 @@ export const repoDraftChange = (input: RepoDraftChangeInput): RepoDraftChange =>
     }
   }
   lines.push(...branch.map((text) => ({ kind: "add" as const, text })), { kind: "add", text: "esac" });
-  return { kind: "plain", lines, script: `${lines.map((line) => line.text).join("\n")}\n` };
+  // A repo left out loses lines only when the saved script ran some.
+  return { kind: "plain", lines, script: `${lines.map((line) => line.text).join("\n")}\n`, leftOut: ranLines ? input.waitingRepos : [] };
 };
 
 /** A language detection can name for a repo, from its tools or the command its setup starts with. */

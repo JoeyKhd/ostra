@@ -10,7 +10,7 @@ import { z } from "zod";
 import { expectNoHorizontalScroll, hydrated, readStack, signIn } from "./helpers.ts";
 import { e2eAdmin } from "./settings.ts";
 
-// F-112/c1 for a repo added after the environment was saved (Q345 option (b),
+// F-112/c2 for a repo added after the environment was saved (Q345 option (b),
 // environment-repo-draft.md): the Setup tab shows the new repo's draft beside the saved setup, and a
 // project admin applies it (saved at once), edits it first (its lines in the editors, marked, kept
 // by Save) or dismisses it (with Undo), through the panel, the API, the domain's use cases and the
@@ -46,7 +46,7 @@ const openSetup = async (page: Page, world: World): Promise<void> => {
 
 test.describe.configure({ mode: "serial" });
 
-test("F-112/c1: a project admin reviews a new repo's draft beside the saved setup: Edit first puts its lines in the editors, marked, and Cancel takes them out; Dismiss leaves the setup as it is, with Undo; Apply saves it at once", async ({ page, isMobile }) => {
+test("F-112/c2: a project admin reviews a new repo's draft beside the saved setup: Edit first puts its lines in the editors, marked, and Cancel takes them out; Dismiss leaves the setup as it is, with Undo; Apply saves it at once", async ({ page, isMobile }) => {
   test.skip(isMobile, "the desktop page");
   test.setTimeout(120_000);
   const world = await seed();
@@ -113,7 +113,7 @@ test("F-112/c1: a project admin reviews a new repo's draft beside the saved setu
   expect(await script(page).inputValue()).toContain("'acme/calculator-engine')");
 });
 
-test("F-112/c1: Edit first and Save keep the new repo's lines and take its draft in; a member sees the draft without its buttons", async ({ page, isMobile }) => {
+test("F-112/c2: Edit first and Save keep the new repo's lines and take its draft in; a member sees the draft without its buttons", async ({ page, isMobile }) => {
   test.skip(isMobile, "the desktop page");
   test.setTimeout(120_000);
   const world = await seed({ plain: true, docs: true });
@@ -146,7 +146,7 @@ test("F-112/c1: Edit first and Save keep the new repo's lines and take its draft
   await expect(draftOf(page, "acme/calculator-docs").getByRole("button", { name: /^(Dismiss|Edit first|Apply)$/ })).toHaveCount(0);
 });
 
-test("F-112/c1: on a phone the draft's head stacks, its diff scrolls inside its box and its buttons go full width under the foot", async ({ page, isMobile }) => {
+test("F-112/c2: on a phone the draft's head stacks, its diff scrolls inside its box and its buttons go full width under the foot", async ({ page, isMobile }) => {
   test.skip(!isMobile, "the phone's layout");
   const world = await seed();
   await signIn(page, world.username);
@@ -157,6 +157,21 @@ test("F-112/c1: on a phone the draft's head stacks, its diff scrolls inside its 
   const apply = await draft.getByRole("button", { name: "Apply", exact: true }).boundingBox();
   expect(apply?.height).toBe(44);
   await expectNoHorizontalScroll(page);
+});
+
+test("F-112/c2: under a plain saved script, a draft names the other new repo Apply gives no branch, whose own draft waits to add one", async ({ page, isMobile }) => {
+  test.skip(isMobile, "the desktop page");
+  const world = await seed({ plain: true, mobile: true });
+  await signIn(page, world.username);
+  await openSetup(page, world);
+  await expect(draftOf(page, "acme/calculator-engine").getByTestId("repo-draft-left-out")).toHaveText(
+    "Applying this gives acme/calculator-mobile no branch: its own draft adds one, and until that's applied its tasks set up nothing.",
+  );
+  // The web and api repos ran the saved lines and keep them under their own branches.
+  const diff = draftOf(page, "acme/calculator-engine").getByTestId("repo-draft-diff");
+  await expect(diff).toContainText("'acme/calculator-web')");
+  await expect(diff).toContainText("'acme/calculator-api')");
+  await expect(diff).not.toContainText("'acme/calculator-mobile')");
 });
 
 // ── The side-by-side shots (OSTRA_E2E_SHOTS): the targets' demo world, at their sizes ────────────
@@ -223,6 +238,10 @@ test("the targets' shots: the draft, Edit first, the states and the phone", asyn
   await openSetup(page, two);
   await draftOf(page, "acme/calculator-engine").getByRole("button", { name: "acme/calculator-engine" }).click();
   await shootState(page, "two", band(page));
+  // A plain saved script with two new repos: the draft names the one Apply gives no branch.
+  const leftOut = await seed({ plain: true, mobile: true });
+  await openSetup(page, leftOut);
+  await shootState(page, "left-out", draftOf(page, "acme/calculator-engine"));
   // A member.
   await page.context().clearCookies();
   await signIn(page, world.memberUsername);
