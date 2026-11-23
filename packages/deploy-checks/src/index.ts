@@ -1,3 +1,7 @@
+export { BUN_LINUX_X64_SHA256, BUN_LINUX_X64_URL, BUN_VERSION, BUN_VERSION_PATTERN, SHA256_PATTERN, binaryFileNames, binaryProblems, binaryTargets, binaryZipName, bunArchiveUrl, bunPin, bunPinSchema, jobBlock } from "./binaries.ts";
+export type { BinaryFiles, BinaryProblem, BinaryTarget, BunPin } from "./binaries.ts";
+export { installBun, installPlan, verifyBunArchive } from "./install-bun.ts";
+export type { InstalledBun } from "./install-bun.ts";
 export { readDeployFiles } from "./deploy-files.ts";
 export { checkCompose, checkDockerfile, checkImages, DIGEST_PINNED } from "./image-checks.ts";
 export type { DeployFiles, ImageRule, Problem } from "./image-checks.ts";

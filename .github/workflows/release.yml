@@ -40,6 +40,74 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The runner's native downloads (F-085, ticket 01; ADR 0075): one Linux job cross-compiles the CLI
+  # with the pinned Bun for the three platforms a release ships, zips each binary with its LICENSE,
+  # and hashes both the binaries (for the signing jobs of tickets 02 and 03) and the zips (for the
+  # release of ticket 04). It reads no secret, signs nothing, and attaches nothing: the release
+  # carries no binary until both signatures exist. Its dry run runs it the same way and publishes
+  # nothing, like every other job's.
+  runner-binaries:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ inputs.version }}
+      IMAGE_NAMESPACE: ${{ inputs.dry-run && 'localhost:5000/ostra' || vars.OSTRA_IMAGE_NAMESPACE }}
+      CLI_PACKAGE: ${{ inputs.dry-run && 'ostra' || vars.OSTRA_CLI_PACKAGE }}
+      OUT: ${{ github.workspace }}/release-out
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The same stamp the release job runs: `RUNNER_VERSION` is the release's, so the binary's
+      # `ostra --version` prints it.
+      - run: node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE" "$CLI_PACKAGE"
+
+      # Bun, pinned by version and SHA-256 in the repository (binaries.ts): the archive is checked
+      # against the pin, never against the download's own claim, and the `bun` it unpacks joins PATH.
+      - name: Install the pinned Bun
+        run: |
+          set -eu
+          node packages/deploy-checks/src/install-bun.ts --out "$OUT/bin"
+          echo "$OUT/bin" >> "$GITHUB_PATH"
+
+      # The three binaries, each zipped with its LICENSE, and both checksum files: `unsigned-sha256.txt`
+      # for the signing jobs and `SHA256SUMS` over the zips.
+      - name: Build the three binaries
+        run: node scripts/build-runner-binaries.ts "$OUT/binaries"
+
+      # `file` says each binary is the platform's, not a script; each zip holds exactly the binary and
+      # LICENSE; and SHA256SUMS verifies against the zips byte for byte.
+      - name: Check the binaries and their zips
+        run: |
+          set -eu
+          file "$OUT/binaries/darwin-arm64/ostra" | grep -q "Mach-O 64-bit.*arm64"
+          file "$OUT/binaries/darwin-x64/ostra" | grep -q "Mach-O 64-bit.*x86_64"
+          file "$OUT/binaries/windows-x64/ostra.exe" | grep -q "PE32+"
+          for zip in "$OUT"/binaries/ostra-*.zip; do
+            test "$(unzip -Z1 "$zip" | wc -l)" -eq 2
+            unzip -Z1 "$zip" | grep -q "^LICENSE$"
+            unzip -Z1 "$zip" | grep -Eq "^ostra(\.exe)?$"
+          done
+          for binary in "$OUT"/binaries/*/ostra "$OUT"/binaries/*/ostra.exe; do
+            [ -f "$binary" ] || continue
+            test "$(stat -c%s "$binary")" -lt 157286400
+          done
+          (cd "$OUT/binaries" && sha256sum -c SHA256SUMS)
+
+      # The folder the two signing jobs download (tickets 02 and 03); the release job attaches only
+      # what they sign. Nothing here reaches a release by itself.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runner-binaries
+          path: ${{ github.workspace }}/release-out/binaries
+
   release:
     runs-on: ubuntu-24.04
     timeout-minutes: 120

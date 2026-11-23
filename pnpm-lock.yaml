@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@ostra/deploy-checks':
+        specifier: workspace:*
+        version: link:packages/deploy-checks
       '@ostra/protocol':
         specifier: workspace:*
         version: link:packages/protocol
@@ -1113,6 +1116,9 @@ importers:
       '@ostra/adapter-sdk':
         specifier: workspace:*
         version: link:../adapter-sdk
+      '@ostra/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       zod:
         specifier: 4.6.7
         version: 4.6.7

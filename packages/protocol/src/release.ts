@@ -17,7 +17,11 @@ export const NPM_REGISTRY = "https://registry.npmjs.org";
 /** The repository's releases on GitHub: the repository's pages (`REPOSITORY_URL`) and `/releases`. */
 export const RELEASES_URL = "https://github.com/JoeyKhd/ostra/releases";
 
-/** The files every release attaches, by the name each downloads as. */
+/**
+ * The files every release attaches, by the name each downloads as. The runner's downloads are
+ * versionless, so `releases/latest/download/<name>` is always the newest release's; the version is
+ * inside each one (`ostra --version`, and the zip's own bytes), as ADR 0075 has it.
+ */
 export const releaseFiles = {
   /** The compose file, stamped with the release's images. */
   compose: "compose.yaml",
@@ -25,6 +29,14 @@ export const releaseFiles = {
   serverChart: "ostra-server.tgz",
   /** The pool runner's chart, packaged by Helm. */
   runnerChart: "ostra-runner.tgz",
+  /** The macOS arm64 runner: `ostra` and `LICENSE`, zipped; the version is inside, not in the name. */
+  darwinArm64: "ostra-darwin-arm64.zip",
+  /** The macOS x64 runner: the same, for Intel Macs. */
+  darwinX64: "ostra-darwin-x64.zip",
+  /** The Windows x64 runner: `ostra.exe` and `LICENSE`, zipped. */
+  windowsX64: "ostra-windows-x64.zip",
+  /** The runner zips' SHA-256 in `sha256sum` format, written from the files a release attaches. */
+  checksums: "SHA256SUMS",
 } as const;
 
 export type ReleaseFile = (typeof releaseFiles)[keyof typeof releaseFiles];

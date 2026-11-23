@@ -362,6 +362,15 @@ describe("the release workflow", () => {
       expect(changed).not.toBe(workflow);
       return releaseWorkflowProblems(changed, ci).map((problem) => problem.message);
     };
+    // A change inside one job: `runner-binaries` runs beside the release job and holds some of the
+    // same lines, so a first-match replace would break the build job and leave the release's alone.
+    const brokenIn = (job: string, from: string | RegExp, to: string): readonly string[] => {
+      const start = workflow.indexOf(`  ${job}:`);
+      expect(start).toBeGreaterThan(-1);
+      const changed = workflow.slice(start).replace(from, to);
+      expect(changed).not.toBe(workflow.slice(start));
+      return releaseWorkflowProblems(`${workflow.slice(0, start)}${changed}`, ci).map((problem) => problem.message);
+    };
     expect(broken("on:\n  workflow_dispatch:", "on:\n  push:\n    tags: ['v*']\n  workflow_dispatch:")).toEqual([expect.stringMatching(/^starts by hand only/)]);
     expect(broken("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "actions/checkout@v7")).toEqual(["pins every action by its commit's SHA: actions/checkout@v7"]);
     expect(broken("  id-token: write\n", "  id-token: write\n  actions: write\n")).toEqual(["its permissions are contents, packages and id-token write, and nothing else"]);
@@ -371,8 +380,8 @@ describe("the release workflow", () => {
     // The stamp names the namespace the images are pushed to and the CLI's package, the pack takes
     // the stamped name, and the release attaches its files.
     const stamp = /^stamps its tree with the version, the image namespace the images are pushed to and the CLI's package/;
-    expect(broken('node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE" "$CLI_PACKAGE"', 'node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE"')).toEqual([expect.stringMatching(stamp)]);
-    expect(broken('node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE" "$CLI_PACKAGE"', 'node scripts/version.ts "$VERSION"')).toEqual([expect.stringMatching(stamp)]);
+    expect(brokenIn("release", 'node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE" "$CLI_PACKAGE"', 'node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE"')).toEqual([expect.stringMatching(stamp)]);
+    expect(brokenIn("release", 'node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE" "$CLI_PACKAGE"', 'node scripts/version.ts "$VERSION"')).toEqual([expect.stringMatching(stamp)]);
     expect(broken("          pnpm --filter @ostra/runner pack:cli\n", '          OSTRA_CLI_PACKAGE="$CLI_PACKAGE" pnpm --filter @ostra/runner pack:cli\n')).toEqual(["packs the CLI under the stamped name: no OSTRA_CLI_PACKAGE beside pack:cli"]);
     const assets = /^makes the release's files in every run/;
     expect(broken(' $prerelease "$OUT"/assets/*', " $prerelease")).toEqual([expect.stringMatching(assets)]);

@@ -22,5 +22,19 @@ export const CLI_PACKAGE: string = releaseManifest.cliPackage;
 /** One of the images of this CLI's own release, `<namespace>/<name>:<version>`: what the release pushed. */
 export const releaseImage = (name: "base" | "runner"): string => `${IMAGE_NAMESPACE}/${name}:${RUNNER_VERSION}`;
 
-/** Sent on every request the CLI makes, so the server and GitHub can tell it from a browser. */
-export const userAgent = (): string => `ostra-runner/${RUNNER_VERSION} (${process.platform}; node ${process.versions.node})`;
+/**
+ * The runtime the CLI is running on, as its user agent names it: `bun <version>` in a downloaded
+ * binary, whose `process.versions.bun` is set (and `node` is Bun's Node-compatibility version, not
+ * the runtime), and `node <version>` from an npm install. A support log then tells a download from
+ * `npx ostra` (F-085, ticket 01).
+ */
+export type RuntimeVersions = { readonly bun?: string | undefined; readonly node: string };
+
+/** `bun <version>` where Bun reports itself, `node <version>` otherwise. */
+export const runtimeName = (versions: RuntimeVersions): string => (typeof versions.bun === "string" && versions.bun !== "" ? `bun ${versions.bun}` : `node ${versions.node}`);
+
+/** The user agent for a runtime and platform: the same shape as before, with the runtime told truly. */
+export const userAgentFor = (versions: RuntimeVersions, platform: string): string => `ostra-runner/${RUNNER_VERSION} (${platform}; ${runtimeName(versions)})`;
+
+/** Sent on every request the CLI makes, so the server and GitHub can tell it from a browser, and a support log its runtime. */
+export const userAgent = (): string => userAgentFor(process.versions, process.platform);

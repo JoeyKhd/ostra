@@ -21,6 +21,7 @@
     "check:images": "node packages/deploy-checks/src/check-images.ts",
     "check:helm": "node packages/deploy-checks/src/check-helm.ts",
     "check:release": "node scripts/release.ts",
+    "check:binaries": "node packages/deploy-checks/src/check-binaries.ts",
     "format": "prettier --write .",
     "db:dev": "node packages/db/scripts/dev-postgres.ts",
     "db:migrate": "node packages/db/scripts/migrate.ts",
@@ -46,6 +47,7 @@
     "ostra": "node apps/runner/src/main.ts"
   },
   "devDependencies": {
+    "@ostra/deploy-checks": "workspace:*",
     "@ostra/protocol": "workspace:*",
     "@types/node": "26.6.6",
     "eslint": "10.15.0",

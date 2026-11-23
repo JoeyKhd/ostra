@@ -18,6 +18,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { jobBlock } from "@ostra/deploy-checks/binaries";
 import { RELEASES_URL, releaseFiles } from "@ostra/protocol";
 import type { ReleaseFile } from "@ostra/protocol";
 import { z } from "zod";
@@ -438,7 +439,9 @@ export const releaseWorkflowProblems = (workflow: string, ci: string): readonly 
   if (!/^ {6}registry:\n {8}image: registry:[^\s@]+@sha256:[0-9a-f]{64}$/m.test(workflow) || !workflow.includes("inputs.dry-run && 'localhost:5000/ostra'")) {
     problems.push("its dry run pushes the images to a registry service inside the job, pinned by digest");
   }
-  if (!/^ {6}- run: node scripts\/version\.ts "\$VERSION" "\$IMAGE_NAMESPACE" "\$CLI_PACKAGE"$/m.test(workflow)) {
+  // The release job's own stamp: `runner-binaries` stamps the same tree (ticket 01), and a stamp
+  // moved out of the release job alone would leave its images and packages unstamped.
+  if (!/^ {6}- run: node scripts\/version\.ts "\$VERSION" "\$IMAGE_NAMESPACE" "\$CLI_PACKAGE"$/m.test(jobBlock(workflow, "release") ?? "")) {
     problems.push(`stamps its tree with the version, the image namespace the images are pushed to and the CLI's package: node scripts/version.ts "$VERSION" "$IMAGE_NAMESPACE" "$CLI_PACKAGE"`);
   }
   // The pack takes the CLI's name from the stamped root package.json, so nothing names it twice.

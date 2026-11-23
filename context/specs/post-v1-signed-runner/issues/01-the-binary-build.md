@@ -30,11 +30,20 @@ Spec: `../spec.md`, sections 3, 6 and 12; ADR 0075 ("The artifacts", "How the re
 
 ## Done when
 
-- [ ] Tests named for `F-085/c7`: the pin is a version and a 64-character hash; the installer refuses an archive whose hash differs (with both hashes named) and accepts the pinned one's shape; a missing or malformed pin fails `check:binaries` (break-it: change one hex character, and the installer fails).
-- [ ] Tests named for `F-085/c3`: `releaseFiles`' new names are exactly the three zips and `SHA256SUMS`; `check:binaries` names each missing or extra one; `binaryProblems` returns nothing for the repository's own files.
-- [ ] Tests named for `F-085/c6`: the build's plan is data (three targets, their Bun targets, folders and executable names); `--dry-run` prints one `bun build --compile` line per target and no command runs; a `0.0.0` root is refused; an out folder that isn't empty is refused; `ostra --version` is the root's version by construction (`RUNNER_VERSION` read from the stamped manifest), and the user agent reports the runtime it is on for both runtimes.
-- [ ] `pnpm --filter @ostra/deploy-checks test`, `pnpm check:binaries`, and the root `typecheck`/`lint` pass for the touched packages.
-- [ ] The measured sizes of the three binaries and the `--bytecode` measurement are under `## Comments`, and the sizes feed ticket 05's page.
-- [ ] Committed as `✨ build the runner's native binaries`.
+- [x] Tests named for `F-085/c7`: the pin is a version and a 64-character hash; the installer refuses an archive whose hash differs (with both hashes named) and accepts the pinned one's shape; a missing or malformed pin fails `check:binaries` (break-it: change one hex character, and the installer fails).
+- [x] Tests named for `F-085/c3`: `releaseFiles`' new names are exactly the three zips and `SHA256SUMS`; `check:binaries` names each missing or extra one; `binaryProblems` returns nothing for the repository's own files.
+- [x] Tests named for `F-085/c6`: the build's plan is data (three targets, their Bun targets, folders and executable names); `--dry-run` prints one `bun build --compile` line per target and no command runs; a `0.0.0` root is refused; an out folder that isn't empty is refused; `ostra --version` is the root's version by construction (`RUNNER_VERSION` read from the stamped manifest), and the user agent reports the runtime it is on for both runtimes.
+- [x] `pnpm --filter @ostra/deploy-checks test`, `pnpm check:binaries`, and the root `typecheck`/`lint` pass for the touched packages.
+- [x] The measured sizes of the three binaries and the `--bytecode` measurement are under `## Comments`, and the sizes feed ticket 05's page.
+- [x] Committed as `✨ build native runner binaries` (the build agent's reworded subject).
 
 ## Comments
+
+2026-11-23, built in `ow/signed-t01` from `origin/main` `1e753097`:
+
+- **Measured sizes** (Bun 1.4.3, `bun build --compile`, no `--minify`, from this tree at `0.0.0`): `ostra` for `darwin-arm64` 75,716,978 bytes (72.2 MiB), `ostra` for `darwin-x64` 83,533,296 (79.7 MiB), `ostra.exe` for `windows-x64` 101,205,504 (96.5 MiB). All three under the 150 MB cap. Zipped with zlib level 9 in this checkout (the runner's `zip -X -j` is not on this Windows box): about 31.6 MB, 33.8 MB and 45.1 MB; the job's `SHA256SUMS` records the real ones.
+- **`--bytecode`** (the measurement this ticket asks for, before use): plain `--bytecode` fails on `apps/runner/src/main.ts`'s top-level await ("await can only be used inside an async function") because bytecode defaults the format to CJS; `--bytecode --format=esm` builds, runs (`--version` prints the stamped version) and is 111,037,440 bytes for `windows-x64`, 9,831,936 bytes (10.6%) over the 101,205,504-byte plain binary. Not used: `--minify` and `--bytecode` both stay off, as the spec decides.
+- **What Bun reports**: `process.versions.bun` is `"1.4.3"` and `process.versions.node` is `"26.3.0"` (Bun's Node-compatibility version), so `userAgent()` names `bun 1.4.3`; no build-time constant is needed.
+- **The pin**, downloaded and hashed here: `bun-v1.4.3`'s `bun-linux-x64.zip` is 42,015,139 bytes, SHA-256 `3e730528d89775f03f87f05c06787c4df4099d0a37f3f252e7b829cb23816e18`, and holds `bun-linux-x64/bun` alone; `install-bun.ts` unpacks exactly that entry with `unzip -j`.
+- **Nothing is signed and nothing is attached yet.** `runner-binaries` builds the binaries, their zips and both checksum files and uploads them as its artifact; the `release` job is unchanged, and `check:binaries` fails a `release` job that attaches `$OUT/binaries/*` without `needs:` on both signing jobs (tickets 02 and 03). The dry run publishes nothing, as before.
+- **The zip step needs the runner's `zip`**, like `release-assets.ts` needs `helm`; this Windows dev box has neither, so the build's packaging path is proved by `build-runner-binaries.test.ts` with an injected zip, and the job runs the real `zip` on `ubuntu-24.04`. The `--dry-run` and plan paths, the `0.0.0` refusal and the empty-folder refusal were run as tests; a real `bun` compile with the plan's `--external` flags was run here and its `.exe` prints `0.0.0`.
