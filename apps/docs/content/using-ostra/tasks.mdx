@@ -1,7 +1,7 @@
 ---
 title: "Tasks"
 description: "A ticket or a prompt becomes a task, worked on its own branch."
-summary: "Create a project, type a prompt or pick a Linear ticket, and review the pull request the agent opens."
+summary: "Create a project, type a prompt or pick a Linear ticket, read its thread, and review the pull request the agent opens."
 ---
 
 A task is ostra's unit of work in one project. It starts from a ticket or from a prompt, runs an agent on its own branch, and opens one pull request for each repo it changes. It lives on after that: any member can [reopen](/docs/using-ostra/reopening) it, any number of times.
@@ -15,16 +15,112 @@ A task is ostra's unit of work in one project. It starts from a ticket or from a
 
 Each task has a [kind](/docs/using-ostra/task-kinds) and an [agent profile](/docs/agents-and-models/agent-profiles). It waits in the queue until a runner in one of the project's pools, or your own personal runner, has room.
 
-## Follow it
+## Read the thread
 
-The task page shows the agent's work live: its messages, its thinking, every tool call with its input and output, the files it changed, its plan, and its usage. One member drives the task at a time; everyone else watches, and anyone can **Take over**. See [Steering](/docs/using-ostra/steering).
+The task page reads like a conversation: what people said, what the agent said, what it made, and what waits on you. Everything else is one press or one hover away.
 
-When the environment declares the app's processes, the thread also shows what the app looks like: the agent's screenshots and recordings, and ostra's own after each turn. The preview pane beside it shows the app live. See [Seeing the running app](/docs/using-ostra/the-running-app) and [Previews](/docs/using-ostra/previews).
+| What | Where it is |
+|---|---|
+| A member's message | A right-aligned bubble, with the member's name and the time over it. What came from GitHub or Linear is a bubble too, outlined. |
+| The agent's text | Plain prose, the column's full width, with no avatar and no header |
+| The agent's steps | One quiet line per run of steps, which opens in place |
+| The step it's on, while a turn runs | The live step, rewritten in place |
+| What a turn made | A result line after the prose: a push, the PR card, a review, a draft, a preview, a memory |
+| What waits on a member | The amber block, in the place of what it blocks |
+| Tokens, spend, effort, saved work, archive sizes | The opened run's footer, the time's tooltip, the properties panel and the Event log, never a line in the thread |
 
-When the task waits on a person, it shows **Needs you**, in amber, and it's the first thing on the home screen: a question, an approval, a plan to review, a draft, a session that ended without changes, or a pull request ready for review.
+A ticket task's thread starts with **What the agent got**, drawn as a bubble: the ticket's key and where it came from, its title, description, attachments and comments, and **Show it all**: see [A ticket's files](/docs/using-ostra/ticket-files).
+
+What ostra sends by itself, and what came from GitHub or Linear, keeps the same bubble with no fill and a thin edge, and a name over it: `ostra · automatic`, `{login} on GitHub`, `from a comment on OST-12`. Inside it, a quoted diff comment, PR comment or check has its own left line, so it never passes for something a person typed here.
+
+One member drives the task at a time; everyone else watches, and anyone can **Take over**. See [Steering](/docs/using-ostra/steering).
+
+### A run's line
+
+The agent does many steps between two pieces of its prose: it reads files, edits them, runs commands, searches, fetches a page, takes a screenshot. The thread folds each run of them into one line, in the order the first step of each kind happened:
+
+```text
+Edited 2 files, ran 2 commands, took a screenshot · 1 failed, then passed
+```
+
+Two counts in a row that share a word drop the second's, so `Read 2 files, edited 2`; a run of more than 20 steps starts with the total, `23 steps: read 9 files, …`.
+
+Press the line to open its steps, in order, one row each. A row has its verb, its subject, its result, and a link that opens what it has:
+
+- **Read**: every read of the run on one row, the files' names, the full paths in the tooltip.
+- **Edited**: the path, relative to the repo, then `+12` in green and `−3` in red, and `diff ›`.
+- **Ran**: the command line, its result (`✓ exit 0`, `exit 2`, `killed`) and its duration, and `output ›`.
+- **Thought**: the first sentence of its text, and `show ›` for the whole thought.
+- **Searched** and **Fetched**: the query or the page's host and path, the number of matches or the status, and `results ›`.
+- **Used**: another tool's name, the MCP server before it, and `input ›`.
+- **Captured**: the route it photographed, captioned with that route (`1280 · /history`), under the run's line.
+
+An opened output or diff sits under its row, at the subject's place, and its link reads `hide output ›` or `hide diff ›`. A running command's output streams into it.
+
+Every run of a turn ends with the same footer: the turn's number, the effort level it ran at, its tokens, its reasoning tokens, its spend, and what the turn saved, such as `Turn 4 · High · 1.2k in · 3.4k out · 900 reasoning · $0.12 · saved, archive 193 kB`. At the footer's right, **Event log ›** opens the Event log at that turn's first event.
+
+### The live step
+
+While a turn runs, its open run is one line that says what the agent does this second — `Running pnpm test history`, `Reading src/parser.ts`, `Thinking` — then how many steps are done, how long the turn has taken, and `Plan step 2 of 5: …` when it works a plan. When the agent writes prose, the run closes into its line above the prose and a new live step starts under it.
+
+When an approval waits, its step leaves the run and stands where the live step was: `Wants to run pnpm test`, then `needs approval`, with the rule's card under it. Answering it leaves `1 approved by Sam` on the run's line.
+
+The live step's words are announced to a screen reader at most once every 10 seconds, a new step at a time, never on each tick of its clock.
+
+### Failures
+
+A step that failed is one red word on its run's line when the turn later did the same thing again and it worked (the same command line, path or URL): `1 failed, then passed`.
+
+A failure the turn didn't recover from gets its own line under its run: `Command failed` in red, the command, `exit 2 after 38 s`, and an `output ›` that opens the run at that step with its output shown. A cancelled step isn't a failure. A stop that isn't an error — a time limit, the stall limit, a budget hold — reads the same way in the panel's quiet words, with **Keep working** or **Open spend** beside it.
+
+### What a turn made
+
+After its prose, a turn shows what it made, one line each:
+
+- **A push:** `Pushed ostra/calc-192 · 3 checks passed in the box`. A failing check reads `1 of 3 checks failed in the box, so the PR is a draft`, with `failed` in red. A later push to an open pull request is one line, `Pushed b20e7f3 · CI passed`, once CI says.
+- **The first pull request:** a card under the push that opened it, with its number, title and size (`+240 −86`), and the live CI line: `CI on GitHub: running, 2 of 4 jobs done`, which updates in place to `CI on GitHub passed · 4 jobs`, `CI on GitHub failed: unit-tests`, or `No CI on GitHub`.
+- **A review posted,** a draft handed in, a preview shown, a memory proposed: its own line, with **Open the review**, **Open the draft**, **Show** or **Review**.
+
+Saving unfinished work to the hidden ref is bookkeeping, and stays out of the thread: the footer's saved fact and the panel's **Session** group carry it ([Reopening](/docs/using-ostra/reopening#what-it-keeps)).
+
+When the environment declares the app's processes, a turn's screenshots and recordings sit under the line of the run that took them, each captioned with the route it shows. See [Seeing the running app](/docs/using-ostra/the-running-app#screenshots-and-recordings) and [Previews](/docs/using-ostra/previews).
+
+### Where a turn's numbers are
+
+A turn's tokens, reasoning tokens, spend, effort level and saved work are never a line under it. Hover the time on the turn's first run line, or focus it with Tab, for the tooltip: `Turn 4 · 10:31 to 10:36`, then **Effort**, **Tokens** (`1.2k in · 3.4k out`), **Reasoning**, **Spend** and **Saved**. Escape closes it.
+
+On a phone there's no tooltip: the opened run's footer holds the same facts. The properties panel's **Usage** group holds the task's totals and its tokens, and **Session** names the box and the turns. The Event log holds every event, as it came: the thread never drops one, it only folds it.
+
+Spend has a page of its own: [Budgets](/docs/using-ostra/budgets).
+
+### The status line
+
+Under the title, the status line gives the state — `Running`, `Needs you · question`, `In review`, `Done` — then what the agent is doing (`Thinking`, `Waiting for an answer`), and `Started 3 min ago on alex-laptop`, or `Stopped 9 min ago on …`. With no turn running, an idle box says so: `Idle, the box stops in 11 min`, after `OSTRA_BOX_IDLE_MINUTES` without a turn.
+
+The properties panel's **Session** group says the same for the task: `Box`, with `Running`, `Idle · stops in 11 min` or `Released`, and the turns it ran in.
+
+### What waits on you
+
+A question, a plan, an approval or a reply waits in the thread, in the amber rule, and the state names it: `Needs you · question`. Once it's answered, its block becomes a receipt in its place — who answered what, and when — and the agent's next words show it got the answer.
+
+When the block scrolls out of view, a pill sits on a band above the composer, `Needs you · question`. Press it to bring the block back and put the focus in it; it goes once the block is in view. See [Steering](/docs/using-ostra/steering) and [Approvals](/docs/using-ostra/approvals).
+
+### Checks and CI
+
+Two things run tests, and the panel keeps two words for them. **Checks** are the project's environment checks, which ostra runs in the box after every turn that changes the code, before the push; they count in checks (`3 checks passed in the box`). **CI** is the code host's, on the pull request after the push; it counts in jobs (`CI on GitHub passed · 4 jobs`).
+
+The **Checks** tab holds both: each turn's checks, with each check's output, and each pull request's CI jobs. Its marker follows whichever runs now: it spins while either runs, turns green when both passed, and turns red with a count when one failed. See [Review loops](/docs/using-ostra/review-loops).
+
+### Phone, light and keyboard
+
+The thread reads the same at 390 px and in the light theme. On a phone, a bubble is 88% wide, a run's line wraps with its whole line as the tap target, an opened run's rows keep their subjects, and the footer wraps by fact with **Event log ›** on a line of its own.
+
+By keyboard: Enter or Space opens a run's line, a result that opens in place and the pill. Tab reaches the turn's time and shows its tooltip; Escape closes it. `j` and `k` move between the runs' lines and the needs-you blocks, in order. A question's choices are a radio group, and `⌘↵` or `Ctrl+↵` sends the answer.
+
+With reduced motion, the spinners stand still as rings, the chevron doesn't turn, and the live step's time still ticks.
 
 ## Review the pull request
 
-When a session ends with changes, ostra runs the environment's checks, and the project's GitHub App opens a pull request in each repo the task changed. Its title is the agent's summary of the change, in the repo's style, after the ticket's ID for a ticket task, and its body links the ticket, the task and the task's other pull requests. When a later turn changes the pull request, the agent can give it a new title. A failing check makes the pull request a draft.
+When a session ends with changes, ostra runs the environment's checks, and the project's GitHub App opens a pull request in each repo the task changed. Its title is the agent's summary of the change, in the repo's style, after the ticket's ID for a ticket task, and its body links the ticket, the task and the task's other pull requests. When a later turn changes the pull request, the agent can give it a new title. A failing check makes the pull request a draft; CI runs on it after the push.
 
 Commits are authored by the App's bot, with a `Co-authored-by` trailer for each member whose prompt led to them. The agent commits as it goes, in each repo's own style. What it leaves uncommitted, ostra commits after the turn, with a message that names what changed (`Add ESSAY-lebanon.md`, `Update calculator.ts and history.ts`), or with the pull request's title when the agent set one. The **Changes** tab shows the diff in the panel, where you can comment on lines and send your comments to the agent together, as one prompt.

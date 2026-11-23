@@ -1,7 +1,7 @@
 ---
 title: "Steering"
 description: "Send the agent a message while it works."
-summary: "Send, Interrupt and send, Take over, Stop."
+summary: "Send, Interrupt and send, Take over, answer a question, Stop."
 ---
 
 The task's driver steers it: one member at a time, so two people never prompt the same agent at once. Everyone else who can open the project watches, and can **Take over** in one action.
@@ -11,11 +11,25 @@ The task's driver steers it: one member at a time, so two people never prompt th
 Type in the task's composer, then:
 
 - **Send.** For an agent that takes a message mid-turn, as OpenCode does, the message reaches the model at the agent's next call, after any tool step that's running. For an agent that doesn't, the message is queued: everyone sees it in the thread as "queued", and it's delivered when the turn ends. When the session is idle, **Send** starts the next turn.
-- **Interrupt and send.** Stops the current turn and sends the message as the next prompt, on every agent.
+- **Interrupt and send.** Stops the current turn and sends the message as the next prompt, on every agent. It's labelled that way in the composer while a turn runs.
 
-A message can carry files: paste them, drop them on the page, or pick them with the paperclip. See [Attaching files](/docs/using-ostra/files).
+A message can carry files: paste them, drop them on the page, or pick them with the paperclip. Your message shows as a right-aligned bubble with your name and the time over it, and its files above it. See [Attaching files](/docs/using-ostra/files).
 
 When someone else is driving, the composer says so: take over first to send.
+
+## Answer a question
+
+An agent's question waits in the thread as an amber block, in the place of the step it holds back, and the task's state names it: `Needs you · question`. Its fields come as choices, each a radio row, and a field that asks for text gets a field of its own.
+
+On a question with choices, the choices end with **Something else…**, which opens a field for your own words and puts the focus in it. It's there when the agent takes an answer in words, as OpenCode does; an agent that can't takes one of its choices only. Picking a choice doesn't send on its own: **Send answer** wakes once every field holds a value, and `⌘↵` or `Ctrl+↵` sends too.
+
+The driver answers. Everyone else sees the same block quiet, at half strength, with **Take over to answer** and who is driving.
+
+Once answered, the block becomes a receipt in its place: `Sam answered “Use a queue”`, or the choice's label, with its time. Your own words reach the agent as they are, and its next message shows it got them.
+
+When the block is scrolled out of view, a pill sits on a band above the composer: `Needs you · question`, or `Needs you · plan` or `Needs you · approval` for what waits. Press it to bring the block back into view and put the focus in it; the pill goes once the block is in view.
+
+A question nobody answers in time is cancelled, and the thread says so. See [Approvals](/docs/using-ostra/approvals) for what waits as an approval or a plan.
 
 ## Stop
 

@@ -10,11 +10,32 @@ Once a code task's pull request is open, what happens to it can send the task ba
 
 | What happens | What ostra does | Cap |
 |---|---|---|
-| **CI fails** on the pull request | Reopens the task with the failing checks and their logs | 2 rounds |
+| **CI fails** on the pull request | Reopens the task with the failing CI jobs and their logs | 2 rounds |
 | **An AI review** finds blocking findings | Sends them to the agent as one prompt. Nits are only listed. | 2 rounds |
 | **A member requests changes** in a GitHub review | Reopens the task with that review's comments as one prompt | none: a person asked |
 
 CI and findings rounds are automatic turns. A task gets at most 4 of them, counted since a person last acted on it, and then it goes to **Needs you**. Every round also stops at the task's spend cap and at the budget. A question the agent asks in an automatic turn gets a fixed, neutral reply.
+
+A CI round opens in the thread as ostra's own bubble, outlined: `ostra · automatic`, `CI round 1 of 2` with ` · automatic turn 1 of 4` beside it. Each failing job is a row inside it: the job's name, how it ended (`failed`, `timed out`, `cancelled`), and a `log ›` that opens its tail. When the failing jobs weren't recorded, the bubble says so.
+
+## Checks, then CI
+
+Two different things run tests, and the panel keeps a word for each:
+
+- **Checks** are the project's environment checks. ostra runs them in the box after every turn that changes the code, before the push, and counts them as checks: `3 checks passed in the box`. A failing check makes the pull request a draft.
+- **CI** is the code host's, on the pull request, after the push. It's counted in **jobs**: `CI on GitHub: running, 2 of 4 jobs done`, `CI on GitHub passed · 4 jobs`, `CI on GitHub failed: unit-tests`, `No CI on GitHub`.
+
+The thread, the push's line, the PR card, the properties panel's **Code** group and the **Checks** tab use each word for its own thing. The Checks tab holds both: each turn's checks with their output and **Ask the agent to fix**, and each pull request's CI jobs. Its marker follows whichever runs now: it spins while either runs, turns green when both passed, and turns red with a count when one failed.
+
+## A review task's page
+
+An AI review runs as a task of its own. Its page has only the **Activity** and **Event log** tabs, and its top bar holds **Open the code task** and `PR #483`: a review task has no branch, no diff and no checks of its own, so there's no **Take it local**, **Changes** or **Checks**, and no saved-work or PR result line in its thread.
+
+Its first message is ostra's, outlined: `AI review of PR #483, round 1 of 2`, then the size it read, `12 files, +240 −86 · the PR's commits, OST-12 and its criteria`, and **What the agent got ›** for the prompt it built. What it found is its prose, then a result line: `Review posted on PR #483 · 2 blocking, 1 nit`, with **Open the review**.
+
+## Ask it to review again
+
+Message the review task to look again, or to confirm what it posted. While the pull request hasn't moved, a second hand-in in the same round is a success and changes nothing: the thread says `Review on PR #483 confirmed · already posted this round, unchanged`, nothing turns red, and no review is posted twice.
 
 ## Comment on the pull request
 

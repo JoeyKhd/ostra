@@ -6,6 +6,17 @@ summary: "Every task has a spend cap; organizations and projects have monthly bu
 
 Spend is counted at the [key proxy](/docs/security/proxies), for every model call a task makes, in four token kinds (fresh input, output, cache reads and cache writes), each priced on its own from the model's prices. Each task, project and organization shows its spend. A figure that had to be estimated, because the endpoint reported no usage, is marked as one.
 
+## Where a turn's spend shows
+
+A turn's spend, its tokens and its reasoning are never a line in the thread. They're in four places:
+
+- **The opened run's footer**, with the rest of the turn's facts: `Turn 4 · High · 1.2k in · 3.4k out · 900 reasoning · $0.12 · saved, archive 193 kB`. An estimate carries `≈` (`≈$0.12`), and while the turn is still open the spend reads `$0.12 so far`.
+- **The time's tooltip**, on the turn's first run line, on hover or on focus: **Effort**, **Tokens** (`1.2k in · 3.4k out`), **Reasoning**, **Spend** and **Saved**. On a phone there's no tooltip; the footer holds the same facts.
+- **The properties panel's Usage group**, for the task as a whole: tokens, reasoning, cache reads and writes, spend, time and agent time.
+- **The Event log**, which holds every event of the task, the usage events included.
+
+The task's total is the panel's **Spend** row, against its cap (`$0.84 of $25.00`), and **Insights** sums projects and the organization.
+
 ## The spend cap
 
 Every task stops at its spend cap: 25 US dollars by default (`OSTRA_TASK_SPEND_CAP_USD`, at most 2,000). At the cap, the key proxy stops the session, the task shows **Needs you**, and its work is saved. Raise the cap to reopen it.
