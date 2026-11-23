@@ -1,0 +1,44 @@
+{
+  "name": "@ostra/adapter-slack",
+  "version": "0.0.0",
+  "description": "The Slack notification adapter (F-057, ADR 0074)",
+  "license": "Apache-2.0",
+  "author": "JoeyKhd (https://github.com/JoeyKhd), the maintainer of ostra",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoeyKhd/ostra.git",
+    "directory": "packages/adapters/adapter-slack"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run --maxWorkers=4"
+  },
+  "dependencies": {
+    "@ostra/adapter-sdk": "workspace:*",
+    "@ostra/protocol": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "vitest": "5.1.1"
+  }
+}
