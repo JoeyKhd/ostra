@@ -61,3 +61,4 @@ Every word milestone 10 adds or changes, in one commit, so the part tickets (09 
     - **15:** `boxStatusWords(box, now, t)` (`null` while the box starts, runs or failed).
     - **16:** `footerFacts(meta, kind, t)` (each fact with its `tip`), `eventLogLinkWords(t)`, `tooltipRows(meta, kind, t)`, `ciRow`, `checksRow`.
     - **17:** the old keys stay, as the ticket says: milestone 1's `task.tool.*`, the top-level `doing.*`, `task.system.*`, `task.driverChanged` and the rest the new namespaces replace.
+- 2026-11-23, web: pushed to `main` as `20d2e10f` (`📝 add the compact thread's words`).
