@@ -40,3 +40,4 @@ Targets: `context/brand/app-targets/m11-trackers/README.md` ("The marks", "Where
     - **How they were made:** a scratch harness outside the repo, since no live screen draws a mark until tickets 12, 15 and 16. esbuild bundled the panel's own `TrackerMark`, Tailwind 4.3.5 compiled the panel's `globals.css`, and the fonts were the panel's. Playwright 1.65.1's Chromium shot it at 2x. The target crops came from the approved pictures, at boxes measured on the targets' own HTML.
     - **Result:** the marks' drawing, colours and sizes match the targets in both themes at every place. The differences are in the harness's own rows around them (Pending's second line, the picker cards' descriptions and chips), not in the marks.
   - **Checks:** typecheck, lint and tests of `@ostra/web` (786 tests in 125 files), and `check:licenses`.
+- 2026-11-23, web: pushed to `main` as `41cb95d5` (`✨ draw each tracker's mark`).
