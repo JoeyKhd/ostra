@@ -44,6 +44,11 @@ export type TrackerSuiteFixture = {
   readonly other: TrackerAdapter;
   /** The connection's webhook signing secret. */
   readonly webhookSecret: string;
+  /**
+   * How old a signed delivery may be before it's stale, as the tracker's adapter takes it. Default
+   * 60 s (Linear's window); Jira's is longer, as its retries come minutes later (ADR 0047).
+   */
+  readonly webhookMaxAgeMs?: number;
   /** The adapter's own user, for the echo check; `null` when it has none (an API key). */
   readonly ownUserId: string | null;
   /** Whether the tracker's GitHub integration is installed on the fake. */
@@ -886,7 +891,7 @@ export const defineTrackerContractSuite = (options: ContractSuiteOptions<Tracker
       expect(adapter.verifyWebhook({ ...request, rawBody: tampered })).toEqual({ ok: false, reason: "bad-signature" });
       expect(adapter.verifyWebhook({ ...request, secret: `${fixture.webhookSecret}x` })).toEqual({ ok: false, reason: "bad-signature" });
       expect(adapter.verifyWebhook({ ...request, headers: {} })).toEqual({ ok: false, reason: "missing-signature" });
-      expect(adapter.verifyWebhook({ ...request, now: sentAt + 61_000 })).toEqual({ ok: false, reason: "stale" });
+      expect(adapter.verifyWebhook({ ...request, now: sentAt + (fixture.webhookMaxAgeMs ?? 60_000) + 1000 })).toEqual({ ok: false, reason: "stale" });
     });
 
     it("marks a delivery its own user caused, so ostra doesn't act on its echo", async () => {
