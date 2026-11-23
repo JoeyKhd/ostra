@@ -124,6 +124,9 @@ export const isolationModelList = [
   "EnvironmentRepoDraft",
   // Post-v1 (F-052, ADR 0073).
   "EnvironmentNetworkRule",
+  // Post-v1 (F-057, ADR 0074).
+  "SlackInstallation",
+  "SlackIdentity",
 ] as const;
 
 export type IsolationModelName = (typeof isolationModelList)[number];
@@ -515,6 +518,20 @@ export const isolationModels: Readonly<Record<IsolationModelName, FixtureBuilder
     (
       await db.environmentNetworkRule.create({
         data: { organizationId, projectId, environmentId: await ensure("Environment"), kind: "host", value: `registry-${tag()}.example.com`, ports: [443] },
+      })
+    ).id,
+  // Post-v1 (F-057, ADR 0074): one install and one matched member per organization. The secret
+  // columns hold references, as the domain writes them.
+  SlackInstallation: async ({ db, organizationId, memberId }) =>
+    (
+      await db.slackInstallation.create({
+        data: { organizationId, clientId: `client-${tag()}`, clientSecretSecretRef: `secret:${id()}`, installedByMemberId: memberId },
+      })
+    ).id,
+  SlackIdentity: async ({ db, organizationId, memberId }) =>
+    (
+      await db.slackIdentity.create({
+        data: { organizationId, memberId, slackUserId: `U${tag().toUpperCase()}`, slackTeamId: `T${tag().toUpperCase()}`, matchedEmail: `slack-${tag()}@example.com`, checkedAt: new Date() },
       })
     ).id,
   EnvironmentRepoDraft: async ({ db, organizationId, projectId, memberId }, ensure) => {

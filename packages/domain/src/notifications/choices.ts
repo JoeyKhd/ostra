@@ -31,9 +31,12 @@ export const momentKindOf = (kind: string): MomentKind => {
   return kind;
 };
 
-/** The three channels of milestone 3. */
+/** The three channels of milestone 3 (post-v1 F-057 adds `slack` to this list in ticket 04). */
 export const notificationChannels = ["panel", "tracker", "email"] as const;
 export type NotificationChannel = (typeof notificationChannels)[number];
+
+/** Whether a stored channel (Postgres's enum, which F-057 widened) is one of the domain's. */
+export const isNotificationChannel = (value: string): value is NotificationChannel => notificationChannels.some((channel) => channel === value);
 
 /** A needs-you item's audience, as the item stores it. */
 export type ItemAudience = "driver" | "reviewer" | "project_members";

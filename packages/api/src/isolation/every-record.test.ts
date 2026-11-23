@@ -409,6 +409,9 @@ const readers: Readonly<Record<IsolationModelName, readonly string[]>> = {
   EnvironmentRepoDraft: ["environments.repoDrafts"],
   // Post-v1 (F-052): the Network tab's readers are ticket 04's; until then no procedure reads them.
   EnvironmentNetworkRule: [],
+  // Post-v1 (F-057): Organization › Slack's readers are ticket 06's; until then no procedure reads them.
+  SlackInstallation: [],
+  SlackIdentity: [],
   // Milestone 8 (its ticket 04). Ticket 20's pane list reads the previews (the app processes, the
   // announced ports, the latest screenshot) and their sharing: levels, named people, links and the
   // open views. Ticket 16's App tab reads the processes, and the thread a task's screenshots and

@@ -185,6 +185,9 @@ model Organization {
   libraryItems          LibraryItem[]
   librarySources        LibrarySource[]
   librarySuggestions    LibrarySuggestion[]
+  // Post-v1 (F-057, ADR 0074): Slack, one install per organization and each member's matched user.
+  slackInstallation     SlackInstallation?
+  slackIdentities       SlackIdentity[]
 
   @@unique([slug])
   @@map("organization")
@@ -217,6 +220,8 @@ model Member {
   cliSessions             CliSession[]
   // ---- milestone 8 (F-142) ----
   previewAccess           PreviewAccessMember[]
+  // ---- post-v1 (F-057, ADR 0074) ----
+  slackIdentities         SlackIdentity[]
 
   // ostra: one membership per account and organization, not just unlikely twice (spike 9).
   @@unique([organizationId, userId])
@@ -2804,6 +2809,71 @@ model NotificationDelivery {
   @@map("notification_delivery")
 }
 
+/// One organization's Slack app and its install (F-057, ADR 0074): one row per organization, made
+/// when an admin starts the OAuth install and reused by a reinstall. Every secret column holds a
+/// `SecretRef`, never a value.
+model SlackInstallation {
+  id                    String            @id @default(uuid(7))
+  /// One Slack installation per organization (ADR 0074): mail is one per install, and Slack is its analogue.
+  organizationId        String            @unique
+  organization          Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  state                 SlackInstallState @default(pending)
+  /// The Slack app's client ID. Not a secret, so the page shows it.
+  clientId              String
+  /// The app's client secret, in the secret store: a reference, never the value.
+  clientSecretSecretRef String
+  /// The bot token, in the secret store: a reference, never the value. `null` while `pending`.
+  botTokenSecretRef     String?
+  /// The token-rotation refresh token, in the secret store: a reference, never the value. `null`
+  /// when the app has rotation off, and once `revoked`.
+  refreshTokenSecretRef String?
+  teamId                String?
+  teamName              String?
+  botUserId             String?
+  appId                 String?
+  /// The bot scopes Slack granted, as `oauth.v2.access` read them back.
+  scopes                String[]          @default([])
+  /// When the access token expires: `null` when the app has token rotation off, so it never does.
+  tokenExpiresAt        DateTime?
+  lastCheckedAt         DateTime?
+  /// The last check's or refresh's words and IDs: never a token, a code or a secret's value.
+  lastError             String?
+  /// The SHA-256 of the install-in-progress's state nonce: the nonce itself is never stored.
+  oauthStateHash        String?
+  oauthStateExpiresAt   DateTime?
+  /// The admin who started it. No foreign key: the audit entry keeps the actor, and the row outlives a membership.
+  installedByMemberId   String
+  /// When an admin disconnected it: its secrets are gone and its name stays for history.
+  revokedAt             DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@map("slack_installation")
+}
+
+/// One member's workspace user, matched by email (F-057, ADR 0074): a row means matched, no row
+/// means not matched, so a user added to the workspace later is found at the next moment.
+model SlackIdentity {
+  id             String       @id @default(uuid(7))
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberId       String
+  member         Member       @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  /// The workspace's user ID (`U…`): what a DM is posted to. Not a secret.
+  slackUserId    String
+  /// The workspace the match was made in: an identity of another installation is no match.
+  slackTeamId    String
+  /// The address the match was made on, kept to see a changed one.
+  matchedEmail   String
+  checkedAt      DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, memberId])
+  @@index([organizationId, slackUserId])
+  @@map("slack_identity")
+}
+
 /// A member's choice for one moment and channel (F-036, F-115). No row means the default (ADR 0050).
 model NotificationPreference {
   id             String              @id @default(uuid(7))
@@ -3509,6 +3579,17 @@ enum NotificationChannel {
   panel
   tracker
   email
+  // Post-v1 (F-057, ADR 0074): a DM from the organization's Slack app, per member, off by default.
+  slack
+}
+
+/// A Slack installation's state (F-057, ADR 0074): `pending` holds no bot token, `active` a token
+/// and a workspace, `failed` one Slack refused, and `revoked` none because an admin disconnected it.
+enum SlackInstallState {
+  pending
+  active
+  failed
+  revoked
 }
 
 enum NotificationState {

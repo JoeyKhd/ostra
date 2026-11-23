@@ -25,3 +25,29 @@ One migration after the last one on `main`, additive only:
 - [ ] Committed as `✨ add Slack's tables and channel`.
 
 ## Comments
+
+- 2026-11-23, core: built as `✨ add Slack's tables and channel`. Migration
+  `20261205100000_slack_installation` (after F-052's `20261205000000_environment_network_rule`);
+  tests in `packages/db/src/schema-slack.test.ts` (`F-057/c2` three times, `F-057/c8` three times)
+  and the generated `packages/api/src/isolation/every-record.test.ts`'s guard. Readings and
+  differences:
+  - **`src/enums.ts` had no `NotificationChannel` mapping to grow:** like `ConnectionKind` in
+    milestone 11, the enum is used as Prisma's own union. What the schema change did break was the
+    domain's fan-out, where a stored preference row's channel was spread into `NotificationChoice`
+    because Postgres's three values were the domain's three. `choices.ts` gains
+    `isNotificationChannel`, derived from `notificationChannels`, and the fan-out keeps only the
+    channels the domain offers: a `slack` preference row is no choice until ticket 04 widens the
+    list, and no hand-written three was added.
+  - **The delivery worker's `slack` arm is explicitly deferred:** `notify.deliver` switches over
+    Postgres's channel and now has `case "slack"` as a final failure in words ("not built yet"),
+    which ticket 05 replaces with `deps.slack.deliver`. No Slack delivery can be written before
+    ticket 04's fan-out offers the channel.
+  - **The panel's column label needed nothing:** it switches over `"panel" | ChoosableChannel`,
+    still `["tracker", "email"]`; ticket 07 adds the fourth column.
+  - **`installedByMemberId` has no foreign key**, as `Connection.createdByMemberId`: the audit entry
+    keeps the actor, and the row outlives a membership. `SlackIdentity`'s member relation is the
+    composite `[memberId, organizationId]`, so another organization's member is refused by Postgres.
+  - **No row changes:** the migration's only statement about an existing object is `ALTER TYPE
+    "NotificationChannel" ADD VALUE 'slack'`; the test applies it over a milestone 11 fixture and
+    compares every `notification`, `notification_delivery` and `notification_preference` row before
+    and after.

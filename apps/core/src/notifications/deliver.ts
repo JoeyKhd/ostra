@@ -462,6 +462,12 @@ export const notifyDeliverHandler =
         case "email":
           result = { outcome: await deps.email.deliver(row), siblings: [] };
           break;
+        case "slack":
+          // Post-v1 (F-057): ticket 05 builds the Slack channel and this branch with it. Nothing
+          // writes a Slack delivery before ticket 04's fan-out can choose it, so a row here is a
+          // bug, and one that must not be retried.
+          result = { outcome: { outcome: "failed", error: "slack: not built yet", retryable: false }, siblings: [] };
+          break;
         default:
           return row.channel satisfies never;
       }
