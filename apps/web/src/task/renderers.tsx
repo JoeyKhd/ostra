@@ -56,6 +56,7 @@ import { filesOutsideText } from "./files-outside-words";
 import { restoredDetail, savedDetail } from "./marker-words";
 import { useDataPart, useSubagentOwner, useSubagentStartedBy, useTaskContext, useToolPart } from "./task-context";
 import type { ToolLikePart } from "./task-context";
+import { DiffBlock, OutputBlock } from "./thread/step-output";
 
 // Renderers keyed by ACP `kind`, never by an agent's tool name, so every agent renders alike
 // (ADR 0036). Agent text, diffs and command output are untrusted (AGENTS.md): markdown with no raw
@@ -170,63 +171,6 @@ const ToolStatus = ({ part }: { readonly part: ToolLikePart }) => {
   if (running(part)) return <span className="font-sans text-faint">{t("task.tool.running")}</span>;
   return null;
 };
-
-type PatchLine = "add" | "del" | "hunk" | "header" | "context";
-
-const patchLineOf = (line: string): PatchLine =>
-  line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index ")
-    ? "header"
-    : line.startsWith("@@")
-      ? "hunk"
-      : line.startsWith("+")
-        ? "add"
-        : line.startsWith("-")
-          ? "del"
-          : "context";
-
-/**
- * A unified diff, as text, never HTML (light-task.md, "Code and diffs"): added and removed lines on
- * their fills with a green `+` or a red `-` and the code in `--text`; headers `--muted`, hunks `--faint`.
- */
-const Diff = ({ patch }: { readonly patch: string }) => (
-  <pre className="my-1 ml-[104px] max-h-80 overflow-auto rounded-lg border border-line bg-surface py-2 font-mono text-sm leading-[1.6] text-text">
-    {patch.split("\n").map((line, i) => {
-      const kind = patchLineOf(line);
-      switch (kind) {
-        case "add":
-        case "del":
-          return (
-            <div key={i} data-line={kind} className={kind === "add" ? "bg-diff-add px-3" : "bg-diff-del px-3"}>
-              <span className={kind === "add" ? "text-green" : "text-red"}>{line.charAt(0)}</span>
-              {line.slice(1)}
-            </div>
-          );
-        case "hunk":
-        case "header":
-          return (
-            <div key={i} data-line={kind} className={kind === "hunk" ? "px-3 text-faint" : "px-3 text-muted"}>
-              {line}
-            </div>
-          );
-        case "context":
-          return (
-            <div key={i} data-line={kind} className="px-3">
-              {line === "" ? " " : line}
-            </div>
-          );
-        default:
-          return kind satisfies never;
-      }
-    })}
-  </pre>
-);
-
-const Output = ({ text, truncated }: { readonly text: string; readonly truncated: boolean }) => (
-  <pre data-part="command-output" className="my-1 ml-[104px] max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm leading-[1.6] text-muted">
-    {text === "" ? t("task.tool.noOutput") : text}
-    {truncated ? `\n${t("task.tool.truncated")}` : ""}
-  </pre>
-);
 
 /** What a pending approval asks to run: the command, the paths, or the tool's title. */
 const approvalSubject = (part: ToolLikePart): string | null => {
@@ -377,7 +321,7 @@ export const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
               <Disclosure open={open} onToggle={() => { setOpen((v) => !v); }}>
                 {open ? t("task.tool.hideDiff") : t("task.tool.showDiff")}
               </Disclosure>
-              {open ? <Diff patch={patch} /> : null}
+              {open ? <DiffBlock patch={patch} className="my-1 ml-[104px]" /> : null}
             </>
           )}
         </div>
@@ -407,7 +351,7 @@ export const ToolBody = ({ part }: { readonly part: ToolLikePart }) => {
               <Disclosure open={open} onToggle={() => { setOpen((v) => !v); }}>
                 {open ? t("task.tool.hideOutput") : t("task.tool.showOutput")}
               </Disclosure>
-              {open ? <Output text={output.output} truncated={output.truncated} /> : null}
+              {open ? <OutputBlock text={output.output} truncated={output.truncated} className="my-1 ml-[104px]" /> : null}
             </>
           )}
           {part.state === "output-error" ? <p className="ml-[104px] text-sm text-red">{part.errorText}</p> : null}
@@ -582,7 +526,7 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
               <Disclosure open={open || setup.state === "failed"} onToggle={() => { setOpen((v) => !v); }}>
                 {open ? t("task.setup.hide") : t("task.setup.show")}
               </Disclosure>
-              {open || setup.state === "failed" ? <Output text={text} truncated={false} /> : null}
+              {open || setup.state === "failed" ? <OutputBlock text={text} className="my-1 ml-[104px]" /> : null}
             </>
           )}
         </div>
@@ -605,7 +549,7 @@ const DataBody = ({ part }: { readonly part: TaskDataPart }) => {
           <Disclosure open={open} onToggle={() => { setOpen((v) => !v); }}>
             {open ? t("task.prBodyHide") : t("task.prBodyShow")}
           </Disclosure>
-          {open ? <Output text={part.data.body} truncated={false} /> : null}
+          {open ? <OutputBlock text={part.data.body} className="my-1 ml-[104px]" /> : null}
         </div>
       );
     case "data-pr":

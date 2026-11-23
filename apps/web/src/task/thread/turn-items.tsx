@@ -46,8 +46,18 @@ const AskingStep = ({ step }: { readonly step: RunStep }) => {
   );
 };
 
+/**
+ * The failed steps a later step of the same kind and subject retried, and that failed too (a
+ * fetch's line then doesn't say `not retried`): every failure's own line is a step the turn didn't
+ * recover from, so a retry that failed is one of them, later in the turn.
+ */
+const retriedOf = (items: readonly TurnItem[]): ReadonlySet<string> => {
+  const failed = items.flatMap((item) => (item.kind === "failure" && item.failure.cause === "step" ? [item.failure.step] : []));
+  return new Set(failed.filter((step, index) => failed.slice(index + 1).some((later) => later.kind === step.kind && later.fullSubject === step.fullSubject)).map((step) => step.id));
+};
+
 /** One item, by its part. */
-const Item = ({ item, message, live }: { readonly item: TurnItem; readonly message: TaskUIMessage; readonly live: LiveStep | null }) => {
+const Item = ({ item, message, live, retried }: { readonly item: TurnItem; readonly message: TaskUIMessage; readonly live: LiveStep | null; readonly retried: ReadonlySet<string> }) => {
   const { ciOf } = useThreadParts();
   switch (item.kind) {
     case "run":
@@ -58,7 +68,7 @@ const Item = ({ item, message, live }: { readonly item: TurnItem; readonly messa
     case "captures":
       return <Captures attachments={item.attachments} />;
     case "failure":
-      return <FailureLine failure={item.failure} />;
+      return <FailureLine failure={item.failure} retried={item.failure.cause === "step" && retried.has(item.failure.step.id)} />;
     case "notice":
       return <NoticeLine notice={item.notice} />;
     case "result": {
@@ -151,6 +161,7 @@ export const TurnItems = ({ message }: { readonly message: TaskUIMessage }) => {
   const { workspace } = useThreadParts();
   const items = useMemo(() => turnItemsOf(message, workspace), [message, workspace]);
   const live = useMemo(() => liveStepOf(message, workspace), [message, workspace]);
+  const retried = useMemo(() => retriedOf(items), [items]);
   const rows = useMemo(() => {
     const at = message.metadata?.at ?? 0;
     return message.parts.flatMap((part, index) => {
@@ -166,7 +177,7 @@ export const TurnItems = ({ message }: { readonly message: TaskUIMessage }) => {
       {rows}
       {items.map((item) => (
         <div key={item.id} data-item={item.id} data-item-kind={item.kind} className="contents">
-          <Item item={item} message={message} live={live} />
+          <Item item={item} message={message} live={live} retried={retried} />
         </div>
       ))}
       {live !== null && !inRun && live.waiting === null ? <LiveStepLine live={live} /> : null}

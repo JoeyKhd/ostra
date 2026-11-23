@@ -60,7 +60,9 @@ const provider = await db.modelProvider.create({
   data: { organizationId, name: `thread-key-${args.tag}`, baseUrl: "https://thread-key.example.test/v1", apiFormat: "anthropic_messages", authScheme: "x_api_key", tokenSecretRef: `builtin:thread-${args.tag}`, allowOnPersonalRunners: true },
 });
 const model = await db.model.create({ data: { organizationId, providerId: provider.id, endpointModelId: "claude-sonnet-5-5", catalogId: "anthropic/claude-sonnet-5-5", displayName: "Claude Sonnet 5.5", adminImageInput: true, inputPricePerMTok: 3, outputPricePerMTok: 15, priceSource: "catalog" } });
-const profile = await db.agentProfile.create({ data: { organizationId, name: `Default ${args.tag}`, adapter: "opencode", modelId: model.id, modelCatalogId: "anthropic/claude-sonnet-5-5", providerId: provider.id } });
+// S3's review calls GitHub's MCP server (`github_get_pull_request`): the profile names it, so the thread reads the tool by its name, its server before it.
+const mcpServers = [{ name: "github", transport: "http", url: "https://github-mcp.example.test/mcp", readOnly: true, headerSecretRefs: {} }];
+const profile = await db.agentProfile.create({ data: { organizationId, name: `Default ${args.tag}`, adapter: "opencode", modelId: model.id, modelCatalogId: "anthropic/claude-sonnet-5-5", providerId: provider.id, mcpServers } });
 const project = await db.project.create({ data: { organizationId, name: "calculator", slug: `calculator-${args.tag}`, access: "open", defaultCodeProfileId: profile.id } });
 await db.providerListEntry.create({ data: { organizationId, projectId: project.id, providerId: provider.id } });
 const place = { organizationId, projectId: project.id };

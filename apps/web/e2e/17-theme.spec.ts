@@ -320,7 +320,9 @@ test("F-082/c2: Home, a task waiting on an approval and Account in light: every 
     await settle(page);
     if (name === "light-task") {
       await expect(page.getByText("pnpm db:migrate").first()).toBeVisible();
-      await page.getByRole("button", { name: "Show the diff" }).click();
+      // Milestone 10 (F-151): an edit is a row of its run, which opens on its line; its diff is one more press.
+      for (const line of await page.locator("[data-part='run'] > div > button[aria-expanded='false']").all()) await line.click();
+      await page.getByRole("button", { name: /^Show the diff of / }).first().click();
       await expect(page.locator('[data-line="add"]').first()).toBeVisible();
       await settle(page);
     }

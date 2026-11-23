@@ -290,6 +290,9 @@ const settledResult = (step: RunStep, tr: Translate): Segment | null => {
 
 const running = (step: RunStep): boolean => step.state === "running";
 
+/** A path's last name: `src/history/store.ts` → `store.ts`. */
+const fileName = (path: string): string => path.split("/").filter((name) => name !== "").at(-1) ?? path;
+
 /** `web :5173`, `:5173`, `web`: the preview a capture or a preview shows. */
 const previewTarget = (preview: { readonly label: string | null; readonly port: number | null }, tr: Translate): string => {
   if (preview.label !== null && preview.port !== null) return tr("task.step.previewOn", { label: preview.label, port: preview.port });
@@ -340,7 +343,8 @@ export const stepWords = (step: RunStep, tr: Translate, nameOf: NameOf, options:
   const orSettled = (result: readonly Segment[]): readonly Segment[] => (settled === null ? result : [settled]);
   switch (step.kind) {
     case "read":
-      return words(tr("task.step.read"), [code(step.paths.join(", "))], orSettled(running(step) ? [] : [seg(counted(tr, step.paths.length, "task.step.files.one", "task.step.files.other"), "faint")]), null);
+      // Every read of the run on one row, by the files' names (parts.md part 6); the full paths are the row's `title`.
+      return words(tr("task.step.read"), [code(step.paths.map(fileName).join(", "))], orSettled(running(step) ? [] : [seg(counted(tr, step.paths.length, "task.step.files.one", "task.step.files.other"), "faint")]), null);
     case "edit": {
       // The fold gives 0 and 0 when the agent sent no counts: that edit shows no size, never `+0`.
       const size: Segment[] = [];
