@@ -119,7 +119,7 @@ describe("a message ostra wrote for the agent, in the thread", () => {
   it("a CI round is ostra's, and shows each failing check and its conclusion", () => {
     const shown = drawn(fixCiPrompt([{ name: "test (linux)", conclusion: "failure", logFile: "0196.log" }, { name: "status", conclusion: "timed_out", logFile: null }]), "fix-ci");
     expect(shown.read === null ? false : isAutomatic(shown.read)).toBe(true);
-    expect(shown.mark).toContain("CI failed: 2 checks");
+    expect(shown.mark).toContain("CI failed: 2 jobs");
     expect(shown.body).toContain("test (linux)");
     expect(shown.body).toContain("failed");
     expect(shown.body).toContain("timed out");

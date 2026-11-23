@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UnderlineTabs } from "@/components/ui/underline-tabs";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
-import { t } from "@/lib/messages";
+import { plural, t } from "@/lib/messages";
 import { useTRPC } from "@/lib/trpc";
 import { safeHref } from "@/task/renderers";
 
@@ -162,9 +162,9 @@ const PrGroup = ({ pr, screen, driver }: { readonly pr: ReviewPr; readonly scree
         {pr.ci === null ? (
           <span className="text-faint">{t("review.ci.none")}</span>
         ) : pr.ci.state === "passed" ? (
-          <><CheckIcon aria-hidden className="text-green" /><span>{t("review.panel.ciPassed", { n: pr.ci.checks.length })}</span></>
+          <><CheckIcon aria-hidden className="text-green" /><span>{plural(pr.ci.checks.length, "review.panel.ciPassed.one", "review.panel.ciPassed.other")}</span></>
         ) : pr.ci.state === "failed" ? (
-          <><XIcon aria-hidden className="text-red" /><span className="truncate">{t("review.panel.ciFailed", { checks: failing.map((check) => check.name).join(", ") })}</span></>
+          <><XIcon aria-hidden className="text-red" /><span className="truncate">{t("review.panel.ciFailed", { jobs: failing.map((check) => check.name).join(", ") })}</span></>
         ) : pr.ci.state === "pending" ? (
           <><LoaderCircleIcon aria-hidden className="animate-spin" /><span>{t("review.ci.running")}</span></>
         ) : (

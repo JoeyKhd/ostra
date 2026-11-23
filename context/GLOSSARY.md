@@ -171,7 +171,7 @@ A member's comment on a line of a task's diff in the panel. It stays a draft unt
 _Avoid_: review comment (those are written on the code host), finding (an AI review writes those)
 
 **Round**:
-One time a code task goes back to its coding agent because of its PRs: a CI round (failing checks and their logs), a findings round (an AI review's blocking findings) or a "changes requested" round (a member's GitHub review). CI and findings rounds are capped at 2 each.
+One time a code task goes back to its coding agent because of its PRs: a CI round (failing CI jobs and their logs), a findings round (an AI review's blocking findings) or a "changes requested" round (a member's GitHub review). CI and findings rounds are capped at 2 each.
 _Avoid_: iteration, retry, loop (the loop is all the rounds together)
 
 **Automatic turn**:
@@ -327,8 +327,12 @@ The headless Chromium that runs beside the app in a task's box (on `host`, the m
 _Avoid_: headless browser (alone), Playwright, the agent's browser (an agent may run its own)
 
 **Check**:
-A command the environment names that ostra runs after every turn with changes, before it pushes and opens or updates a PR. A failing one makes the PR a draft. The code host's own pipeline is "CI".
-_Avoid_: test, CI (for ostra's checks)
+A command the environment names that ostra runs after every turn with changes, before it pushes and opens or updates a PR. A failing one makes the PR a draft. The code host's own pipeline is "CI". The panel counts checks as checks and says where they ran: `3 checks passed in the box`.
+_Avoid_: test, CI (for ostra's checks), job (a job is the code host's)
+
+**CI job**:
+One of the code host's own checks on a PR's head: a GitHub check run or commit status, which ostra reads after a push and never runs. The panel counts the code host's CI in jobs, never in checks: `CI on GitHub: running, 2 of 4 jobs done`, `Passed · 3 jobs`. A check is ostra's, in the box, before the push; a CI job is the code host's, on the PR, after it.
+_Avoid_: check, check run (each is ostra's), build
 
 **Environment proposal**:
 The corrected environment an onboarding task hands in after running the setup, the services, the checks and the app's processes: scripts, checks and variable names per repo, and the processes it saw ready, never a secret's value. "Keep it" on a port an agent announced makes one too, with that one app process alone, whose command a project admin names. A project admin accepts, edits or rejects it.
@@ -523,6 +527,23 @@ _Avoid_: sidebar (alone, there are two), dock, nav bar
 **Context sidebar**:
 The second sidebar, beside the rail, that lists the pages of the place open in the rail: a project's, the organization's or the personal views. It collapses to the rail.
 _Avoid_: secondary nav, submenu, drawer (on a phone, the rail and the context sidebar open as one sheet)
+
+**Run** (of steps):
+A turn's steps between two pieces of its prose, or between the turn's start and its first prose, or its last prose and its end. The thread draws each one as one line that counts its steps by kind (`Edited 2 files, ran 2 commands`) and opens in place to a row per step (F-151).
+_Avoid_: group, fold, block
+_Not_: a review run (one AI review of a round's PR heads) or a check run (one check's run after a turn)
+
+**Live step**:
+The line that says what the agent does this second while a turn runs, with the turn's finished steps, its failures not yet recovered and its time (`Running pnpm test history · 8 steps done, 1 failed · 3:52`). It stands where its run's line will be, and a step whose approval waits takes its place.
+_Avoid_: status line (that's the task's header), spinner, progress bar
+
+**Result line**:
+One line, with an icon, for one thing a turn made, after its prose: a push, the PR (its card), a posted review, a draft, the preview shown, a memory proposed.
+_Avoid_: event row, system row (a result isn't bookkeeping)
+
+**Receipt**:
+A settled needs-you item in its block's place, on one line: who answered and with what (`Sam Rivera answered Replace the display`, `Plan approved by Alex Kim, with edits`). An answer is a receipt, never a member's bubble.
+_Avoid_: answer row, confirmation
 
 ### Who
 
