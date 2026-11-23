@@ -1,3 +1,4 @@
+import { appEvents } from "@ostra/adapter-github";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createApiHarness, trpcFailure } from "../testing/index.ts";
@@ -170,6 +171,23 @@ describe("github.appRequest", () => {
       deps: { ...context.deps, settings: { ...context.deps.settings, corePublicUrl: "https://ostra.example.com" } },
     });
     expect((await caller.github.appRequest()).webhookPossible).toBe(true);
+  });
+
+  it("F-006/c4: names the events an App's webhook subscribes to, in the manifest's order, for the GitHub page's Events row", async () => {
+    const request = await (await harness.as(harness.fixture.b.admin)).github.appRequest();
+    expect(request.events).toEqual([...appEvents]);
+    expect(request.events).toEqual([
+      "pull_request",
+      "pull_request_review",
+      "pull_request_review_comment",
+      "pull_request_review_thread",
+      "issue_comment",
+      "check_run",
+      "check_suite",
+      "status",
+      "push",
+      "workflow_run",
+    ]);
   });
 
   it("is for admins", async () => {

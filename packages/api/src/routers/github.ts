@@ -244,12 +244,18 @@ export const githubRouter = router({
         notAsked: z.array(z.string()),
         /** Whether GitHub can reach the server's webhook address (OSTRA_CORE_PUBLIC_URL). */
         webhookPossible: z.boolean(),
+        /**
+         * F-006/c4: the events ostra uses (the manifest's `default_events`), in its order: an App's
+         * Events row counts them once all are subscribed to.
+         */
+        events: z.array(z.string()),
       }),
     )
     .query(({ ctx }) => ({
       permissions: Object.entries(appPermissions).map(([name, level]) => ({ name, level })),
       notAsked: ["workflows"],
       webhookPossible: isPublicWebhookUrl(`${ctx.deps.settings.corePublicUrl}/webhooks/github`),
+      events: [...appEvents],
     })),
 
   /**
